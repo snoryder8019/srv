@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Feature Stages — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:18px; font-weight:500; color:#fff; font-family:'Space Grotesk',sans-serif; letter-spacing:0.05em; } .logo span { color:#c9a848; }
+    .topbar-right { display:flex; align-items:center; gap:16px; font-size:13px; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:900px; margin:0 auto; padding:24px; }
+    h2 { font-size:16px; font-weight:500; margin-bottom:6px; }
+    .lead { font-size:13px; color:#737373; line-height:1.6; margin-bottom:18px; max-width:660px; }
+
+    .legend { display:flex; flex-wrap:wrap; gap:14px; margin-bottom:22px; font-size:12px; color:#a3a3a3; }
+    .legend b { color:#e5e5e5; font-weight:600; }
+    .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+    .d-experimental { background:#c9a848; } .d-beta { background:#34d399; } .d-visible { background:#38bdf8; } .d-off { background:#525252; }
+
+    .sec-head { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#737373; margin:22px 0 8px; }
+    .feature-row { display:flex; align-items:center; justify-content:space-between; gap:16px; background:#141414; border:1px solid #262626; border-radius:8px; padding:13px 16px; margin-bottom:8px; }
+    .feature-meta { min-width:0; }
+    .feature-name { font-size:14px; font-weight:600; color:#fff; }
+    .feature-sub { font-size:11px; color:#737373; margin-top:2px; }
+    .feature-sub code { color:#a3a3a3; background:#1f1f1f; padding:1px 5px; border-radius:4px; }
+    .feature-updated { font-size:10px; color:#525252; margin-top:3px; }
+
+    .seg { display:inline-flex; background:#0d0d0d; border:1px solid #262626; border-radius:7px; overflow:hidden; flex-shrink:0; }
+    .seg button { background:transparent; border:0; border-left:1px solid #262626; color:#a3a3a3; font:inherit; font-size:11px; font-weight:600; padding:7px 11px; cursor:pointer; transition:.12s; }
+    .seg button:first-child { border-left:0; }
+    .seg button:hover { background:#1a1a1a; color:#fff; }
+    .seg button.on-experimental { background:#c9a848; color:#0a0a0a; }
+    .seg button.on-beta { background:#34d399; color:#0a0a0a; }
+    .seg button.on-visible { background:#38bdf8; color:#0a0a0a; }
+    .seg button.on-off { background:#3a3a3a; color:#fff; }
+
+    @media (max-width:640px) {
+      .topbar-right a { display:none; }
+      .feature-row { flex-direction:column; align-items:flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo">mad<span>Labs</span>lab</div>
+      <span style="color:#737373; font-size:13px;">/ Feature Stages</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/superadmin">&larr; Dashboard</a>
+      <a href="/superadmin/permissions">Permissions</a>
+      <span><%= superAdmin.email %></span>
+    </div>
+  </div>
+
+  <div class="container">
+    <h2>Feature Release Stages</h2>
+    <p class="lead">Pick a stage for every admin feature. This is platform-wide and takes effect immediately. You (superadmin) always see every feature no matter the stage.</p>
+
+    <div class="legend">
+      <span><span class="dot d-experimental"></span><b>Experimental</b> — tenant opts in (Labs), badged "exp"</span>
+      <span><span class="dot d-beta"></span><b>Beta</b> — all tenants, badged "beta"</span>
+      <span><span class="dot d-visible"></span><b>Visible</b> — all tenants, no badge</span>
+      <span><span class="dot d-off"></span><b>Off</b> — hidden from tenants</span>
+    </div>
+
+    <%
+      const bySection = {};
+      features.forEach(function(f) { (bySection[f.section] = bySection[f.section] || []).push(f); });
+      const sectionOrder = Object.keys(bySection);
+    %>
+    <% sectionOrder.forEach(function(section) { %>
+      <div class="sec-head"><%= section %></div>
+      <% bySection[section].forEach(function(f) { %>
+        <div class="feature-row">
+          <div class="feature-meta">
+            <div class="feature-name"><%= f.label %></div>
+            <div class="feature-sub"><code><%= f.url %></code></div>
+            <% if (f.updatedAt) { %>
+              <div class="feature-updated">Set to <%= f.stage %> by <%= f.updatedBy || 'unknown' %> · <%= new Date(f.updatedAt).toLocaleString() %></div>
+            <% } else { %>
+              <div class="feature-updated">Default (<%= f.defaultStage %>)</div>
+            <% } %>
+          </div>
+          <form method="POST" action="/superadmin/features/stage" class="seg">
+            <input type="hidden" name="key" value="<%= f.key %>">
+            <% stages.forEach(function(s) { %>
+              <button type="submit" name="stage" value="<%= s %>" class="<%= f.stage === s ? ('on-' + s) : '' %>" title="<%= stageLabels[s] %>"><%= stageLabels[s] %></button>
+            <% }); %>
+          </form>
+        </div>
+      <% }); %>
+    <% }); %>
+  </div>
+</body>
+</html>

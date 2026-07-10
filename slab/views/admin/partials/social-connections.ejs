@@ -1,0 +1,387 @@
+<%
+  // ─────────────────────────────────────────────────────────────────────────
+  // Social connections — the single canonical UI for connecting/managing a
+  // tenant's social API credentials. Included by Settings (the one home).
+  // Posts to the shared /admin/social/* routes; those stay the source of truth.
+  // Expects locals: platforms (PLATFORM_LIST), accountMap (maskAccount per key),
+  // deletionRequests, publicBaseUrl, publicWebhookUrl.
+  // ─────────────────────────────────────────────────────────────────────────
+%>
+<style>
+  .sm-conn-card { border:1px solid var(--border); border-radius:6px; padding:16px; background:var(--surface); }
+  .sm-conn-head { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  .sm-conn-head .sm-ic { font-size:1.5rem; }
+  .sm-ic { text-align:center; flex-shrink:0; }
+  .sm-conn-name { font-size:1rem; font-weight:600; color:var(--on-surface); }
+  .sm-status-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .sm-status-dot.ok { background:#15803D; } .sm-status-dot.off { background:#cbd5e1; }
+  .sm-setup { font-size:0.72rem; color:var(--slate); line-height:1.55; background:var(--ivory); border-radius:4px; padding:10px 12px; margin:10px 0; }
+  .sm-soon { font-size:0.6rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:var(--badge-accent,var(--gold)); background:rgba(201,168,72,0.15); padding:2px 7px; border-radius:3px; }
+  @media (max-width:640px) { .sm-conn-head { flex-wrap:wrap; gap:6px; } .sm-conn-name { font-size:0.92rem; } }
+</style>
+
+<div class="sm-setup" style="margin-bottom:18px;">
+  <strong>How it works:</strong> enter each platform's API credentials below. Secrets are encrypted (AES-256-GCM) before storage and never shown again — only a masked hint. See the per-platform setup notes for where to obtain each key.
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;">
+<%
+  // Facebook, Instagram & Threads all come from ONE Meta app — group them into
+  // a single "Meta" card so app credentials aren't re-entered per surface.
+  const metaKeys = ['facebook', 'instagram', 'threads'];
+  const metaDefs = metaKeys.map(k => platforms.find(p => p.key === k)).filter(Boolean);
+  const metaConnected = metaDefs.filter(p => (accountMap[p.key] || {}).configured).length;
+  const fbCallbackUrl = (typeof publicWebhookUrl !== 'undefined' ? publicWebhookUrl.replace('/webhooks/meta', '/admin/social/facebook/callback') : '/admin/social/facebook/callback');
+%>
+<% if (metaDefs.length) { %>
+  <div class="sm-conn-card" style="grid-column:1/-1;">
+    <div class="sm-conn-head">
+      <span class="sm-ic">◈</span>
+      <span class="sm-conn-name">Meta</span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+        <span class="sm-status-dot <%= metaConnected ? 'ok' : 'off' %>"></span>
+        <span style="font-size:0.68rem;color:var(--slate);"><%= metaConnected %>/<%= metaDefs.length %> connected</span>
+      </span>
+    </div>
+    <div class="sm-setup">One Meta app powers <strong>Facebook</strong>, <strong>Instagram</strong> &amp; <strong>Threads</strong>. Enter your App ID/Secret + Facebook Page once — Instagram <em>links itself</em> from your Page (no IG User ID hunting), and Threads shares the same app.</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:12px;">
+    <% metaDefs.forEach(p => { const acc = accountMap[p.key] || {}; const configured = acc.configured; %>
+      <div style="border:1px solid var(--border);border-radius:6px;padding:12px;background:var(--paper,#faf9f6);">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span class="sm-ic"><%= p.icon %></span>
+          <strong style="font-size:0.82rem;"><%= p.name %></strong>
+          <span style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+            <span class="sm-status-dot <%= configured ? 'ok' : 'off' %>"></span>
+            <span style="font-size:0.64rem;color:var(--slate);"><%= configured ? 'Connected' : 'Not set' %></span>
+          </span>
+        </div>
+        <% if (p.key !== 'facebook') { %>
+          <div style="font-size:0.62rem;color:var(--slate);margin-bottom:8px;">Shares your Meta app — App ID/Secret are entered under <strong>Facebook Page</strong>.</div>
+        <% } %>
+        <% if (p.key === 'instagram') { %>
+          <div style="margin-bottom:10px;">
+            <button type="button" class="btn btn-gold btn-sm" style="font-size:0.64rem;" onclick="smLinkInstagram(this)">↺ Link from Facebook</button>
+            <span class="sm-iglink-msg" style="font-size:0.62rem;color:var(--slate);margin-left:6px;"><%= configured ? '' : 'Save Facebook first, then link.' %></span>
+            <div style="font-size:0.6rem;color:var(--slate);margin-top:5px;">Auto-fills your IG User ID from the linked Page. The fields below are optional overrides.</div>
+          </div>
+        <% } %>
+        <form method="POST" action="/admin/social/connections/<%= p.key %>">
+          <% p.fields.forEach(f => { const isSet = acc.secretsSet && acc.secretsSet[f.key]; const val = (!f.secret && acc.credentials) ? (acc.credentials[f.key]||'') : ''; %>
+          <div class="form-field" style="margin-bottom:10px;">
+            <label><%= f.label %></label>
+            <input type="<%= f.secret ? 'password' : 'text' %>" name="<%= f.key %>"
+                   value="<%= val %>"
+                   placeholder="<%= f.secret && isSet ? '•••••••• (saved — leave blank to keep)' : (f.placeholder||'') %>"
+                   autocomplete="off">
+          </div>
+          <% }) %>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+            <button type="submit" class="btn btn-navy btn-sm">Save</button>
+            <% if (configured) { %>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="smTest('<%= p.key %>', this)">Test</button>
+            <% } %>
+          </div>
+        </form>
+        <% if (p.key === 'facebook') { %>
+          <a href="/admin/social/facebook/connect" class="btn btn-gold btn-sm" style="margin-top:8px;display:inline-block;">Connect with Facebook →</a>
+          <div style="font-size:0.62rem;color:var(--slate);margin-top:5px;line-height:1.5;">
+            Save your <strong>App ID &amp; App Secret</strong> above first. One click grants a permanent Page token <em>with Live video</em> (<code>publish_video</code>) and auto-links Instagram — no manual token pasting.
+            In your Meta app → Facebook Login → Settings, add this Valid OAuth Redirect URI:<br><code><%= fbCallbackUrl %></code>
+            <% if (acc.liveEnabled) { %><br><span style="color:var(--success,#15803D);">✓ Live-streaming permission granted</span>
+            <% } else if (configured) { %><br><span style="color:#b45309;">⚠ Live permission (publish_video) not yet granted — reconnect to enable Facebook Live.</span><% } %>
+          </div>
+        <% } %>
+        <% if (p.key === 'threads') { const thCb = (typeof publicWebhookUrl !== 'undefined' ? publicWebhookUrl.replace('/webhooks/meta', '/admin/social/threads/callback') : '/admin/social/threads/callback'); %>
+          <a href="/admin/social/threads/connect" class="btn btn-gold btn-sm" style="margin-top:8px;display:inline-block;">Connect with Threads →</a>
+          <div style="font-size:0.62rem;color:var(--slate);margin-top:5px;line-height:1.5;">
+            Uses the <strong>same Meta app</strong> (App ID/Secret entered under Facebook). One click grants a long-lived token that auto-renews.
+            In your Meta app → <strong>Use cases → Threads → Settings</strong>, add this redirect URI:<br><code><%= thCb %></code>
+          </div>
+        <% } %>
+        <% if (configured) { %>
+        <form method="POST" action="/admin/social/connections/<%= p.key %>/disconnect" style="margin-top:8px;" onsubmit="return confirm('Disconnect <%= p.name %>?')">
+          <button class="btn btn-danger btn-sm" style="font-size:0.62rem;">Disconnect</button>
+          <span class="sm-test-result" id="smtest-<%= p.key %>" style="font-size:0.7rem;margin-left:8px;"></span>
+        </form>
+        <% } %>
+      </div>
+    <% }) %>
+    </div>
+  </div>
+<% } %>
+<%
+  // Google Business & YouTube run off ONE Google Cloud project + OAuth client.
+  const googleKeys = ['googlebusiness', 'youtube'];
+  const googleDefs = googleKeys.map(k => platforms.find(p => p.key === k)).filter(Boolean);
+  const googleConnected = googleDefs.filter(p => (accountMap[p.key] || {}).configured).length;
+  const gCallbackUrl = (typeof publicWebhookUrl !== 'undefined' ? publicWebhookUrl.replace('/webhooks/meta', '/admin/social/google/callback') : '/admin/social/google/callback');
+%>
+<% if (googleDefs.length) { %>
+  <div class="sm-conn-card" style="grid-column:1/-1;">
+    <div class="sm-conn-head">
+      <span class="sm-ic">G</span>
+      <span class="sm-conn-name">Google</span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+        <span class="sm-status-dot <%= googleConnected ? 'ok' : 'off' %>"></span>
+        <span style="font-size:0.68rem;color:var(--slate);"><%= googleConnected %>/<%= googleDefs.length %> connected</span>
+      </span>
+    </div>
+    <div class="sm-setup">One Google Cloud project powers <strong>Google Business</strong> &amp; <strong>YouTube</strong>. Enter your OAuth Client once — each product is just an <em>API you enable</em> in the same project (Business Profile API, YouTube Data API). No re-entered client keys.</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:12px;">
+    <% googleDefs.forEach(p => { const acc = accountMap[p.key] || {}; const configured = acc.configured; %>
+      <div style="border:1px solid var(--border);border-radius:6px;padding:12px;background:var(--paper,#faf9f6);">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span class="sm-ic"><%= p.icon %></span>
+          <strong style="font-size:0.82rem;"><%= p.name %></strong>
+          <% if (p.comingSoon) { %><span class="sm-soon">Soon</span><% } %>
+          <% if (p.connectOnly) { %><span class="sm-soon" title="Connect now — publishing coming soon">Connect-only</span><% } %>
+          <span style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+            <span class="sm-status-dot <%= configured ? 'ok' : 'off' %>"></span>
+            <span style="font-size:0.64rem;color:var(--slate);"><%= configured ? 'Connected' : 'Not set' %></span>
+          </span>
+        </div>
+        <% if (p.key === 'youtube') { %>
+          <div style="font-size:0.62rem;color:var(--slate);margin-bottom:8px;">Reuses your Google OAuth client (entered under <strong>Google Business</strong>). Just enable the <strong>YouTube Data API v3</strong> in the same Cloud project, then connect. Video-upload publishing is coming.</div>
+        <% } %>
+        <form method="POST" action="/admin/social/connections/<%= p.key %>">
+          <% p.fields.forEach(f => { const isSet = acc.secretsSet && acc.secretsSet[f.key]; const val = (!f.secret && acc.credentials) ? (acc.credentials[f.key]||'') : ''; %>
+          <div class="form-field" style="margin-bottom:10px;">
+            <label><%= f.label %></label>
+            <input type="<%= f.secret ? 'password' : 'text' %>" name="<%= f.key %>"
+                   value="<%= val %>"
+                   placeholder="<%= f.secret && isSet ? '•••••••• (saved — leave blank to keep)' : (f.placeholder||'') %>"
+                   <%= p.comingSoon ? 'disabled' : '' %> autocomplete="off">
+          </div>
+          <% }) %>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+            <button type="submit" class="btn btn-navy btn-sm" <%= p.comingSoon ? 'disabled' : '' %>>Save</button>
+            <% if (!p.comingSoon && configured) { %>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="smTest('<%= p.key %>', this)">Test</button>
+            <% } %>
+          </div>
+        </form>
+        <% if (p.key === 'googlebusiness' && !p.comingSoon) { %>
+          <a href="/admin/social/google/connect" class="btn btn-gold btn-sm" style="margin-top:8px;display:inline-block;">Connect with Google →</a>
+          <div style="font-size:0.62rem;color:var(--slate);margin-top:5px;line-height:1.5;">Save your Client ID &amp; Secret above first. In your Google OAuth client, register this redirect URI:<br><code><%= gCallbackUrl %></code></div>
+          <% if (typeof gconnected !== 'undefined' && gconnected) { %><div style="font-size:0.66rem;color:var(--success,#15803D);margin-top:5px;">✓ Connected via Google<% if (gidsManual) { %> — couldn't auto-read your Account/Location IDs (API access may still be pending); add them in the fields above.<% } %></div><% } %>
+        <% } %>
+        <% if (p.key === 'youtube') { %>
+          <a href="/admin/social/google/connect?product=youtube" class="btn btn-gold btn-sm" style="margin-top:8px;display:inline-block;">Connect with Google →</a>
+          <div style="font-size:0.62rem;color:var(--slate);margin-top:5px;line-height:1.5;">Uses the OAuth client from <strong>Google Business</strong> (set that up first). Same redirect URI:<br><code><%= gCallbackUrl %></code></div>
+        <% } %>
+        <% if (!p.comingSoon && configured) { %>
+        <form method="POST" action="/admin/social/connections/<%= p.key %>/disconnect" style="margin-top:8px;" onsubmit="return confirm('Disconnect <%= p.name %>?')">
+          <button class="btn btn-danger btn-sm" style="font-size:0.62rem;">Disconnect</button>
+          <span class="sm-test-result" id="smtest-<%= p.key %>" style="font-size:0.7rem;margin-left:8px;"></span>
+        </form>
+        <% } %>
+      </div>
+    <% }) %>
+    </div>
+  </div>
+<% } %>
+<% platforms.filter(p => !metaKeys.includes(p.key) && !googleKeys.includes(p.key)).forEach(p => { const acc = accountMap[p.key] || {}; const configured = acc.configured; %>
+  <div class="sm-conn-card">
+    <div class="sm-conn-head">
+      <span class="sm-ic"><%= p.icon %></span>
+      <span class="sm-conn-name"><%= p.name %></span>
+      <% if (p.comingSoon) { %><span class="sm-soon">Soon</span><% } %>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+        <span class="sm-status-dot <%= configured ? 'ok' : 'off' %>"></span>
+        <span style="font-size:0.68rem;color:var(--slate);"><%= configured ? 'Connected' : 'Not set' %></span>
+      </span>
+    </div>
+    <div class="sm-setup"><%= p.setup %></div>
+    <% if (Array.isArray(p.links) && p.links.length) { %>
+    <div class="sm-links" style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px;">
+      <% p.links.forEach(l => { %>
+        <a href="<%= l.url %>" target="_blank" rel="noopener noreferrer"
+           class="btn btn-ghost btn-sm" style="font-size:0.64rem;text-decoration:none;">↗ <%= l.label %></a>
+      <% }) %>
+    </div>
+    <% } %>
+    <form method="POST" action="/admin/social/connections/<%= p.key %>">
+      <% p.fields.forEach(f => { const isSet = acc.secretsSet && acc.secretsSet[f.key]; const val = (!f.secret && acc.credentials) ? (acc.credentials[f.key]||'') : ''; %>
+      <div class="form-field" style="margin-bottom:10px;">
+        <label><%= f.label %></label>
+        <input type="<%= f.secret ? 'password' : 'text' %>" name="<%= f.key %>"
+               value="<%= val %>"
+               placeholder="<%= f.secret && isSet ? '•••••••• (saved — leave blank to keep)' : (f.placeholder||'') %>"
+               <%= p.comingSoon ? 'disabled' : '' %> autocomplete="off">
+      </div>
+      <% }) %>
+      <% if (p.key === 'linkedin') { %>
+      <div class="li-urn" style="border:1px solid var(--border);border-radius:6px;padding:10px;margin:2px 0 10px;background:var(--paper,#faf9f6);">
+        <div style="font-size:0.66rem;font-weight:600;color:var(--navy,#1e293b);margin-bottom:6px;">Author URN builder</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          <select class="li-type" style="font-size:0.7rem;padding:4px;">
+            <option value="person">person (member)</option>
+            <option value="organization">organization (page)</option>
+          </select>
+          <input type="text" class="li-id" placeholder="numeric id" style="font-size:0.7rem;padding:4px;flex:1;min-width:100px;">
+          <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.62rem;" onclick="liBuildUrn(this)">Build →</button>
+          <button type="button" class="btn btn-navy btn-sm" style="font-size:0.62rem;" onclick="liFetchUrn(this)">Fetch from token</button>
+          <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.62rem;" onclick="liIntrospect(this)">Check token scopes</button>
+        </div>
+        <div class="li-urn-msg" style="font-size:0.62rem;color:var(--slate);margin-top:6px;line-height:1.5;">Paste your access token above and click <b>Fetch from token</b> to auto-fill your person URN, or enter an id and <b>Build</b>. For a company page, pick <b>organization</b>.</div>
+      </div>
+      <% } %>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+        <button type="submit" class="btn btn-navy btn-sm" <%= p.comingSoon ? 'disabled' : '' %>>Save</button>
+        <% if (!p.comingSoon && configured) { %>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="smTest('<%= p.key %>', this)">Test</button>
+        <% } %>
+      </div>
+    </form>
+    <% if (p.key === 'linkedin') { const liCb = publicWebhookUrl.replace('/webhooks/meta', '/admin/social/linkedin/callback'); %>
+      <a href="/admin/social/linkedin/connect" class="btn btn-gold btn-sm" style="margin-top:8px;display:inline-block;">Connect with LinkedIn →</a>
+      <div style="font-size:0.62rem;color:var(--slate);margin-top:5px;line-height:1.5;">
+        Save your <strong>Client ID &amp; Client Secret</strong> above first. One click grants the token <em>and</em> auto-fills your Author URN — no token generator, no URN hunt.
+        In your LinkedIn app → <strong>Auth</strong>, add this Authorized redirect URL:<br><code><%= liCb %></code>
+      </div>
+    <% } %>
+    <% if (!p.comingSoon && configured) { %>
+    <form method="POST" action="/admin/social/connections/<%= p.key %>/disconnect" style="margin-top:8px;" onsubmit="return confirm('Disconnect <%= p.name %>?')">
+      <button class="btn btn-danger btn-sm" style="font-size:0.64rem;">Disconnect</button>
+      <span class="sm-test-result" id="smtest-<%= p.key %>" style="font-size:0.7rem;margin-left:8px;"></span>
+    </form>
+    <% } %>
+  </div>
+<% }) %>
+</div>
+
+<!-- ═══════════ COMPLIANCE ═══════════ -->
+<h3 style="margin:26px 0 12px;font-family:var(--font-heading);color:var(--on-surface);font-size:1.05rem;border-top:1px solid var(--border);padding-top:20px;">🛡️ Compliance</h3>
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-title">App Compliance URLs</div>
+  <p style="font-size:0.8rem;color:var(--slate);margin-bottom:14px;">Paste these into your Meta / social app settings. The Data Deletion Callback is what platforms call when a user removes your app.</p>
+  <% const _urls = [
+       { label: 'Privacy Policy', url: publicBaseUrl + '/privacy' },
+       { label: 'Terms of Service', url: publicBaseUrl + '/terms' },
+       { label: 'Data Deletion Callback', url: publicBaseUrl + '/data-deletion' },
+     ]; %>
+  <% _urls.forEach(u => { %>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
+    <span style="font-size:0.72rem;color:var(--slate);min-width:160px;"><%= u.label %></span>
+    <code style="flex:1;min-width:220px;font-size:0.74rem;background:var(--ivory);padding:6px 10px;border-radius:3px;"><%= u.url %></code>
+    <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.66rem;" onclick="navigator.clipboard.writeText('<%= u.url %>');this.textContent='Copied';setTimeout(()=>this.textContent='Copy',1200);">Copy</button>
+    <a href="<%= u.url %>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="font-size:0.66rem;">Open</a>
+  </div>
+  <% }) %>
+</div>
+
+<div class="card-title" style="margin-bottom:10px;">Data Deletion Requests</div>
+<% if (!deletionRequests || !deletionRequests.length) { %>
+<div class="card empty"><div class="empty-icon">🗑</div><p>No deletion requests yet. Requests arrive here when a user removes your app or submits the public form.</p></div>
+<% } else { %>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Status</th><th>Source</th><th>Identifier</th><th>Code</th><th>Received</th><th></th></tr></thead>
+    <tbody>
+    <% deletionRequests.forEach(d => {
+        const badge = d.status === 'completed' ? 'badge-active' : 'badge-prospect';
+    %>
+      <tr>
+        <td><span class="badge <%= badge %>"><%= d.status %></span></td>
+        <td style="font-size:0.8rem;"><%= d.source %><% if (d.platform) { %> · <%= d.platform %><% } %><% if (d.source === 'meta') { %><br><span style="font-size:0.62rem;color:<%= d.verified ? 'var(--success)' : 'var(--danger)' %>;"><%= d.verified ? '✓ verified' : 'unverified' %></span><% } %></td>
+        <td style="font-size:0.78rem;word-break:break-all;"><%= d.email || d.externalUserId || '—' %></td>
+        <td><code style="font-size:0.72rem;"><%= d.code %></code></td>
+        <td style="font-size:0.76rem;white-space:nowrap;"><%= new Date(d.createdAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) %></td>
+        <td style="white-space:nowrap;">
+          <% if (d.status !== 'completed') { %>
+          <form method="POST" action="/admin/social/deletion/<%= d._id %>/complete" style="display:inline;" onsubmit="return confirm('Mark this deletion request as completed? Make sure the user\'s data has actually been removed.')"><button class="btn btn-gold btn-sm" style="font-size:0.66rem;">Mark done</button></form>
+          <% } else { %>
+          <span style="font-size:0.7rem;color:var(--success);">✓ <%= d.completedAt ? new Date(d.completedAt).toLocaleDateString() : '' %></span>
+          <% } %>
+        </td>
+      </tr>
+    <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<script>
+// ── Connection actions (shared with the /admin/social backend routes) ────────
+async function smTest(key, btn) {
+  const out = document.getElementById('smtest-' + key);
+  btn.disabled = true; btn.textContent = 'Testing…';
+  try {
+    const r = await fetch('/admin/social/connections/' + key + '/test', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    const d = await r.json();
+    if (out) { out.textContent = d.ok ? '✓ ' + (d.note || 'OK') : '✕ ' + (d.error || 'Failed'); out.style.color = d.ok ? 'var(--success)' : 'var(--danger)'; }
+  } catch (e) { if (out) { out.textContent = '✕ Request failed'; out.style.color = 'var(--danger)'; } }
+  btn.disabled = false; btn.textContent = 'Test';
+}
+
+// ── Meta: link Instagram from the connected Facebook Page ─────────────────────
+async function smLinkInstagram(btn) {
+  const msg = btn.parentElement.querySelector('.sm-iglink-msg');
+  const setMsg = (t, ok) => { if (msg) { msg.textContent = t; msg.style.color = ok ? 'var(--success)' : 'var(--danger)'; } };
+  btn.disabled = true; const label = btn.textContent; btn.textContent = 'Linking…';
+  try {
+    const r = await fetch('/admin/social/connections/meta/link-instagram', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    const d = await r.json();
+    if (d.ok) {
+      setMsg('✓ Linked' + (d.username ? ' @' + d.username : '') + (d.seededToken ? ' (token from Page)' : ''), true);
+      setTimeout(() => location.reload(), 900);
+    } else { setMsg('✕ ' + (d.error || 'Failed'), false); }
+  } catch (e) { setMsg('✕ Request failed', false); }
+  btn.disabled = false; btn.textContent = label;
+}
+
+// ── LinkedIn Author URN builder ──────────────────────────────────────────────
+function liCard(btn) { return btn.closest('.sm-conn-card') || btn.closest('.social-item'); }
+function liField(card, key) { return card.querySelector('[name="' + key + '"], [data-field="' + key + '"]'); }
+function liBuildUrn(btn) {
+  const card = liCard(btn), msg = card.querySelector('.li-urn-msg');
+  const type = card.querySelector('.li-type').value;
+  const id = card.querySelector('.li-id').value.trim().replace(/^urn:li:[a-z]+:/i, '');
+  if (!id) { msg.textContent = 'Enter the numeric id first.'; msg.style.color = 'var(--danger)'; return; }
+  const urn = 'urn:li:' + type + ':' + id;
+  const f = liField(card, 'authorUrn'); if (f) f.value = urn;
+  msg.innerHTML = 'Built <code>' + urn + '</code> — filled the Author URN field. Save to persist.';
+  msg.style.color = 'var(--success)';
+}
+async function liFetchUrn(btn) {
+  const card = liCard(btn), msg = card.querySelector('.li-urn-msg');
+  const tf = liField(card, 'accessToken');
+  const token = (tf && tf.value && !tf.value.startsWith('••••')) ? tf.value.trim() : '';
+  btn.disabled = true; msg.textContent = 'Fetching from token…'; msg.style.color = 'var(--slate)';
+  try {
+    const r = await fetch('/admin/social/linkedin/urn', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accessToken: token }) });
+    const j = await r.json();
+    if (!j.ok) { msg.textContent = '✕ ' + (j.error || 'Failed'); msg.style.color = 'var(--danger)'; }
+    else {
+      const f = liField(card, 'authorUrn'); if (f) f.value = j.urn;
+      card.querySelector('.li-type').value = 'person';
+      card.querySelector('.li-id').value = j.sub || '';
+      msg.innerHTML = '✓ ' + (j.name ? 'Signed in as <b>' + j.name + '</b> — ' : '') + 'filled <code>' + j.urn + '</code>. Save to persist.';
+      msg.style.color = 'var(--success)';
+    }
+  } catch (e) { msg.textContent = '✕ Request failed'; msg.style.color = 'var(--danger)'; }
+  btn.disabled = false;
+}
+async function liIntrospect(btn) {
+  const card = liCard(btn), msg = card.querySelector('.li-urn-msg');
+  const tok = liField(card, 'accessToken'), cid = liField(card, 'clientId'), csec = liField(card, 'clientSecret');
+  const payload = {
+    accessToken: (tok && tok.value && !tok.value.startsWith('••••')) ? tok.value.trim() : '',
+    clientId: cid ? cid.value.trim() : '',
+    clientSecret: (csec && csec.value && !csec.value.startsWith('••••')) ? csec.value.trim() : '',
+  };
+  btn.disabled = true; msg.textContent = 'Reading token scopes…'; msg.style.color = 'var(--slate)';
+  try {
+    const r = await fetch('/admin/social/linkedin/introspect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const j = await r.json();
+    if (!j.ok) { msg.textContent = '✕ ' + (j.error || 'Failed'); msg.style.color = 'var(--danger)'; }
+    else {
+      const list = (j.scope || '').split(/[ ,]+/).filter(Boolean);
+      const hasProfile = list.includes('openid') && list.includes('profile');
+      msg.innerHTML = (j.active ? '✓' : '✕') + ' status <b>' + j.status + '</b> · scopes: <code>' + (j.scope || '(none)') + '</code><br>'
+        + (hasProfile ? '<b>openid + profile present</b> — Fetch from token will work.' : '<b>Missing openid/profile</b> — this token can\'t read your id. Regenerate with those scopes ticked.');
+      msg.style.color = j.active ? 'var(--success)' : 'var(--danger)';
+    }
+  } catch (e) { msg.textContent = '✕ Request failed'; msg.style.color = 'var(--danger)'; }
+  btn.disabled = false;
+}
+</script>

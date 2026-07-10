@@ -634,7 +634,9 @@
         }
       });
 
-      if (localVideo) { localVideo.srcObject = screenStream; localVideo.style.display = 'block'; }
+      // Screen content must NOT be mirrored — the selfie-cam flip (scaleX(-1))
+      // would render shared text/UI backwards in the local preview.
+      if (localVideo) { localVideo.srcObject = screenStream; localVideo.style.display = 'block'; localVideo.style.transform = 'none'; }
       if (localPip) localPip.style.display = 'block';
 
       screenTrack.onended = stopScreenShare;
@@ -664,7 +666,12 @@
       });
       if (sender && camTrack) sender.replaceTrack(camTrack);
     });
-    if (localVideo && previewStreamObj) localVideo.srcObject = previewStreamObj;
+    // Restore the selfie-cam mirror for the host's own camera preview
+    // (screen share cleared it so shared content read correctly).
+    if (localVideo) {
+      localVideo.style.transform = '';
+      if (previewStreamObj) localVideo.srcObject = previewStreamObj;
+    }
     if (localPip) localPip.style.display = (localStream && videoEnabled) ? 'block' : 'none';
   }
 

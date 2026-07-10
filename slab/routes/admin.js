@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit';
 import { requireAdmin, issueAdminJWT } from '../middleware/jwtAuth.js';
 import { checkSuperAdmin } from '../middleware/superadmin.js';
 import { isSuperAdminEmail } from '../middleware/superadmin.js';
+import { loadUserAccess, enforceFeatureAccess } from '../middleware/permissions.js';
 import { getDb, getSlabDb, getTenantDb } from '../plugins/mongo.js';
 import { config } from '../config/config.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
@@ -46,6 +47,9 @@ import notesRouter from './admin/notes.js';
 import analyticsRouter, { buildMetrics } from './admin/analytics.js';
 import shareRouter from './admin/share.js';
 import pipesRouter from './admin/pipes.js';
+import labsRouter from './admin/labs.js';
+import adminChatRouter from './admin/chat.js';
+import agentChatRouter from './admin/agentChat.js';
 
 const router = express.Router();
 
@@ -57,6 +61,11 @@ router.use((req, res, next) => {
 
 // Lightweight superadmin detection — sets req.isSuperAdmin for sidebar + super routes
 router.use(checkSuperAdmin);
+
+// Resolve the admin's permission context + global feature flags (for sidebar + guards),
+// then soft-block direct-URL access to features the viewer can't see.
+router.use(loadUserAccess);
+router.use(enforceFeatureAccess);
 
 // Inject integration status + brand design into all admin views via res.locals
 router.use(async (req, res, next) => {
@@ -162,7 +171,7 @@ router.get('/login', (req, res) => {
   if (error === 'credentials') errorMsg = 'Invalid email or password.';
   // Central auth URL — tenant login pages redirect Google auth to slab.madladslab.com
   const centralAuthUrl = config.DOMAIN + '/auth/login';
-  res.render('admin/login', { errorMsg, platformGoogleCid: config.GGLCID || '', centralAuthUrl });
+  res.render('admin/login', { errorMsg, platformGoogleCid: config.GGLCID || '', platformMsCid: config.MSCID || '', msCentralUrl: config.DOMAIN + '/auth/microsoft/central', centralAuthUrl });
 });
 
 // ── Rate limiters ────────────────────────────────────────────────────────────
@@ -233,7 +242,7 @@ router.post('/register', authLimiter, async (req, res) => {
       await db.collection('users').updateOne({ _id: existing._id }, {
         $set: { password: hash, providers },
       });
-      res.render('admin/login', { errorMsg: null, successMsg: 'Password added to your account. You can now sign in with email or Google.', platformGoogleCid: config.GGLCID || '', centralAuthUrl: config.DOMAIN + '/auth/login' });
+      res.render('admin/login', { errorMsg: null, successMsg: 'Password added to your account. You can now sign in with email or Google.', platformGoogleCid: config.GGLCID || '', platformMsCid: config.MSCID || '', msCentralUrl: config.DOMAIN + '/auth/microsoft/central', centralAuthUrl: config.DOMAIN + '/auth/login' });
     } else {
       await db.collection('users').insertOne({
         email: cleanEmail,
@@ -245,7 +254,7 @@ router.post('/register', authLimiter, async (req, res) => {
         createdAt: new Date(),
       });
       // New registrations are NOT auto-admin — an existing admin must grant access
-      res.render('admin/login', { errorMsg: null, successMsg: 'Account created. An administrator must grant you access before you can sign in.', platformGoogleCid: config.GGLCID || '', centralAuthUrl: config.DOMAIN + '/auth/login' });
+      res.render('admin/login', { errorMsg: null, successMsg: 'Account created. An administrator must grant you access before you can sign in.', platformGoogleCid: config.GGLCID || '', platformMsCid: config.MSCID || '', msCentralUrl: config.DOMAIN + '/auth/microsoft/central', centralAuthUrl: config.DOMAIN + '/auth/login' });
     }
   } catch (err) {
     console.error('[admin] register error:', err);
@@ -610,5 +619,8 @@ router.use('/notes', notesRouter);
 router.use('/analytics', analyticsRouter);
 router.use('/share', shareRouter);
 router.use('/pipes', pipesRouter);
+router.use('/labs', labsRouter);
+router.use('/chat', adminChatRouter);
+router.use('/agent-chat', agentChatRouter);
 
 export default router;

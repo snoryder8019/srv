@@ -303,6 +303,14 @@
     currentCallback = null;
   }
 
+  // Front-end delivery URL for an asset: prefer the internet-safe WebP web
+  // variant (capped under 1MB) and fall back to the original when no variant
+  // exists yet (older uploads, videos, SVGs).
+  function deliveryUrl(asset) {
+    return (asset && (asset.webUrl || asset.publicUrl)) || '';
+  }
+  window.assetDeliveryUrl = deliveryUrl;
+
   /* ── AUTO-WIRE pick buttons ── */
   function wireButtons() {
     document.querySelectorAll('.asset-pick-btn').forEach(btn => {
@@ -315,10 +323,11 @@
         openModal({
           folder, type,
           onSelect: (asset) => {
+            const url = deliveryUrl(asset);
             if (targetId) {
               const input = document.getElementById(targetId);
               if (input) {
-                input.value = asset.publicUrl;
+                input.value = url;
                 input.dispatchEvent(new Event('change', { bubbles: true }));
               }
             }
@@ -326,7 +335,7 @@
             const previewId = btn.dataset.preview;
             if (previewId) {
               const img = document.getElementById(previewId);
-              if (img) { img.src = asset.publicUrl; img.style.display = ''; }
+              if (img) { img.src = url; img.style.display = ''; }
             }
           }
         });

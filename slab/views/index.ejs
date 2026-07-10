@@ -301,7 +301,7 @@
            style="background:var(--navy);position:relative;overflow:hidden;">
         <% if (item.imageUrl) { %>
           <div style="aspect-ratio:16/10;overflow:hidden;position:relative;">
-            <img src="<%= item.imageUrl %>" alt="<%= item.title %>" style="width:100%;height:100%;object-fit:cover;display:block;">
+            <img src="<%= item.imageUrl %>" alt="<%= item.title %>" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;display:block;">
             <% if (_galleryCount > 1) { %>
               <span style="position:absolute;top:10px;right:10px;background:rgba(15,27,48,0.85);color:var(--gold-light);font-size:0.62rem;font-weight:600;letter-spacing:0.12em;padding:4px 9px;border-radius:2px;">◧ <%= _galleryCount %></span>
             <% } %>
@@ -456,7 +456,7 @@
     <div class="blog-grid">
       <% latestPosts.forEach(bp => { %>
         <a href="/blog/<%= bp.slug %>" class="blog-card" style="display:block;background:var(--surface);border:1px solid var(--border);border-radius:2px;overflow:hidden;text-decoration:none;">
-          <% if (bp.featuredImageUrl) { %><img src="<%= bp.featuredImageUrl %>" alt="<%= bp.title %>" style="width:100%;height:180px;object-fit:cover;"><% } %>
+          <% if (bp.featuredImageUrl) { %><img src="<%= bp.featuredImageUrl %>" alt="<%= bp.title %>" loading="lazy" decoding="async" style="width:100%;height:180px;object-fit:cover;"><% } %>
           <div style="padding:24px;">
             <% if (bp.category) { %><div style="font-size:0.62rem;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);margin-bottom:10px;"><%= bp.category %></div><% } %>
             <div style="font-family:var(--font-heading);font-size:1.2rem;color:var(--on-surface);margin-bottom:10px;"><%= bp.title %></div>
@@ -485,7 +485,11 @@
     </div>
   </div>
   <div class="contact-right">
-    <form class="contact-form" id="contact-form" method="POST" action="/contact">
+    <form class="contact-form" id="contact-form" method="POST" action="/contact" data-captcha>
+      <%- '' /* Honeypot: hidden from humans, tempting to bots. Kept off-screen (not display:none) so autofill bots still see it. */ %>
+      <div aria-hidden="true" style="position:absolute;left:-5000px;top:auto;width:1px;height:1px;overflow:hidden;">
+        <label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+      </div>
       <%
         const _fnameHidden = copy.contact_fname_hidden === 'true';
         const _lnameHidden = copy.contact_lname_hidden === 'true';
@@ -593,7 +597,7 @@
     </div>
     <div>
       <% const _splitImg = _csImg(sec, 'main_image'); %>
-      <% if (_splitImg) { %><img src="<%- _splitImg %>" alt="" class="cs-split-img"><% } else { %><div class="cs-split-img-placeholder"></div><% } %>
+      <% if (_splitImg) { %><img src="<%- _splitImg %>" alt="" loading="lazy" decoding="async" class="cs-split-img"><% } else { %><div class="cs-split-img-placeholder"></div><% } %>
     </div>
   </div></section>
   <% } else if (sec.type === 'cta') { %>
@@ -701,11 +705,17 @@
 <!-- FOOTER (shared partial — driven by design.footer_* + copy.footer_* keys) -->
 <%- include('partials/footer') %>
 
+<script src="/js/captcha.js" defer></script>
 <script>
-  if (new URLSearchParams(window.location.search).get('contacted')) {
+  (function () {
+    const params = new URLSearchParams(window.location.search);
     const msg = document.getElementById('form-msg');
-    if (msg) { msg.style.display = 'block'; msg.textContent = '✓ Message received! We\'ll be in touch soon.'; }
-  }
+    if (params.get('contacted') && msg) {
+      msg.style.display = 'block'; msg.textContent = '✓ Message received! We\'ll be in touch soon.';
+    } else if (params.get('captcha') === 'fail' && msg) {
+      msg.style.display = 'block'; msg.textContent = '⚠ Verification failed — please try sending your message again.';
+    }
+  })();
   <% if (design.section_animation && design.section_animation !== 'none') { %>
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('visible'); });

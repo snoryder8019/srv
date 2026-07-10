@@ -1,0 +1,299 @@
+<%- include('../partials/head', { title: 'Account Resources' }) %>
+<%- include('../partials/sidebar', { page: 'assets', user: user }) %>
+
+<style>
+  .rz-wrap { padding: 16px 20px 80px; max-width: 1400px; margin: 0 auto; }
+  .rz-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; }
+  .rz-title { font-size: 1.4rem; font-weight: 700; color: var(--on-surface); }
+  .rz-sub { font-size: 0.78rem; color: var(--slate); margin: 2px 0 16px; max-width: 720px; }
+
+  .rz-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+
+  .rz-card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; display: flex; flex-direction: column; }
+  .rz-card-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .rz-badge { width: 30px; height: 30px; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1rem; flex-shrink: 0; }
+  .rz-name { font-size: 0.92rem; font-weight: 700; color: var(--on-surface); }
+  .rz-status { margin-left: auto; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 8px; border-radius: 10px; }
+  .rz-status.on { background: rgba(20,83,45,0.12); color: #14532D; }
+  .rz-status.off { background: rgba(148,163,184,0.18); color: var(--slate); }
+
+  .rz-slots { padding: 6px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .rz-slot { display: flex; gap: 12px; align-items: flex-start; padding-top: 10px; border-top: 1px dashed var(--border); }
+  .rz-slot:first-child { border-top: none; }
+
+  .rz-preview { width: 72px; height: 72px; flex-shrink: 0; background: var(--ivory); border: 1px solid var(--border); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  .rz-preview.circle { border-radius: 50%; }
+  .rz-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .rz-preview .rz-empty { color: var(--slate); font-size: 1.4rem; }
+
+  .rz-slot-body { flex: 1; min-width: 0; }
+  .rz-slot-label { font-size: 0.82rem; font-weight: 600; color: var(--on-surface); }
+  .rz-slot-dim { font-size: 0.66rem; color: var(--slate); margin: 1px 0 6px; }
+  .rz-slot-dim .rz-push-tag { color: #14532D; font-weight: 700; }
+  .rz-slot-dim .rz-manual-tag { color: var(--slate); }
+  .rz-assigned-title { font-size: 0.68rem; color: var(--navy); margin-bottom: 6px; word-break: break-word; }
+  .rz-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .rz-actions .btn { font-size: 0.66rem; padding: 4px 9px; }
+  .rz-pushinfo { font-size: 0.64rem; margin-top: 5px; }
+  .rz-pushinfo.ok { color: #14532D; }
+  .rz-pushinfo.err { color: #B91C1C; }
+
+  /* Picker modal */
+  .rz-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(15,27,48,0.4); z-index: 500; backdrop-filter: blur(2px); }
+  .rz-modal-overlay.open { display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .rz-modal { background: var(--surface); border-radius: 6px; width: min(860px, 96vw); max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 12px 48px rgba(15,27,48,0.3); overflow: hidden; }
+  .rz-modal-head { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .rz-modal-title { font-size: 0.95rem; font-weight: 700; color: var(--on-surface); }
+  .rz-modal-sub { font-size: 0.7rem; color: var(--slate); }
+  .rz-modal-close { margin-left: auto; background: none; border: none; font-size: 1.4rem; cursor: pointer; color: var(--slate); line-height: 1; }
+  .rz-modal-tools { padding: 10px 18px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .rz-modal-search { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.82rem; background: var(--ivory); color: var(--on-surface); }
+  .rz-push-toggle { font-size: 0.72rem; color: var(--on-surface); display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .rz-modal-grid { flex: 1; overflow-y: auto; padding: 14px 18px; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); align-content: start; }
+  .rz-pick { border: 2px solid transparent; border-radius: 3px; cursor: pointer; overflow: hidden; background: var(--ivory); transition: all 0.12s; }
+  .rz-pick:hover { border-color: var(--navy-mid); }
+  .rz-pick-thumb { width: 100%; aspect-ratio: 1/1; overflow: hidden; background: var(--ivory); display: flex; align-items: center; justify-content: center; }
+  .rz-pick-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .rz-pick-name { font-size: 0.6rem; color: var(--slate); padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rz-modal-empty { grid-column: 1/-1; text-align: center; padding: 40px; color: var(--slate); font-size: 0.82rem; }
+
+  .rz-toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 18px; background: var(--navy); color: #fff; border-radius: 4px; font-size: 0.82rem; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,0.2); z-index: 1000; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+  .rz-toast.show { opacity: 1; }
+  .rz-toast.error { background: #B91C1C; }
+
+  @media (max-width: 520px) { .rz-grid { grid-template-columns: 1fr; } }
+</style>
+
+<div class="rz-wrap">
+  <div class="rz-head">
+    <div>
+      <div class="rz-title">Account Resources</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <a href="/admin/social?tab=connections" class="btn btn-ghost btn-sm">Connections</a>
+      <a href="/admin/assets" class="btn btn-ghost btn-sm">← Back to Assets</a>
+    </div>
+  </div>
+  <div class="rz-sub">
+    Assign the static brand assets for each connected social channel — profile pictures, banners, cover art — straight
+    from your asset library. Where a platform's API allows it, "Push live" applies the change to the real account;
+    everywhere else the assignment is kept here with the recommended size so you can set it in the app.
+  </div>
+
+  <div class="rz-grid" id="rzGrid">
+    <div class="rz-modal-empty" style="grid-column:1/-1;">Loading channels…</div>
+  </div>
+</div>
+
+<!-- Asset picker modal -->
+<div class="rz-modal-overlay" id="rzModal">
+  <div class="rz-modal">
+    <div class="rz-modal-head">
+      <div>
+        <div class="rz-modal-title" id="rzModalTitle">Choose an asset</div>
+        <div class="rz-modal-sub" id="rzModalSub"></div>
+      </div>
+      <button class="rz-modal-close" id="rzModalClose">&times;</button>
+    </div>
+    <div class="rz-modal-tools">
+      <input type="text" class="rz-modal-search" id="rzModalSearch" placeholder="Search images by title or tag…">
+      <label class="rz-push-toggle" id="rzPushToggleWrap" style="display:none;">
+        <input type="checkbox" id="rzPushToggle" checked> Push live on assign
+      </label>
+    </div>
+    <div class="rz-modal-grid" id="rzModalGrid"></div>
+  </div>
+</div>
+
+<div class="rz-toast" id="rzToast"></div>
+
+<script>
+(function () {
+  'use strict';
+  const grid = document.getElementById('rzGrid');
+  const modal = document.getElementById('rzModal');
+  const modalGrid = document.getElementById('rzModalGrid');
+  const modalSearch = document.getElementById('rzModalSearch');
+  const modalTitle = document.getElementById('rzModalTitle');
+  const modalSub = document.getElementById('rzModalSub');
+  const pushToggleWrap = document.getElementById('rzPushToggleWrap');
+  const pushToggle = document.getElementById('rzPushToggle');
+  const toast = document.getElementById('rzToast');
+
+  let target = null;   // { platform, slot, label, push, connected }
+  let searchTimer = null;
+
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function showToast(msg, isErr) {
+    toast.textContent = msg; toast.classList.toggle('error', !!isErr); toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2600);
+  }
+
+  async function load() {
+    try {
+      const r = await fetch('/admin/assets/resources/data');
+      const data = await r.json();
+      render(data.platforms || []);
+    } catch (e) {
+      grid.innerHTML = '<div class="rz-modal-empty" style="grid-column:1/-1;">Error loading channels: ' + esc(e.message) + '</div>';
+    }
+  }
+
+  function pushInfoHtml(lp) {
+    if (!lp) return '';
+    const when = lp.at ? new Date(lp.at).toLocaleString() : '';
+    return lp.ok
+      ? `<div class="rz-pushinfo ok">✓ ${esc(lp.note || 'Pushed live')} · ${esc(when)}</div>`
+      : `<div class="rz-pushinfo err">⚠ ${esc(lp.error || 'Push failed')}</div>`;
+  }
+
+  function render(platforms) {
+    if (!platforms.length) { grid.innerHTML = '<div class="rz-modal-empty" style="grid-column:1/-1;">No platforms define account resources.</div>'; return; }
+    grid.innerHTML = '';
+    platforms.forEach(p => {
+      const card = document.createElement('div');
+      card.className = 'rz-card';
+      const slotsHtml = p.slots.map(s => {
+        const a = s.assignment;
+        const preview = a
+          ? `<img src="${esc(a.assetUrl)}" alt="">`
+          : `<span class="rz-empty">＋</span>`;
+        const dimTag = s.push
+          ? `<span class="rz-push-tag">API push</span>`
+          : `<span class="rz-manual-tag">set in app</span>`;
+        const actions = [];
+        actions.push(`<button class="btn btn-navy btn-sm" data-act="assign" data-platform="${esc(p.key)}" data-slot="${esc(s.key)}">${a ? 'Replace' : 'Assign'}</button>`);
+        if (a && s.push) actions.push(`<button class="btn btn-gold btn-sm" data-act="push" data-platform="${esc(p.key)}" data-slot="${esc(s.key)}">Push live</button>`);
+        if (a) actions.push(`<button class="btn btn-ghost btn-sm" data-act="clear" data-platform="${esc(p.key)}" data-slot="${esc(s.key)}">Clear</button>`);
+        return `
+          <div class="rz-slot">
+            <div class="rz-preview ${s.shape === 'circle' ? 'circle' : ''}">${preview}</div>
+            <div class="rz-slot-body">
+              <div class="rz-slot-label">${esc(s.label)}</div>
+              <div class="rz-slot-dim">${s.w}×${s.h}px · ${dimTag}</div>
+              ${a && a.assetTitle ? `<div class="rz-assigned-title">${esc(a.assetTitle)}</div>` : ''}
+              <div class="rz-actions">${actions.join('')}</div>
+              ${pushInfoHtml(a && a.lastPush)}
+            </div>
+          </div>`;
+      }).join('');
+
+      card.innerHTML = `
+        <div class="rz-card-head">
+          <div class="rz-badge" style="background:${esc(p.color || '#1C2B4A')}">${esc(p.icon || '◈')}</div>
+          <div class="rz-name">${esc(p.name)}</div>
+          <span class="rz-status ${p.connected ? 'on' : 'off'}">${p.connected ? 'Connected' : 'Not connected'}</span>
+        </div>
+        <div class="rz-slots">${slotsHtml}</div>`;
+      grid.appendChild(card);
+    });
+
+    grid.querySelectorAll('button[data-act]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const act = btn.dataset.act, platform = btn.dataset.platform, slot = btn.dataset.slot;
+        if (act === 'assign') openPicker(platform, slot);
+        else if (act === 'clear') clearSlot(platform, slot);
+        else if (act === 'push') pushSlot(platform, slot, btn);
+      });
+    });
+  }
+
+  // ── Picker modal ──
+  function openPicker(platform, slot) {
+    // Read the slot's meta straight off the rendered card.
+    const btn = grid.querySelector(`button[data-act="assign"][data-platform="${platform}"][data-slot="${slot}"]`);
+    const slotEl = btn.closest('.rz-slot');
+    const label = slotEl.querySelector('.rz-slot-label').textContent;
+    const isPush = !!slotEl.querySelector('.rz-push-tag');
+    const connected = btn.closest('.rz-card').querySelector('.rz-status').classList.contains('on');
+    target = { platform, slot, label, push: isPush, connected };
+
+    modalTitle.textContent = 'Choose an image for ' + label;
+    const dim = slotEl.querySelector('.rz-slot-dim').textContent.split('·')[0].trim();
+    modalSub.textContent = 'Recommended ' + dim;
+    pushToggleWrap.style.display = isPush ? '' : 'none';
+    pushToggle.checked = isPush && connected;
+    modalSearch.value = '';
+    modal.classList.add('open');
+    loadAssets('');
+    modalSearch.focus();
+  }
+
+  function closePicker() { modal.classList.remove('open'); target = null; }
+
+  async function loadAssets(q) {
+    modalGrid.innerHTML = '<div class="rz-modal-empty">Loading assets…</div>';
+    try {
+      const params = new URLSearchParams({ type: 'image', limit: 200 });
+      if (q) params.set('search', q);
+      const r = await fetch('/admin/assets/list?' + params);
+      const data = await r.json();
+      const assets = data.assets || [];
+      if (!assets.length) { modalGrid.innerHTML = '<div class="rz-modal-empty">No images found. Upload some in the Asset library first.</div>'; return; }
+      modalGrid.innerHTML = '';
+      assets.forEach(a => {
+        const el = document.createElement('div');
+        el.className = 'rz-pick';
+        el.innerHTML = `<div class="rz-pick-thumb"><img src="${esc(a.thumbUrl || a.publicUrl)}" alt="" loading="lazy"></div><div class="rz-pick-name">${esc(a.title || a.originalName || '')}</div>`;
+        el.addEventListener('click', () => assign(a._id));
+        modalGrid.appendChild(el);
+      });
+    } catch (e) {
+      modalGrid.innerHTML = '<div class="rz-modal-empty">Error: ' + esc(e.message) + '</div>';
+    }
+  }
+
+  async function assign(assetId) {
+    if (!target) return;
+    const push = target.push && pushToggle.checked;
+    try {
+      const r = await fetch('/admin/assets/resources/assign', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: target.platform, slot: target.slot, assetId, push }),
+      });
+      const data = await r.json();
+      if (!data.success) throw new Error(data.error || 'Assign failed');
+      closePicker();
+      if (data.lastPush && data.lastPush.ok === false) showToast('Assigned — push failed: ' + data.lastPush.error, true);
+      else if (data.lastPush && data.lastPush.ok) showToast('Assigned & pushed live ✓', false);
+      else showToast('Assigned ✓', false);
+      load();
+    } catch (e) { showToast(e.message, true); }
+  }
+
+  async function clearSlot(platform, slot) {
+    if (!confirm('Remove this account-resource assignment? (This does not change anything already live on the platform.)')) return;
+    try {
+      const r = await fetch('/admin/assets/resources/clear', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, slot }),
+      });
+      const data = await r.json();
+      if (!data.success) throw new Error(data.error || 'Clear failed');
+      showToast('Cleared', false); load();
+    } catch (e) { showToast(e.message, true); }
+  }
+
+  async function pushSlot(platform, slot, btn) {
+    const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Pushing…';
+    try {
+      const r = await fetch('/admin/assets/resources/push', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, slot }),
+      });
+      const data = await r.json();
+      if (data.lastPush && data.lastPush.ok) showToast('Pushed live ✓', false);
+      else showToast('Push failed: ' + ((data.lastPush && data.lastPush.error) || data.error || 'unknown'), true);
+      load();
+    } catch (e) { showToast(e.message, true); btn.disabled = false; btn.textContent = orig; }
+  }
+
+  modalSearch.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => loadAssets(modalSearch.value.trim()), 300); });
+  document.getElementById('rzModalClose').addEventListener('click', closePicker);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closePicker(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modal.classList.contains('open')) closePicker(); });
+
+  load();
+})();
+</script>
+</div></div></body></html>

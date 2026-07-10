@@ -1065,7 +1065,17 @@
     // Final sync on submit so the freshest editor content is posted.
     document.getElementById('composeForm').addEventListener('submit', function(e){
       syncFromEditor();
-      if (!clientBody.value.trim()) { e.preventDefault(); alert('Email body is required.'); }
+      if (!clientBody.value.trim()) { e.preventDefault(); alert('Email body is required.'); return; }
+      // Guard attachments up front — the server caps at 20 files, and mail
+      // providers reject oversized messages. Catch both here so the send
+      // doesn't bounce after upload.
+      var files = (document.getElementById('emailAttachments') || {}).files || [];
+      if (files.length > 20) { e.preventDefault(); alert('Too many attachments — 20 max per email.'); return; }
+      var total = 0; for (var i = 0; i < files.length; i++) total += files[i].size;
+      if (total > 20 * 1024 * 1024) {
+        e.preventDefault();
+        alert('Attachments total ' + (total/1048576).toFixed(1) + ' MB. Most mail providers reject messages over ~20 MB — remove or shrink some files, or share a link instead.');
+      }
     });
 
     /* ── Presets + live preview ── */

@@ -428,7 +428,10 @@
 <div class="topbar">
   <div class="topbar-title">Asset Control Center</div>
   <div class="topbar-actions">
+    <button type="button" id="driveImportBtn" class="btn btn-ghost btn-sm" title="Import images from Google Drive">⬇ Google Drive</button>
+    <button type="button" id="photosImportBtn" class="btn btn-ghost btn-sm" title="Import photos from Google Photos">⬇ Google Photos</button>
     <a href="/admin/assets/packs" class="btn btn-ghost btn-sm">Asset Packs</a>
+    <a href="/admin/assets/resources" class="btn btn-ghost btn-sm">Account Resources</a>
     <a href="/admin/assets/social" class="btn btn-ghost btn-sm">Asset Generator</a>
     <%# Video Trimmer — disabled for this release %>
     <%# <a href="/admin/assets/trim" class="btn btn-ghost btn-sm">Video Trimmer</a> %>
@@ -504,13 +507,19 @@
         <option value="name">Name A-Z</option>
         <option value="size">Largest</option>
       </select>
+      <select class="sort-select" id="channelFilter" title="Filter by social channel">
+        <option value="">All channels</option>
+      </select>
+      <select class="sort-select" id="campaignFilter" title="Filter by campaign">
+        <option value="">All campaigns</option>
+      </select>
       <div class="type-tabs">
         <div class="type-tab active" data-type="all">All</div>
         <div class="type-tab" data-type="image">Images</div>
         <div class="type-tab" data-type="video">Videos</div>
       </div>
       <button class="bulk-toggle-btn" id="bulkToggle">Select</button>
-      <button class="bulk-toggle-btn" id="thumbBackfillBtn" title="Generate fast-loading thumbnails for existing images" style="display:none;">⚡ Thumbnails</button>
+      <button class="bulk-toggle-btn" id="thumbBackfillBtn" title="Generate fast-loading thumbnails + internet-safe WebP web versions for existing images" style="display:none;">⚡ Optimize</button>
     </div>
     <div class="bulk-bar" id="bulkBar">
       <span><strong id="bulkCount">0</strong> selected</span>
@@ -570,6 +579,104 @@
 
 </div>
 
+<!-- ── GOOGLE DRIVE IMPORT MODAL ─────────────────────────────────────────── -->
+<div id="driveModal" class="drive-modal" hidden>
+  <div class="drive-modal-backdrop" data-drive-close></div>
+  <div class="drive-modal-card">
+    <div class="drive-modal-head">
+      <div>
+        <div class="drive-modal-title">Import from Google Drive</div>
+        <div class="drive-modal-sub" id="driveAcct"></div>
+      </div>
+      <button type="button" class="drawer-close" data-drive-close title="Close">&times;</button>
+    </div>
+
+    <!-- Not-connected state -->
+    <div id="driveConnect" class="drive-connect" hidden>
+      <p>Connect a Google account to browse its Drive and pull images straight into this library.</p>
+      <a href="/auth/google/drive" class="btn btn-gold btn-sm">Connect Google Drive</a>
+    </div>
+
+    <!-- Browser state -->
+    <div id="driveBrowser" class="drive-browser" hidden>
+      <div class="drive-toolbar">
+        <div class="drive-breadcrumb" id="driveCrumb"></div>
+        <input type="text" id="driveSearch" class="grid-search" placeholder="Search Drive…">
+        <select id="driveTargetFolder" class="sort-select" title="Import into folder">
+          <option value="general">General</option>
+          <option value="sections">Sections</option>
+          <option value="portfolio">Portfolio</option>
+          <option value="blog">Blog</option>
+          <option value="pages">Pages</option>
+          <option value="clients">Clients</option>
+        </select>
+      </div>
+      <div class="drive-grid" id="driveGrid"><div class="grid-loading">Loading…</div></div>
+      <div class="drive-more" id="driveMore" hidden><button type="button" class="btn btn-ghost btn-sm" id="driveMoreBtn">Load more</button></div>
+    </div>
+
+    <div class="drive-modal-foot">
+      <button type="button" class="btn btn-ghost btn-sm" id="driveDisconnectBtn" hidden>Disconnect</button>
+      <span class="drive-selcount" id="driveSelCount"></span>
+      <span style="flex:1;"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-drive-close>Cancel</button>
+      <button type="button" class="btn btn-gold btn-sm" id="driveImportGo" disabled>Import selected</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── GOOGLE PHOTOS IMPORT MODAL ────────────────────────────────────────── -->
+<div id="photosModal" class="drive-modal" hidden>
+  <div class="drive-modal-backdrop" data-photos-close></div>
+  <div class="drive-modal-card">
+    <div class="drive-modal-head">
+      <div>
+        <div class="drive-modal-title">Import from Google Photos</div>
+        <div class="drive-modal-sub" id="photosAcct"></div>
+      </div>
+      <button type="button" class="drawer-close" data-photos-close title="Close">&times;</button>
+    </div>
+
+    <!-- Not-connected state -->
+    <div id="photosConnect" class="drive-connect" hidden>
+      <p>Connect a Google account to pick photos from Google Photos and pull them into this library.</p>
+      <a href="/auth/google/photos" class="btn btn-gold btn-sm">Connect Google Photos</a>
+    </div>
+
+    <!-- Pick state -->
+    <div id="photosPick" class="drive-connect" hidden>
+      <p>Google Photos opens its own picker in a new tab. Select your photos there, then come back — we'll detect them automatically.</p>
+      <button type="button" class="btn btn-gold btn-sm" id="photosOpenBtn">Open Google Photos picker</button>
+      <div class="drive-modal-sub" id="photosStatus" style="margin-top:12px;"></div>
+    </div>
+
+    <!-- Preview picked items -->
+    <div id="photosPreview" class="drive-browser" hidden>
+      <div class="drive-toolbar">
+        <div class="drive-breadcrumb" id="photosCount"></div>
+        <select id="photosTargetFolder" class="sort-select" title="Import into folder">
+          <option value="general">General</option>
+          <option value="sections">Sections</option>
+          <option value="portfolio">Portfolio</option>
+          <option value="blog">Blog</option>
+          <option value="pages">Pages</option>
+          <option value="clients">Clients</option>
+        </select>
+      </div>
+      <div class="drive-grid" id="photosGrid"><div class="grid-loading">Loading…</div></div>
+    </div>
+
+    <div class="drive-modal-foot">
+      <button type="button" class="btn btn-ghost btn-sm" id="photosDisconnectBtn" hidden>Disconnect</button>
+      <span style="flex:1;"></span>
+      <button type="button" class="btn btn-ghost btn-sm" data-photos-close>Cancel</button>
+      <button type="button" class="btn btn-gold btn-sm" id="photosImportGo" hidden disabled>Import</button>
+    </div>
+  </div>
+</div>
+
 <script src="/js/assetManager.js?v=<%= Date.now() %>"></script>
+<script src="/js/driveImport.js?v=<%= Date.now() %>"></script>
+<script src="/js/photosImport.js?v=<%= Date.now() %>"></script>
 <script src="/js/tours/assets.js"></script>
 </div></div></body></html>

@@ -1,0 +1,446 @@
+<%- include('../partials/head', { title: 'Live Studio' }) %>
+<%- include('../partials/sidebar', { page: 'social', user: user }) %>
+
+<style>
+  .ls-wrap { max-width: 1180px; }
+  /* Two columns on desktop; the control rail is flexible, not a hard 320px, so
+     the panels that switch on live (stats, chat, deck) never overflow it. */
+  .ls-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(300px, 360px); gap: 18px; align-items: start; }
+  /* Stack to one column on tablets/phones — panels go full width on activation. */
+  @media (max-width: 1024px) { .ls-grid { grid-template-columns: 1fr; } }
+  .ls-col-side { min-width: 0; }
+  .ls-col-side > * { min-width: 0; }
+  .ls-stage { background:#000; border-radius:8px; overflow:hidden; position:relative; aspect-ratio:16/9; }
+  .ls-stage canvas { width:100%; height:100%; display:block; }
+  .ls-badge { position:absolute; top:10px; left:10px; background:#c0182f; color:#fff; font-size:0.7rem; font-weight:700; padding:3px 8px; border-radius:4px; display:none; align-items:center; gap:5px; }
+  .ls-badge.on { display:inline-flex; }
+  .ls-badge .dot { width:8px; height:8px; border-radius:50%; background:#fff; animation:lsblink 1s infinite; }
+  @keyframes lsblink { 50% { opacity:0.3; } }
+  .ls-panel { border:1px solid var(--border); border-radius:8px; padding:14px; background:var(--surface); }
+  .ls-dest { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--border); font-size:0.82rem; }
+  .ls-dest:last-child { border-bottom:0; }
+  .ls-dest .muted { color:var(--slate); font-size:0.7rem; }
+  .ls-src-btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .ls-log { font-family:monospace; font-size:0.62rem; color:#b91c1c; background:#fef2f2; border-radius:6px; padding:8px; margin-top:10px; max-height:120px; overflow:auto; display:none; }
+  .ls-links a { display:inline-block; margin:4px 6px 0 0; font-size:0.72rem; }
+  .form-field.sm label { font-size:0.72rem; }
+</style>
+
+<div class="content ls-wrap">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+    <h1 style="margin:0;">Live Studio</h1>
+    <a href="/admin/social?tab=connections" class="btn btn-ghost btn-sm" style="margin-left:auto;">← Connections</a>
+  </div>
+  <p style="color:var(--slate);font-size:0.85rem;margin-top:-6px;">Capture your camera + a window and simulcast to every connected destination at once. One encode, fanned out.</p>
+
+  <div class="ls-grid">
+    <!-- Stage -->
+    <div>
+      <div class="ls-stage">
+        <canvas id="ls-canvas" width="1280" height="720"></canvas>
+        <span class="ls-badge" id="ls-badge"><span class="dot"></span> LIVE</span>
+      </div>
+      <div class="ls-src-btns">
+        <button class="btn btn-navy btn-sm" id="ls-cam-btn" type="button">◉ Enable camera</button>
+        <button class="btn btn-ghost btn-sm" id="ls-screen-btn" type="button">▣ Share window / screen</button>
+        <select id="ls-cam-select" class="btn btn-ghost btn-sm" style="display:none;"></select>
+        <select id="ls-layout" class="btn btn-ghost btn-sm">
+          <option value="pip">Screen + camera (PiP)</option>
+          <option value="camera">Camera only</option>
+          <option value="screen">Screen only</option>
+        </select>
+      </div>
+      <div class="ls-log" id="ls-log"></div>
+
+      <div class="ls-panel" id="ls-stats-panel" style="margin-top:12px;display:none;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="font-size:1.7rem;font-weight:800;line-height:1;" id="ls-viewers">0</div>
+          <div style="font-size:0.64rem;color:var(--slate);">watching now<br><span id="ls-viewers-bd" style="color:var(--navy,#1a2a4a);"></span></div>
+        </div>
+        <div style="font-weight:600;font-size:0.72rem;margin:10px 0 4px;">👋 Latest joiners <span style="font-weight:400;color:var(--slate);">— shout 'em out</span></div>
+        <div id="ls-joiners" style="max-height:clamp(120px,24vh,220px);overflow:auto;font-size:0.78rem;"></div>
+      </div>
+
+      <div class="ls-panel" id="ls-chat-panel" style="margin-top:12px;display:none;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <div style="font-weight:600;font-size:0.8rem;">💬 Live chat</div>
+          <span id="ls-chat-src" style="font-size:0.62rem;color:var(--slate);margin-left:auto;">YouTube · Facebook · Twitch (where connected)</span>
+        </div>
+        <div id="ls-chat" style="height:clamp(200px,38vh,360px);overflow:auto;font-size:0.8rem;line-height:1.45;"></div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="ls-col-side">
+      <div class="ls-panel" style="margin-bottom:14px;">
+        <div style="font-weight:600;font-size:0.8rem;margin-bottom:6px;">Destinations</div>
+        <label class="ls-dest">
+          <input type="checkbox" class="ls-destcb" value="youtube" <%= connected.youtube ? '' : 'disabled' %>>
+          <span>▶ YouTube Live</span>
+          <% if (!connected.youtube) { %><span class="muted" style="margin-left:auto;">not connected</span><% } %>
+        </label>
+        <label class="ls-dest">
+          <input type="checkbox" class="ls-destcb" value="facebook" <%= connected.facebook ? '' : 'disabled' %>>
+          <span>📘 Facebook Live</span>
+          <% if (!connected.facebook) { %><span class="muted" style="margin-left:auto;">not connected</span><% } %>
+        </label>
+        <div class="ls-dest" style="opacity:0.55;">
+          <input type="checkbox" disabled>
+          <span>📷 Instagram Live</span>
+          <span class="muted" style="margin-left:auto;">no public API</span>
+        </div>
+        <label class="ls-dest">
+          <input type="checkbox" class="ls-destcb" value="discord" <%= connected.discord ? '' : 'disabled' %>>
+          <span>💬 Discord announce</span>
+          <span class="muted" style="margin-left:auto;"><%= connected.discord ? 'posts a “live now” link' : 'not connected' %></span>
+        </label>
+        <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px;">
+          <div style="font-weight:600;font-size:0.75rem;margin-bottom:2px;">RTMP destinations</div>
+          <div class="muted" style="margin-bottom:6px;">Twitch, Kick, Rumble, Trovo — or any RTMP. Add as many as you like; one encode fans out to all.</div>
+          <div id="ls-rtmp-rows"></div>
+          <div style="display:flex;gap:6px;margin-top:6px;">
+            <select id="ls-rtmp-preset" class="btn btn-ghost btn-sm" style="flex:1;">
+              <option value="twitch">Twitch</option>
+              <option value="kick">Kick</option>
+              <option value="rumble">Rumble</option>
+              <option value="trovo">Trovo</option>
+              <option value="custom">Custom RTMP…</option>
+            </select>
+            <button type="button" class="btn btn-navy btn-sm" id="ls-rtmp-add">+ Add</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ls-panel" style="margin-bottom:14px;">
+        <div class="form-field sm" style="margin-bottom:8px;">
+          <label>Title</label>
+          <input type="text" id="ls-title" placeholder="Live stream title" style="width:100%;">
+        </div>
+        <div class="form-field sm">
+          <label>Description</label>
+          <textarea id="ls-desc" rows="2" placeholder="Optional" style="width:100%;"></textarea>
+        </div>
+      </div>
+
+      <button class="btn btn-gold" id="ls-golive" type="button" style="width:100%;font-size:0.95rem;" disabled>● Go Live</button>
+      <button class="btn btn-danger" id="ls-stop" type="button" style="width:100%;margin-top:8px;display:none;">■ End stream</button>
+      <div id="ls-status" style="font-size:0.75rem;color:var(--slate);margin-top:10px;text-align:center;"></div>
+      <div class="ls-links" id="ls-links"></div>
+
+      <div class="ls-panel" style="margin-top:14px;background:#0b0e16;border-color:#232a3a;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <div style="font-weight:600;font-size:0.8rem;color:#e8ecf3;">🎛 Control deck</div>
+          <button class="btn btn-ghost btn-sm" id="ls-deck-pop" type="button" style="margin-left:auto;font-size:0.62rem;">⧉ Pop out</button>
+          <button class="btn btn-ghost btn-sm" id="ls-deck-remote" type="button" style="font-size:0.62rem;">📱 Remote</button>
+        </div>
+        <div id="ls-remote-link" style="display:none;font-size:0.6rem;color:#8a94a6;margin-bottom:8px;word-break:break-all;"></div>
+        <div id="ls-deck"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/liveDeck.js"></script>
+<script>
+(function () {
+  const DB_NAME = <%- JSON.stringify(dbName) %>;
+  const $ = id => document.getElementById(id);
+  const canvas = $('ls-canvas'), ctx = canvas.getContext('2d');
+  const camVideo = document.createElement('video'); camVideo.muted = true; camVideo.playsInline = true;
+  const screenVideo = document.createElement('video'); screenVideo.muted = true; screenVideo.playsInline = true;
+
+  let camStream = null, screenStream = null, live = false, recorder = null, socket = null, drawing = false;
+
+  // ── Control deck: overlay/SFX engine + cue transports ────────────────────────
+  const engine = LiveDeck.OverlayEngine();
+  const DECK_CODE = 'd' + Math.random().toString(36).slice(2, 8);
+  // Cues from the pop-out window (same browser)…
+  try { const bc = new BroadcastChannel('ls-deck-' + DECK_CODE); bc.onmessage = e => engine.applyCue(e.data); } catch {}
+  // …and from a remote device (server-relayed over the /live namespace).
+  try {
+    const ctrlSocket = io('/live', { path: '/socket.io' });
+    ctrlSocket.on('connect', () => ctrlSocket.emit('ctrl:join', { code: DECK_CODE, role: 'encoder' }));
+    ctrlSocket.on('ctrl:cue', cue => engine.applyCue(cue));
+  } catch {}
+
+  // Unified live-chat panel (fed by the server aggregator over the stream socket).
+  const CHAT_BADGE = { youtube: ['YT', '#ff0000'], facebook: ['f', '#1877F2'], twitch: ['TW', '#9146FF'] };
+  function chatEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+  function appendChat(m) {
+    if (!m || !m.text) return;
+    $('ls-chat-panel').style.display = 'block';
+    const box = $('ls-chat');
+    const b = CHAT_BADGE[m.platform] || [(m.platform || '?').slice(0, 2).toUpperCase(), '#888'];
+    const near = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+    const row = document.createElement('div'); row.style.cssText = 'margin-bottom:4px;';
+    row.innerHTML = `<span style="display:inline-block;min-width:22px;text-align:center;font-size:0.58rem;font-weight:700;color:#fff;background:${b[1]};border-radius:3px;padding:1px 4px;margin-right:5px;">${b[0]}</span>`
+      + `<strong style="color:var(--navy,#1a2a4a);">${chatEsc(m.author)}</strong> <span>${chatEsc(m.text)}</span>`;
+    box.appendChild(row);
+    while (box.childNodes.length > 300) box.removeChild(box.firstChild);
+    if (near) box.scrollTop = box.scrollHeight;
+  }
+
+  // Viewer count + breakdown.
+  function setViewers(v) {
+    $('ls-stats-panel').style.display = 'block';
+    $('ls-viewers').textContent = (v.total != null ? v.total : 0).toLocaleString();
+    const bd = Object.entries(v.breakdown || {}).map(([k, n]) => `${(CHAT_BADGE[k] ? CHAT_BADGE[k][0] : k)} ${Number(n).toLocaleString()}`).join('  ·  ');
+    $('ls-viewers-bd').textContent = bd || '';
+  }
+  // Newest joiner on top; ✓ marks them shouted-out.
+  function addJoiner(j) {
+    if (!j || !j.author) return;
+    $('ls-stats-panel').style.display = 'block';
+    const box = $('ls-joiners');
+    const b = CHAT_BADGE[j.platform] || [(j.platform || '?').slice(0, 2).toUpperCase(), '#888'];
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:3px;';
+    row.innerHTML = `<span style="display:inline-block;min-width:22px;text-align:center;font-size:0.58rem;font-weight:700;color:#fff;background:${b[1]};border-radius:3px;padding:1px 4px;">${b[0]}</span>`
+      + `<strong style="color:var(--navy,#1a2a4a);">${chatEsc(j.author)}</strong>`;
+    const done = document.createElement('button'); done.type = 'button'; done.textContent = '✓ shouted';
+    done.className = 'btn btn-ghost btn-sm'; done.style.cssText = 'margin-left:auto;font-size:0.56rem;padding:1px 6px;';
+    done.onclick = () => { row.style.opacity = '0.4'; done.remove(); };
+    row.appendChild(done);
+    box.insertBefore(row, box.firstChild);
+    while (box.childNodes.length > 80) box.removeChild(box.lastChild);
+  }
+
+  function setStatus(t, c) { $('ls-status').textContent = t || ''; $('ls-status').style.color = c || 'var(--slate)'; }
+  function log(line) { const el = $('ls-log'); el.style.display = 'block'; el.textContent += line + '\n'; el.scrollTop = el.scrollHeight; }
+
+  // ── Sources ────────────────────────────────────────────────────────────────
+  async function enableCamera(deviceId) {
+    try {
+      if (camStream) camStream.getTracks().forEach(t => t.stop());
+      camStream = await navigator.mediaDevices.getUserMedia({
+        video: deviceId ? { deviceId: { exact: deviceId } } : { width: 1280, height: 720 },
+        audio: true,
+      });
+      camVideo.srcObject = camStream; await camVideo.play().catch(() => {});
+      $('ls-cam-btn').textContent = '◉ Camera on';
+      await listCameras();
+      updateReady();
+    } catch (e) { setStatus('Camera error: ' + e.message, '#b91c1c'); }
+  }
+  async function listCameras() {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    const sel = $('ls-cam-select'); if (devs.length < 2) return; sel.style.display = '';
+    sel.innerHTML = devs.map((d, i) => `<option value="${d.deviceId}">${d.label || 'Camera ' + (i + 1)}</option>`).join('');
+  }
+  async function shareScreen() {
+    try {
+      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true });
+      screenVideo.srcObject = screenStream; await screenVideo.play().catch(() => {});
+      screenStream.getVideoTracks()[0].addEventListener('ended', () => { screenStream = null; $('ls-screen-btn').textContent = '▣ Share window / screen'; });
+      $('ls-screen-btn').textContent = '▣ Window shared';
+      updateReady();
+    } catch (e) { /* user cancelled */ }
+  }
+
+  // ── Canvas compositor: screen full + camera PiP (or single source) ──────────
+  function draw() {
+    if (!drawing) return;
+    const W = canvas.width, H = canvas.height;
+    const layout = $('ls-layout').value;
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    const haveScreen = screenStream && screenVideo.videoWidth;
+    const haveCam = camStream && camVideo.videoWidth;
+    const cover = (v) => { // draw video covering the canvas
+      const vr = v.videoWidth / v.videoHeight, cr = W / H;
+      let w, h, x, y; if (vr > cr) { h = H; w = H * vr; x = (W - w) / 2; y = 0; } else { w = W; h = W / vr; x = 0; y = (H - h) / 2; }
+      ctx.drawImage(v, x, y, w, h);
+    };
+    if (layout === 'camera' && haveCam) cover(camVideo);
+    else if (layout === 'screen' && haveScreen) cover(screenVideo);
+    else { // pip
+      if (haveScreen) cover(screenVideo); else if (haveCam) cover(camVideo);
+      if (haveScreen && haveCam) { // camera thumbnail bottom-right
+        const pw = W * 0.24, ph = pw * (camVideo.videoHeight / camVideo.videoWidth), px = W - pw - 24, py = H - ph - 24;
+        ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+        ctx.drawImage(camVideo, px, py, pw, ph); ctx.strokeRect(px, py, pw, ph); ctx.restore();
+      }
+    }
+    // Overlays (ticker, lower-third, image, animations) are drawn ONTO the canvas,
+    // so they're baked into the captured/streamed video for every destination.
+    engine.render(ctx, W, H);
+    requestAnimationFrame(draw);
+  }
+  function startDraw() { if (!drawing) { drawing = true; draw(); } }
+
+  function updateReady() {
+    const hasSource = (camStream && camVideo.videoWidth) || (screenStream && screenVideo.videoWidth);
+    startDraw();
+    $('ls-golive').disabled = live || !hasSource;
+  }
+
+  // ── Build the audio+video stream for MediaRecorder ──────────────────────────
+  function buildBroadcastStream() {
+    const vTrack = canvas.captureStream(30).getVideoTracks()[0];
+    // Mix mic (camera audio) + screen audio into one track.
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const acx = new AC(); const dest = acx.createMediaStreamDestination();
+    if (camStream && camStream.getAudioTracks().length) acx.createMediaStreamSource(camStream).connect(dest);
+    if (screenStream && screenStream.getAudioTracks().length) acx.createMediaStreamSource(screenStream).connect(dest);
+    // Route sound cues into the broadcast mix so viewers hear them (not just monitor).
+    engine.setAudio({ ctx: acx, dest });
+    const tracks = [vTrack];
+    if (dest.stream.getAudioTracks().length) tracks.push(dest.stream.getAudioTracks()[0]);
+    return new MediaStream(tracks);
+  }
+
+  // ── RTMP presets: known ingest hosts. keyOnly = URL is fixed, paste key only. ─
+  const RTMP_PRESETS = {
+    twitch: { label: 'Twitch', url: 'rtmp://live.twitch.tv/app', keyOnly: true,  keyHint: 'Twitch stream key (live_…)' },
+    kick:   { label: 'Kick',   url: '', keyOnly: false, urlHint: 'rtmps://…contribute.live-video.net/app (from Kick → Stream)', keyHint: 'Kick stream key' },
+    rumble: { label: 'Rumble', url: '', keyOnly: false, urlHint: 'RTMP URL from Rumble Studio', keyHint: 'stream key (blank if in URL)' },
+    trovo:  { label: 'Trovo',  url: 'rtmp://livepush.trovo.live/live', keyOnly: true, keyHint: 'Trovo stream key' },
+    custom: { label: 'Custom RTMP', url: '', keyOnly: false, urlHint: 'rtmp://… ingest URL', keyHint: 'stream key (optional if in URL)' },
+  };
+  // Render one RTMP row. `t` = { id?, preset, label?, url?, hasKey? }.
+  // id present → a SAVED target (key lives encrypted server-side, blank key field).
+  function rtmpRowEl(t) {
+    const preset = t.preset || 'custom';
+    const p = RTMP_PRESETS[preset] || RTMP_PRESETS.custom;
+    const row = document.createElement('div');
+    row.className = 'ls-rtmp-row';
+    row.dataset.preset = preset;
+    if (t.id) row.dataset.id = t.id;
+    row.style.cssText = 'border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:6px;';
+    row.innerHTML =
+      `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">` +
+        `<input type="checkbox" class="ls-rtmp-inc" ${t.id ? 'checked' : ''} title="Include in this stream">` +
+        `<strong style="font-size:0.74rem;">${t.label || p.label}</strong>` +
+        `<span class="ls-rtmp-status" style="font-size:0.62rem;color:var(--slate);"></span>` +
+        `<button type="button" class="ls-rtmp-save btn btn-ghost btn-sm" style="margin-left:auto;font-size:0.62rem;padding:2px 8px;">Save</button>` +
+        `<button type="button" class="ls-rtmp-del" title="Remove" style="background:none;border:0;color:#b91c1c;cursor:pointer;font-size:0.9rem;line-height:1;">✕</button>` +
+      `</div>` +
+      `<input type="text" class="ls-rtmp-url" placeholder="${p.urlHint || 'rtmp://… ingest URL'}" value="${t.url || p.url || ''}" style="width:100%;margin-bottom:6px;font-size:0.72rem;">` +
+      `<input type="text" class="ls-rtmp-key" placeholder="${t.hasKey ? '•••••••• (saved — leave blank to keep)' : (p.keyHint || 'stream key')}" style="width:100%;font-size:0.72rem;">` +
+      (preset === 'twitch'
+        ? `<input type="text" class="ls-rtmp-chan" placeholder="Twitch channel name (imports chat, e.g. yourname)" value="${t.channel || ''}" style="width:100%;margin-top:6px;font-size:0.72rem;">`
+        : '');
+    row.querySelector('.ls-rtmp-del').onclick = () => deleteRtmpRow(row);
+    row.querySelector('.ls-rtmp-save').onclick = () => saveRtmpRow(row);
+    $('ls-rtmp-rows').appendChild(row);
+    if (!t.id) (p.keyOnly ? row.querySelector('.ls-rtmp-key') : row.querySelector('.ls-rtmp-url')).focus();
+    return row;
+  }
+  async function saveRtmpRow(row) {
+    const url = row.querySelector('.ls-rtmp-url').value.trim();
+    const key = row.querySelector('.ls-rtmp-key').value.trim();
+    const status = row.querySelector('.ls-rtmp-status');
+    if (!/^rtmps?:\/\//i.test(url)) { status.textContent = 'need rtmp:// URL'; status.style.color = '#b91c1c'; return; }
+    status.textContent = 'saving…'; status.style.color = 'var(--slate)';
+    const body = { preset: row.dataset.preset, label: RTMP_PRESETS[row.dataset.preset]?.label || 'Custom RTMP', url, key };
+    const chan = row.querySelector('.ls-rtmp-chan'); if (chan) body.channel = chan.value.trim();
+    if (row.dataset.id) body.id = row.dataset.id;
+    try {
+      const r = await fetch('/admin/social/live/rtmp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const d = await r.json();
+      if (!d.ok) { status.textContent = '✕ ' + (d.error || 'failed'); status.style.color = '#b91c1c'; return; }
+      row.dataset.id = d.target.id;
+      row.querySelector('.ls-rtmp-inc').checked = true;
+      const kf = row.querySelector('.ls-rtmp-key'); kf.value = ''; kf.placeholder = '•••••••• (saved — leave blank to keep)';
+      status.textContent = '✓ saved'; status.style.color = 'var(--success)';
+    } catch (e) { status.textContent = '✕ ' + e.message; status.style.color = '#b91c1c'; }
+  }
+  async function deleteRtmpRow(row) {
+    if (row.dataset.id && !confirm('Delete this saved RTMP destination?')) return;
+    if (row.dataset.id) { try { await fetch('/admin/social/live/rtmp/' + row.dataset.id + '/delete', { method: 'POST' }); } catch {} }
+    row.remove();
+  }
+
+  // ── Go live ─────────────────────────────────────────────────────────────────
+  function chosenDestinations() {
+    const dests = [];
+    // API-assisted + announce targets (youtube, facebook, discord)
+    document.querySelectorAll('.ls-destcb:checked').forEach(cb => dests.push(cb.value));
+    // RTMP rows: saved (by id, server decrypts the key) or ad-hoc (raw url + key)
+    document.querySelectorAll('.ls-rtmp-row').forEach(row => {
+      const inc = row.querySelector('.ls-rtmp-inc');
+      if (inc && !inc.checked) return;
+      const id = row.dataset.id;
+      const url = row.querySelector('.ls-rtmp-url').value.trim();
+      const key = row.querySelector('.ls-rtmp-key').value.trim();
+      const chanEl = row.querySelector('.ls-rtmp-chan'); const channel = chanEl ? chanEl.value.trim() : '';
+      if (id && !key) dests.push({ platform: 'rtmp', id });
+      else if (url) dests.push({ platform: 'custom', url, key, channel, label: RTMP_PRESETS[row.dataset.preset]?.label || 'Custom RTMP' });
+    });
+    return dests;
+  }
+
+  function goLive() {
+    const destinations = chosenDestinations();
+    if (!destinations.length) { setStatus('Pick at least one destination.', '#b91c1c'); return; }
+    $('ls-golive').disabled = true; setStatus('Creating broadcasts…');
+    $('ls-log').style.display = 'none'; $('ls-log').textContent = ''; $('ls-links').innerHTML = '';
+    $('ls-chat').innerHTML = ''; $('ls-chat-panel').style.display = 'none';
+    $('ls-joiners').innerHTML = ''; $('ls-viewers').textContent = '0'; $('ls-viewers-bd').textContent = ''; $('ls-stats-panel').style.display = 'none';
+
+    socket = io('/live', { path: '/socket.io' });
+    socket.on('connect_error', () => setStatus('Connection failed', '#b91c1c'));
+    socket.on('live:error', d => { setStatus('✕ ' + d.message, '#b91c1c'); $('ls-golive').disabled = false; teardownSocket(); });
+    socket.on('live:log', d => log(d.line));
+    socket.on('chat:msg', appendChat);
+    socket.on('live:viewers', setViewers);
+    socket.on('live:joiner', addJoiner);
+    socket.on('live:ended', () => endUi());
+    socket.on('live:started', d => {
+      live = true;
+      $('ls-badge').classList.add('on'); $('ls-golive').style.display = 'none'; $('ls-stop').style.display = '';
+      setStatus('● Live — it can take ~10–20s to appear on each platform.', '#15803D');
+      (d.links || []).forEach(l => { if (l.watchUrl) $('ls-links').insertAdjacentHTML('beforeend', `<a href="${l.watchUrl}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">${l.label} ↗</a>`); });
+      startRecording();
+    });
+
+    socket.emit('live:start', {
+      db: DB_NAME, destinations,
+      title: $('ls-title').value.trim() || 'Live', description: $('ls-desc').value.trim(),
+    });
+  }
+
+  function startRecording() {
+    const stream = buildBroadcastStream();
+    const mime = ['video/webm;codecs=vp8,opus', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
+    recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 4500000, audioBitsPerSecond: 128000 });
+    recorder.ondataavailable = async (e) => {
+      if (e.data && e.data.size && socket && live) { try { socket.emit('live:chunk', await e.data.arrayBuffer()); } catch {} }
+    };
+    recorder.start(500); // 500ms chunks
+  }
+
+  function stopLive() { if (socket && live) socket.emit('live:stop'); endUi(); }
+  function endUi() {
+    live = false;
+    try { if (recorder && recorder.state !== 'inactive') recorder.stop(); } catch {}
+    $('ls-badge').classList.remove('on'); $('ls-stop').style.display = 'none'; $('ls-golive').style.display = ''; $('ls-golive').disabled = false;
+    setStatus('Stream ended.'); teardownSocket();
+  }
+  function teardownSocket() { if (socket) { try { socket.disconnect(); } catch {} socket = null; } }
+
+  // ── Wire up ─────────────────────────────────────────────────────────────────
+  $('ls-cam-btn').onclick = () => enableCamera();
+  $('ls-cam-select').onchange = (e) => enableCamera(e.target.value);
+  $('ls-screen-btn').onclick = shareScreen;
+  $('ls-golive').onclick = goLive;
+  $('ls-stop').onclick = stopLive;
+  $('ls-rtmp-add').onclick = () => rtmpRowEl({ preset: $('ls-rtmp-preset').value });
+
+  // Inline control deck fires cues straight into the engine (no transport hop).
+  LiveDeck.buildUI($('ls-deck'), cue => engine.applyCue(cue));
+  $('ls-deck-pop').onclick = () => window.open('/admin/social/live/control?transport=bc&code=' + DECK_CODE, 'lsdeck_' + DECK_CODE, 'width=400,height=780');
+  $('ls-deck-remote').onclick = () => {
+    const url = location.origin + '/admin/social/live/control?transport=socket&code=' + DECK_CODE;
+    const el = $('ls-remote-link'); el.style.display = 'block';
+    el.innerHTML =
+      '<div style="text-align:center;">' +
+        '<img src="/admin/social/live/qr?code=' + DECK_CODE + '" alt="Scan to open the remote deck" width="180" height="180" style="background:#fff;padding:8px;border-radius:8px;">' +
+        '<div style="margin:6px 0 3px;">Scan with your phone (sign in as admin there), and keep this tab open + live:</div>' +
+        '<a href="' + url + '" target="_blank" rel="noopener" style="color:#d4af37;">' + url + '</a>' +
+      '</div>';
+  };
+  // Preload saved RTMP destinations so reconnecting isn't a re-typing chore.
+  (<%- JSON.stringify(rtmpTargets || []) %>).forEach(rtmpRowEl);
+  window.addEventListener('beforeunload', () => { if (live) stopLive(); });
+})();
+</script>

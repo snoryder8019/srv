@@ -18,6 +18,8 @@ const SECRET_FIELDS = [
   'paypalSecret',
   'zohoPass',
   'googleOAuthSecret',
+  // White glove: tenant's own Microsoft (Azure AD) app secret for admin sign-in
+  'microsoftOAuthSecret',
   // Advanced: provider OAuth client secrets (stored for OAuth-based sending)
   'gmailOAuthSecret', 'outlookOAuthSecret',
 ];
@@ -33,11 +35,15 @@ const PUBLIC_FIELDS = [
   'smtpHost', 'smtpPort',  // only used when emailProvider === 'custom'
   'googlePlacesKey', 'googlePlaceId',
   'googleOAuthClientId',
+  // White glove: tenant's own Microsoft (Azure AD) app for admin sign-in.
+  // microsoftOAuthTenant = 'common' | 'organizations' | Directory (tenant) ID
+  'microsoftOAuthClientId', 'microsoftOAuthTenant',
   // Advanced: provider OAuth client IDs
   'gmailOAuthClientId', 'outlookOAuthClientId',
   // Connected mailbox addresses (set by the OAuth callback, not the form)
   'gmailOAuthUser', 'outlookOAuthUser',
   'customDomain',
+  'chatbotEnabled',
 ];
 
 // Brand profile fields stored in tenant.brand (drives all agent prompts)
@@ -82,6 +88,17 @@ router.get('/', async (req, res) => {
   settings.emailAuthMode = tenant.public?.emailAuthMode || 'password';
   // The exact redirect URI the tenant must register in their OAuth app
   settings.emailOAuthRedirectBase = `https://${tenant.meta?.customDomain || tenant.public?.customDomain || tenant.domain}/admin/settings/email/oauth`;
+  // Microsoft (Azure AD) sign-in redirect URI to register in the tenant's app
+  settings.microsoftOAuthRedirect = `https://${tenant.meta?.customDomain || tenant.public?.customDomain || tenant.domain}/auth/microsoft/callback`;
+  settings.microsoftOAuthConnected = !!tenant.secrets?.microsoftOAuthSecret && !!tenant.public?.microsoftOAuthClientId;
+
+  // Asset-import connectors (refresh token present = connected). These use the
+  // shared platform Google app, so there is nothing per-tenant to configure —
+  // the connect button drives the whole OAuth flow.
+  settings.googleDriveConnected  = !!tenant.secrets?.googleDriveRefreshToken;
+  settings.googleDriveUser       = tenant.public?.googleDriveUser || '';
+  settings.googlePhotosConnected = !!tenant.secrets?.googlePhotosRefreshToken;
+  settings.googlePhotosUser      = tenant.public?.googlePhotosUser || '';
 
   // Meta
   settings.domain = tenant.domain;
@@ -134,13 +151,18 @@ router.get('/', async (req, res) => {
   const socialPlatforms = PLATFORM_LIST.map(p => ({
     key: p.key, name: p.name, icon: p.icon, color: p.color,
     portal: p.portal || null, setup: p.setup || '', comingSoon: !!p.comingSoon,
+    links: Array.isArray(p.links) ? p.links : [],
     fields: p.fields.map(f => ({ key: f.key, label: f.label, secret: !!f.secret, placeholder: f.placeholder || '' })),
   }));
   const socialStatus = {};
+  // accountMap feeds the shared connections partial (grouped-card UI); it mirrors
+  // the shape the /admin/social route builds: { platform: maskAccount(account) }.
+  const accountMap = {};
   try {
     const accounts = await req.db.collection('social_accounts').find({}).toArray();
     for (const a of accounts) {
       const m = maskAccount(a);
+      accountMap[a.platform] = m;
       socialStatus[a.platform] = {
         configured: m.configured,
         verified: a.lastTestOk === true,
@@ -154,7 +176,12 @@ router.get('/', async (req, res) => {
     }
   } catch { /* tenant db unavailable — show all unconfigured */ }
 
+  // Data-deletion queue (app-compliance) — folded into the connections section.
+  const deletionRequests = await req.db.collection('deletion_requests')
+    .find({}).sort({ createdAt: -1 }).limit(200).toArray().catch(() => []);
+
   const publicBaseUrl = 'https://' + (tenant.meta?.customDomain || tenant.public?.customDomain || tenant.domain);
+  const publicWebhookUrl = publicBaseUrl + '/webhooks/meta';
 
   res.render('admin/settings', {
     user: req.adminUser,
@@ -163,9 +190,16 @@ router.get('/', async (req, res) => {
     brandProfile,
     socialPlatforms,
     socialStatus,
+    platforms: PLATFORM_LIST,
+    accountMap,
+    deletionRequests,
     publicBaseUrl,
+    publicWebhookUrl,
     saved: req.query.saved || null,
     error: req.query.error || null,
+    // Google OAuth connect flags — surfaced by the connections partial's hint.
+    gconnected: req.query.gconnected === '1',
+    gidsManual: req.query.gids === 'manual',
     whatsNew,
     pinnedNotes,
     platformVersion,
@@ -188,6 +222,10 @@ router.post('/', async (req, res) => {
       updates[`public.${key}`] = req.body[key].trim();
     }
   }
+
+  // Chatbot toggle — checkbox posts nothing when off, so normalize explicitly.
+  updates['public.chatbotEnabled'] =
+    (req.body.chatbotEnabled === 'on' || req.body.chatbotEnabled === 'true') ? 'true' : 'false';
 
   // Contact form recipient (where landing-page /contact submissions are emailed)
   if (req.body.contactEmail !== undefined) {

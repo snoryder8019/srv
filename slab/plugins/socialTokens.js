@@ -61,6 +61,9 @@ export function needsRefresh(account) {
     return account.tokenType !== 'PAGE' || account.tokenExpiresAt != null;
   }
   if (account.platform === 'instagram' || account.platform === 'threads') {
+    // IG seeded from the Facebook Page token is managed via the FB account —
+    // the Page token doesn't expire, so don't try to re-exchange it here.
+    if (account.tokenType === 'PAGE') return false;
     const exp = account.tokenExpiresAt ? new Date(account.tokenExpiresAt).getTime() : 0;
     if (!exp) return true;                                  // unknown → refresh
     return exp - Date.now() < REFRESH_WINDOW_MS;            // within window
@@ -79,6 +82,9 @@ export async function refreshAccount(account, appCreds = {}) {
     const appId = account.credentials?.appId || appCreds.appId;
     const appSecret = (account.secrets?.appSecret ? decrypt(account.secrets.appSecret) : null) || appCreds.appSecret;
     if (!appId || !appSecret) return { skipped: 'Add App ID + App Secret to enable auto-renew' };
+
+    // IG running on the Facebook Page token is managed via the FB account.
+    if (p === 'instagram' && account.tokenType === 'PAGE') return { skipped: 'Instagram uses the Facebook Page token (managed via Facebook)' };
 
     const tokField = p === 'facebook' ? 'pageAccessToken' : 'accessToken';
     if (!account.secrets?.[tokField]) return { skipped: 'No token saved yet' };

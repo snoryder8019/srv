@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Live Control Deck</title>
+<style>
+  body{margin:0;background:#0b0e16;color:#e8ecf3;font-family:system-ui,-apple-system,sans-serif;padding:14px;max-width:520px;margin:0 auto;}
+  h1{font-size:0.95rem;margin:0 0 2px;}
+  .sub{font-size:0.66rem;color:#8a94a6;margin-bottom:10px;}
+  #status{font-size:0.66rem;margin-bottom:12px;padding:7px 9px;border-radius:6px;background:#131a28;}
+  #status.ok{color:#6ee7a8;} #status.bad{color:#ff9b9b;}
+</style>
+</head>
+<body>
+  <h1>🎛 Live Control Deck</h1>
+  <div class="sub" id="mode"></div>
+  <div id="status">connecting…</div>
+  <div id="deck"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/liveDeck.js"></script>
+  <script>
+  (function () {
+    const qs = new URLSearchParams(location.search);
+    const code = (qs.get('code') || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
+    const transport = qs.get('transport') === 'socket' ? 'socket' : 'bc';
+    const statusEl = document.getElementById('status'), modeEl = document.getElementById('mode');
+    let send = () => {};
+
+    if (!code) {
+      statusEl.textContent = '✕ Missing pairing code — open this from the Live Studio ("Pop out" / "Remote").';
+      statusEl.className = 'bad';
+    } else if (transport === 'bc') {
+      modeEl.textContent = 'Pop-out • same browser (BroadcastChannel)';
+      const bc = new BroadcastChannel('ls-deck-' + code);
+      send = cue => bc.postMessage(cue);
+      statusEl.textContent = '● Linked to the Live Studio tab in this browser.';
+      statusEl.className = 'ok';
+    } else {
+      modeEl.textContent = 'Remote • this device → Live Studio';
+      const socket = io('/live', { path: '/socket.io' });
+      socket.on('connect', () => { socket.emit('ctrl:join', { code, role: 'controller' }); statusEl.textContent = '● Connected — cues fire on the Live Studio.'; statusEl.className = 'ok'; });
+      socket.on('disconnect', () => { statusEl.textContent = '✕ Disconnected — retrying…'; statusEl.className = 'bad'; });
+      socket.on('live:error', d => { statusEl.textContent = '✕ ' + ((d && d.message) || 'Admin login required on this device.'); statusEl.className = 'bad'; });
+      send = cue => socket.emit('ctrl:cue', cue);
+    }
+
+    LiveDeck.buildUI(document.getElementById('deck'), cue => send(cue));
+  })();
+  </script>
+</body>
+</html>

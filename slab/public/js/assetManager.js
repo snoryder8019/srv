@@ -12,6 +12,10 @@
   let folderCounts = {};
   let clientsList = [];
   let customFolders = [];
+  let channelsList = [];
+  let campaignsList = [];
+  let currentChannel = '';
+  let currentCampaign = '';
   let bulkMode = false;
   let bulkSelected = new Set();
   const BUILTIN_FOLDERS = ['general', 'sections', 'portfolio', 'blog', 'pages', 'clients'];
@@ -38,6 +42,59 @@
       const data = await r.json();
       clientsList = data.clients || [];
     } catch (e) { clientsList = []; }
+  }
+
+  /* ── SOCIAL CHANNELS ── */
+  async function loadChannels() {
+    try {
+      const r = await fetch('/admin/assets/channels');
+      const data = await r.json();
+      channelsList = data.channels || [];
+    } catch { channelsList = []; }
+    // Populate the toolbar channel filter
+    const sel = document.getElementById('channelFilter');
+    if (sel) {
+      sel.querySelectorAll('option[data-dyn]').forEach(o => o.remove());
+      channelsList.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.key; opt.textContent = c.name; opt.dataset.dyn = '1';
+        sel.appendChild(opt);
+      });
+    }
+  }
+
+  /* ── CAMPAIGNS ── */
+  async function loadCampaigns() {
+    try {
+      const r = await fetch('/admin/assets/campaigns');
+      const data = await r.json();
+      campaignsList = data.campaigns || [];
+    } catch { campaignsList = []; }
+    const sel = document.getElementById('campaignFilter');
+    if (sel) {
+      sel.querySelectorAll('option[data-dyn]').forEach(o => o.remove());
+      campaignsList.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.slug; opt.textContent = c.name; opt.dataset.dyn = '1';
+        sel.appendChild(opt);
+      });
+    }
+  }
+
+  // Prompt-create a campaign, refresh the list, return its slug (or null).
+  async function createCampaignPrompt() {
+    const name = (prompt('New campaign name:') || '').trim();
+    if (!name) return null;
+    try {
+      const r = await fetch('/admin/assets/campaigns', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await r.json();
+      if (!data.success) { alert(data.error || 'Could not create campaign'); return null; }
+      await loadCampaigns();
+      return data.campaign.slug;
+    } catch (e) { alert('Error: ' + e.message); return null; }
   }
 
   /* ── CUSTOM FOLDERS ── */
@@ -282,6 +339,12 @@
     });
   }
 
+  /* ── CHANNEL / CAMPAIGN FILTERS ── */
+  const channelFilter = document.getElementById('channelFilter');
+  if (channelFilter) channelFilter.addEventListener('change', () => { currentChannel = channelFilter.value; loadAssets(); });
+  const campaignFilter = document.getElementById('campaignFilter');
+  if (campaignFilter) campaignFilter.addEventListener('change', () => { currentCampaign = campaignFilter.value; loadAssets(); });
+
   /* ── SEARCH ── */
   document.getElementById('searchInput').addEventListener('input', (e) => {
     clearTimeout(searchTimeout);
@@ -322,7 +385,7 @@
       const { remaining = 0 } = await r.json();
       if (remaining > 0) {
         thumbBtn.style.display = '';
-        thumbBtn.textContent = `⚡ Thumbnails (${remaining})`;
+        thumbBtn.textContent = `⚡ Optimize (${remaining})`;
       } else {
         thumbBtn.style.display = 'none';
       }
@@ -343,12 +406,12 @@
           if (!r.ok) throw new Error('Backfill request failed');
           const data = await r.json();
           remaining = data.remaining;
-          thumbBtn.textContent = remaining > 0 ? `⚡ Generating… (${remaining} left)` : '⚡ Done';
+          thumbBtn.textContent = remaining > 0 ? `⚡ Optimizing… (${remaining} left)` : '⚡ Done';
         }
         loadAssets(); // re-render with fresh thumbnails
       } catch (e) {
-        thumbBtn.textContent = '⚡ Thumbnails (retry)';
-        console.warn('Thumbnail backfill error:', e.message);
+        thumbBtn.textContent = '⚡ Optimize (retry)';
+        console.warn('Image optimize backfill error:', e.message);
       } finally {
         thumbBtn.disabled = false;
         refreshThumbStatus();
@@ -375,6 +438,16 @@
       const cf = customFolders.find(c => c.slug === f);
       const label = cf ? cf.name : (f.charAt(0).toUpperCase() + f.slice(1));
       folderChecks += `<label class="meta-folder-check"><input type="checkbox" name="bulkFolders" value="${f}"> ${escHtml(label)}</label>`;
+    });
+
+    // Channel + campaign add-checkboxes (additive — never strips existing tags)
+    let bulkChannelChecks = '';
+    channelsList.forEach(c => {
+      bulkChannelChecks += `<label class="meta-folder-check"><input type="checkbox" name="bulkChannels" value="${c.key}"> ${escHtml(c.icon || '')} ${escHtml(c.name)}</label>`;
+    });
+    let bulkCampaignChecks = '';
+    campaignsList.forEach(c => {
+      bulkCampaignChecks += `<label class="meta-folder-check"><input type="checkbox" name="bulkCampaigns" value="${c.slug}"> ${escHtml(c.name)}</label>`;
     });
 
     // Client dropdown — "Keep current" is the default so save doesn't blank it out
@@ -419,6 +492,14 @@
         <div class="meta-info" style="margin-bottom:6px;font-size:0.65rem;">Checked folders are <strong>added</strong> to each selected asset — existing folder tags are kept. Leave all unchecked to keep folders as-is.</div>
         <div class="meta-folder-grid">${folderChecks}</div>
         <label class="meta-folder-check" style="margin-top:6px;"><input type="checkbox" id="bulkReplaceFolders"> Replace existing folders instead of adding</label>
+      </div>
+      <div class="meta-field">
+        <label class="meta-label">Add Social Channels <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--slate);">(added to each selected)</span></label>
+        <div class="meta-folder-grid">${bulkChannelChecks || '<span style="font-size:0.7rem;color:var(--slate);">No platforms</span>'}</div>
+      </div>
+      <div class="meta-field">
+        <label class="meta-label">Add to Campaigns</label>
+        <div class="meta-folder-grid">${bulkCampaignChecks || '<span style="font-size:0.7rem;color:var(--slate);">No campaigns yet</span>'}</div>
       </div>
       <div class="meta-field">
         <label class="meta-label">Attach to Client</label>
@@ -533,13 +614,15 @@
   async function performBulkSave() {
     if (!bulkSelected.size) return;
     const folders = [...document.querySelectorAll('input[name="bulkFolders"]:checked')].map(cb => cb.value);
+    const channels = [...document.querySelectorAll('input[name="bulkChannels"]:checked')].map(cb => cb.value);
+    const campaigns = [...document.querySelectorAll('input[name="bulkCampaigns"]:checked')].map(cb => cb.value);
     const replaceFolders = document.getElementById('bulkReplaceFolders')?.checked;
     const clientSel = document.getElementById('bulkClient');
     const clientVal = clientSel ? clientSel.value : '__keep__';
     const altVal = document.getElementById('bulkAlt')?.value?.trim() || '';
     const captionVal = document.getElementById('bulkCaption')?.value?.trim() || '';
-    if (!folders.length && clientVal === '__keep__' && !altVal && !captionVal) {
-      return alert('Pick folders, a client, alt text, or a caption to apply.');
+    if (!folders.length && !channels.length && !campaigns.length && clientVal === '__keep__' && !altVal && !captionVal) {
+      return alert('Pick folders, channels, a campaign, a client, alt text, or a caption to apply.');
     }
     const body = { ids: [...bulkSelected] };
     // Default: add checked folders to each asset (keep existing tags).
@@ -548,6 +631,8 @@
       if (replaceFolders) body.folders = folders;
       else body.addFolders = folders;
     }
+    if (channels.length) body.addChannels = channels;
+    if (campaigns.length) body.addCampaigns = campaigns;
     if (clientVal !== '__keep__') body.clientId = clientVal || null;
     if (altVal) body.altText = altVal;
     if (captionVal) body.caption = captionVal;
@@ -645,6 +730,8 @@
       if (currentSearch) params.set('search', currentSearch);
       if (currentSort !== 'newest') params.set('sort', currentSort);
       if (currentClientId) params.set('clientId', currentClientId);
+      if (currentChannel) params.set('channel', currentChannel);
+      if (currentCampaign) params.set('campaign', currentCampaign);
 
       const r = await fetch(`/admin/assets/list?${params}`);
       const data = await r.json();
@@ -816,6 +903,22 @@
       folderChecks += `<label class="meta-folder-check"><input type="checkbox" name="metaFolders" value="${f}" ${checked}> ${escHtml(label)}</label>`;
     });
 
+    // Social channel checkboxes
+    const assetChannels = asset.channels || [];
+    let channelChecks = '';
+    channelsList.forEach(c => {
+      const checked = assetChannels.includes(c.key) ? 'checked' : '';
+      channelChecks += `<label class="meta-folder-check"><input type="checkbox" name="metaChannels" value="${c.key}" ${checked}> ${escHtml(c.icon || '')} ${escHtml(c.name)}</label>`;
+    });
+
+    // Campaign checkboxes
+    const assetCampaigns = asset.campaigns || [];
+    let campaignChecks = '';
+    campaignsList.forEach(c => {
+      const checked = assetCampaigns.includes(c.slug) ? 'checked' : '';
+      campaignChecks += `<label class="meta-folder-check"><input type="checkbox" name="metaCampaigns" value="${c.slug}" ${checked}> ${escHtml(c.name)}</label>`;
+    });
+
     metaBody.innerHTML = `
       <div class="meta-preview">${previewHtml}</div>
       <div class="meta-url" id="assetUrlDisplay" title="Click to copy URL">${asset.publicUrl}</div>
@@ -845,11 +948,32 @@
         <div class="meta-folder-grid" id="metaFolderGrid">${folderChecks}</div>
       </div>
       <div class="meta-field">
+        <label class="meta-label">Social Channels <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--slate);">(assign this asset to platforms)</span></label>
+        <div class="meta-folder-grid" id="metaChannelGrid">${channelChecks || '<span style="font-size:0.7rem;color:var(--slate);">No platforms available</span>'}</div>
+      </div>
+      <div class="meta-field">
+        <label class="meta-label" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>Campaigns</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="metaNewCampaignBtn" style="font-size:0.6rem;padding:2px 8px;">＋ New</button>
+        </label>
+        <div class="meta-folder-grid" id="metaCampaignGrid">${campaignChecks || '<span style="font-size:0.7rem;color:var(--slate);">No campaigns yet</span>'}</div>
+      </div>
+      <div class="meta-field">
         <label class="meta-label">Attach to Client</label>
         <select class="meta-select" id="metaClient">${clientOpts}</select>
       </div>`;
 
     document.getElementById('assetUrlDisplay').addEventListener('click', () => copyToClipboard(asset.publicUrl, 'URL copied'));
+
+    // "＋ New" campaign — create, then check it on for this asset
+    document.getElementById('metaNewCampaignBtn')?.addEventListener('click', async () => {
+      const slug = await createCampaignPrompt();
+      if (!slug) return;
+      const cur = [...document.querySelectorAll('input[name="metaCampaigns"]:checked')].map(cb => cb.value);
+      if (!cur.includes(slug)) cur.push(slug);
+      asset.campaigns = cur;
+      renderMeta(asset);
+    });
 
     // AI describe — vision model fills Alt Text + Caption for this single image
     const aiBtn = document.getElementById('metaAiDescribeBtn');
@@ -943,6 +1067,8 @@
     const folderChecks = document.querySelectorAll('input[name="metaFolders"]:checked');
     const folders = [...folderChecks].map(cb => cb.value);
     if (!folders.length) folders.push('general');
+    const channels = [...document.querySelectorAll('input[name="metaChannels"]:checked')].map(cb => cb.value);
+    const campaigns = [...document.querySelectorAll('input[name="metaCampaigns"]:checked')].map(cb => cb.value);
     const clientId = document.getElementById('metaClient')?.value || '';
     try {
       saveMetaBtn.textContent = 'Saving...';
@@ -950,7 +1076,7 @@
       const r = await fetch(`/admin/assets/${selectedAsset._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, altText, caption, tags, folders, clientId }),
+        body: JSON.stringify({ title, altText, caption, tags, folders, clientId, channels, campaigns }),
       });
       const data = await r.json();
       if (data.success) {
@@ -959,6 +1085,8 @@
         selectedAsset.caption = caption;
         selectedAsset.folders = folders;
         selectedAsset.folder = folders[0];
+        selectedAsset.channels = channels;
+        selectedAsset.campaigns = campaigns;
         selectedAsset.clientId = clientId || null;
         selectedAsset.tags = tags.split(',').map(t => t.trim()).filter(Boolean);
         // Refresh the card label
@@ -1125,7 +1253,7 @@
     currentClientId = urlParams.get('clientId');
   }
 
-  Promise.all([loadClients(), loadCustomFolders()]).then(() => {
+  Promise.all([loadClients(), loadCustomFolders(), loadChannels(), loadCampaigns()]).then(() => {
     // Populate bulk move client dropdown
     const bulkClientSel = document.getElementById('bulkMoveClient');
     if (bulkClientSel) {

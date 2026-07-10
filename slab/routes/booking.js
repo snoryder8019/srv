@@ -18,6 +18,7 @@ import { DESIGN_DEFAULTS } from './admin/design.js';
 import { enrichDesignContrast } from '../plugins/colorContrast.js';
 import { getSlabDb } from '../plugins/mongo.js';
 import { resolveSmtp, getTenantTransporter } from '../plugins/mailer.js';
+import { verifyCaptcha } from '../plugins/captcha.js';
 
 const router = express.Router();
 
@@ -232,6 +233,21 @@ router.post('/', async (req, res) => {
     const settings = await loadSettings(db);
     if (!settings.enabled) return res.redirect('/book');
     const brand = res.locals.brand || {};
+
+    // ── Anti-flood gate ─────────────────────────────────────────────────────
+    // Booking POSTs claim slots AND trigger outbound email (admin ping + a
+    // confirmation to the visitor-supplied address), so an unprotected form is
+    // an attractive flood/relay target. Two layers, same as the contact form:
+    //   1. Honeypot — a hidden field only bots fill. Drop silently (pretend
+    //      success) so no slot is claimed and no email is sent.
+    //   2. Proof-of-work CAPTCHA — blocks scripted POSTs that skip the widget.
+    if ((req.body.website || req.body._hp || '').trim()) {
+      console.warn('[honeypot] booking trap tripped', { tenant: req.tenant?.domain || '', ip: req.ip });
+      return res.redirect('/book?success=1');
+    }
+    if (!verifyCaptcha(req.body.captcha || req.body.altcha || '').ok) {
+      return res.redirect('/book?error=captcha');
+    }
 
     // ── service-slots mode ──
     if (settings.mode === 'service-slots') {

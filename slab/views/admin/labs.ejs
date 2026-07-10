@@ -1,0 +1,61 @@
+<%- include('partials/head', { title: 'Labs' }) %>
+<%- include('partials/sidebar', { page: 'labs', user: user }) %>
+
+<style>
+  .labs-wrap { padding: 16px 20px 80px; max-width: 860px; margin: 0 auto; }
+  .labs-title { font-size: 1.4rem; font-weight: 700; color: var(--on-surface); }
+  .labs-sub { font-size: 0.82rem; color: var(--slate); margin: 4px 0 20px; max-width: 640px; line-height: 1.5; }
+  .labs-flash { padding: 10px 14px; border-radius: 4px; font-size: 0.85rem; margin-bottom: 16px; }
+  .labs-flash.ok { background: rgba(20,83,45,0.12); color: #14532D; }
+  .labs-flash.err { background: rgba(220,38,38,0.1); color: #b91c1c; }
+
+  .labs-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; margin-bottom: 10px; }
+  .labs-meta { min-width: 0; }
+  .labs-name { font-size: 0.98rem; font-weight: 700; color: var(--on-surface); display: flex; align-items: center; gap: 8px; }
+  .labs-exp { font-size: 0.55rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(201,168,72,0.16); color: #9a7d2a; padding: 1px 6px; border-radius: 3px; }
+  .labs-desc { font-size: 0.78rem; color: var(--slate); margin-top: 3px; }
+
+  .labs-empty { background: var(--surface); border: 1px dashed var(--border); border-radius: 6px; padding: 30px; text-align: center; color: var(--slate); font-size: 0.88rem; }
+
+  /* Toggle */
+  .lswitch { position: relative; display: inline-block; width: 46px; height: 26px; flex-shrink: 0; }
+  .lswitch input { opacity: 0; width: 0; height: 0; }
+  .lslider { position: absolute; cursor: pointer; inset: 0; background: #cbd5e1; border-radius: 26px; transition: .2s; }
+  .lslider:before { content: ""; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  .lswitch input:checked + .lslider { background: #14532D; }
+  .lswitch input:checked + .lslider:before { transform: translateX(20px); }
+</style>
+
+<div class="labs-wrap">
+  <div class="labs-title">Labs</div>
+  <p class="labs-sub">
+    Experimental features we're testing. Turn one on to try it in your workspace — it'll appear in your
+    menu marked <span class="labs-exp">exp</span>. These are early and may change or disappear.
+  </p>
+
+  <% if (success) { %><div class="labs-flash ok"><%= success %></div><% } %>
+  <% if (error) { %><div class="labs-flash err"><%= error %></div><% } %>
+
+  <% if (!optInFeatures.length) { %>
+    <div class="labs-empty">No experimental features are available right now. Check back soon.</div>
+  <% } %>
+
+  <% optInFeatures.forEach(function(f) { %>
+    <% const on = tenantOptIns[f.key] === true; %>
+    <div class="labs-card">
+      <div class="labs-meta">
+        <div class="labs-name"><%= f.label %> <span class="labs-exp">exp</span></div>
+        <div class="labs-desc"><%= f.section %></div>
+      </div>
+      <form method="POST" action="/admin/labs/toggle">
+        <input type="hidden" name="key" value="<%= f.key %>">
+        <input type="hidden" name="enabled" value="<%= on ? 'false' : 'true' %>">
+        <label class="lswitch" title="<%= on ? 'Turn off' : 'Turn on' %>">
+          <input type="checkbox" <%= on ? 'checked' : '' %> onchange="this.closest('form').submit()">
+          <span class="lslider"></span>
+        </label>
+      </form>
+    </div>
+  <% }); %>
+</div>
+</div></div></body></html>

@@ -140,8 +140,20 @@
 .dp-rep-add:hover { background:color-mix(in srgb, var(--navy) 6%, white); }
 
 /* ── Tab nav (top of left panel) ── */
-.dp-tabs { display:flex; border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:0; z-index:5; overflow-x:auto; scrollbar-width:none; }
+.dp-tabs-wrap { position:sticky; top:0; z-index:5; display:flex; align-items:stretch; background:var(--surface); border-bottom:1px solid var(--border); }
+.dp-tabs { display:flex; flex:1; min-width:0; overflow-x:auto; scrollbar-width:none; scroll-behavior:smooth; }
 .dp-tabs::-webkit-scrollbar { display:none; }
+/* Edge fades — signal there's more to scroll toward. Toggled by JS via wrap classes. */
+.dp-tabs-wrap::before, .dp-tabs-wrap::after { content:""; position:absolute; top:0; bottom:0; width:28px; pointer-events:none; z-index:2; opacity:0; transition:opacity 0.15s; }
+.dp-tabs-wrap::before { left:0; background:linear-gradient(to right, var(--surface), transparent); }
+.dp-tabs-wrap::after  { right:0; background:linear-gradient(to left, var(--surface), transparent); }
+.dp-tabs-wrap.dp-scroll-l::before { opacity:1; }
+.dp-tabs-wrap.dp-scroll-r::after  { opacity:1; }
+/* Scroll-arrow buttons — hidden unless that direction can scroll */
+.dp-tab-nav { display:none; align-items:center; justify-content:center; width:26px; flex-shrink:0; background:var(--surface); border:none; color:var(--slate); cursor:pointer; font-size:1rem; line-height:1; z-index:3; transition:color 0.15s; }
+.dp-tab-nav:hover { color:var(--navy); }
+.dp-tabs-wrap.dp-scroll-l .dp-tab-nav-l { display:flex; }
+.dp-tabs-wrap.dp-scroll-r .dp-tab-nav-r { display:flex; }
 .dp-tab { flex:1; min-width:fit-content; padding:10px 12px; font-size:0.62rem; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:var(--slate); background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; transition:color 0.15s, border-color 0.15s; font-family:var(--font-body); white-space:nowrap; }
 .dp-tab:hover { color:var(--on-surface); }
 .dp-tab.active { color:var(--navy); border-bottom-color:var(--gold); }
@@ -373,13 +385,17 @@
 <% if (error) { %><div class="save-banner error">Failed to save.</div><% } %>
 
 <%# ─── Tab nav (consolidates Design / Sections / Templates / Brand) ─── %>
-<div class="dp-tabs" id="dpTabs">
-  <button type="button" class="dp-tab" data-tab="source"    onclick="dpSwitch('source')"><span class="ico">◐</span>Source</button>
-  <button type="button" class="dp-tab" data-tab="design"    onclick="dpSwitch('design')"><span class="ico">◑</span>Design</button>
-  <button type="button" class="dp-tab" data-tab="copy"      onclick="dpSwitch('copy')"><span class="ico">¶</span>Copy</button>
-  <button type="button" class="dp-tab" data-tab="sections"  onclick="dpSwitch('sections')"><span class="ico">▦</span>Sections</button>
-  <button type="button" class="dp-tab" data-tab="templates" onclick="dpSwitch('templates')"><span class="ico">◈</span>Templates</button>
-  <button type="button" class="dp-tab" data-tab="brand"     onclick="dpSwitch('brand')"><span class="ico">⛌</span>Brand</button>
+<div class="dp-tabs-wrap" id="dpTabsWrap">
+  <button type="button" class="dp-tab-nav dp-tab-nav-l" aria-label="Scroll tabs left" tabindex="-1" onclick="dpScrollTabs(-1)">‹</button>
+  <div class="dp-tabs" id="dpTabs">
+    <button type="button" class="dp-tab" data-tab="design"    onclick="dpSwitch('design')"><span class="ico">◑</span>Design</button>
+    <button type="button" class="dp-tab" data-tab="copy"      onclick="dpSwitch('copy')"><span class="ico">¶</span>Copy</button>
+    <button type="button" class="dp-tab" data-tab="sections"  onclick="dpSwitch('sections')"><span class="ico">▦</span>Sections</button>
+    <button type="button" class="dp-tab" data-tab="templates" onclick="dpSwitch('templates')"><span class="ico">◈</span>Templates</button>
+    <button type="button" class="dp-tab" data-tab="brand"     onclick="dpSwitch('brand')"><span class="ico">⛌</span>Brand</button>
+    <button type="button" class="dp-tab" data-tab="source"    onclick="dpSwitch('source')"><span class="ico">◐</span>Source</button>
+  </div>
+  <button type="button" class="dp-tab-nav dp-tab-nav-r" aria-label="Scroll tabs right" tabindex="-1" onclick="dpScrollTabs(1)">›</button>
 </div>
 
 <%# ─── Shared state used across multiple tabs ─── %>
@@ -684,24 +700,183 @@
     Typography <span class="arrow">&#9654;</span>
   </button>
   <div class="editor-section-body">
-    <div class="ep-field">
+    <style>
+      .font-picker { position: relative; }
+      .fp-current { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface); margin-bottom: 6px; }
+      .fp-cur-name { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--slate); }
+      .fp-cur-preview { font-size: 1.35rem; line-height: 1.25; color: var(--on-surface); }
+      .fp-search { width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.82rem; background: var(--ivory); color: var(--on-surface); }
+      .fp-results { position: absolute; left: 0; right: 0; z-index: 40; margin-top: 3px; max-height: 320px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 3px; box-shadow: 0 8px 28px rgba(15,27,48,0.18); }
+      .fp-results[hidden] { display: none; }
+      .fp-row { padding: 7px 12px; cursor: pointer; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 10px; }
+      .fp-row:last-child { border-bottom: none; }
+      .fp-row:hover, .fp-row.active { background: rgba(201,168,72,0.10); }
+      .fp-row-name { font-size: 0.66rem; color: var(--slate); width: 130px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .fp-row-sample { font-size: 1.1rem; color: var(--on-surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .fp-note { font-size: 0.66rem; color: var(--slate); margin-top: 4px; }
+      .fp-note.err { color: #B91C1C; }
+    </style>
+    <div class="ep-field font-picker" data-target="font_heading">
       <label>Heading Font</label>
-      <select name="font_heading" id="field-font_heading">
-        <% ['Cormorant Garamond','Playfair Display','Lora','Merriweather','Libre Baskerville','DM Serif Display','Fraunces','Sora','Space Grotesk','Outfit','Bebas Neue','Oswald'].forEach(f => { %>
-        <option value="<%= f %>" <%= design.font_heading === f ? 'selected' : '' %>><%= f %></option>
-        <% }) %>
-      </select>
+      <input type="hidden" name="font_heading" id="fp-val-font_heading" value="<%= design.font_heading || 'Cormorant Garamond' %>">
+      <input type="hidden" name="font_heading_spec" id="fp-spec-font_heading" value="<%= design.font_heading_spec || '' %>">
+      <div class="fp-current">
+        <span class="fp-cur-name" id="fp-curname-font_heading"><%= design.font_heading || 'Cormorant Garamond' %></span>
+        <span class="fp-cur-preview" id="fp-curprev-font_heading">Ag — The quick brown fox</span>
+      </div>
+      <input type="text" class="fp-search" data-target="font_heading" placeholder="Search all Google Fonts…" autocomplete="off">
+      <div class="fp-results" data-target="font_heading" hidden></div>
+      <div class="fp-note" id="fp-note-font_heading"></div>
     </div>
-    <div class="ep-field">
+    <div class="ep-field font-picker" data-target="font_body">
       <label>Body Font</label>
-      <select name="font_body" id="field-font_body">
-        <% ['Jost','Inter','Poppins','Raleway','Nunito','DM Sans','Work Sans','Source Sans 3','IBM Plex Sans','Manrope','Figtree','Outfit','Sora','Karla','Rubik','Cabin','Barlow','Lexend','Geist'].forEach(f => { %>
-        <option value="<%= f %>" <%= design.font_body === f ? 'selected' : '' %>><%= f %></option>
-        <% }) %>
-      </select>
+      <input type="hidden" name="font_body" id="fp-val-font_body" value="<%= design.font_body || 'Jost' %>">
+      <input type="hidden" name="font_body_spec" id="fp-spec-font_body" value="<%= design.font_body_spec || '' %>">
+      <div class="fp-current">
+        <span class="fp-cur-name" id="fp-curname-font_body"><%= design.font_body || 'Jost' %></span>
+        <span class="fp-cur-preview" id="fp-curprev-font_body">Ag — The quick brown fox</span>
+      </div>
+      <input type="text" class="fp-search" data-target="font_body" placeholder="Search all Google Fonts…" autocomplete="off">
+      <div class="fp-results" data-target="font_body" hidden></div>
+      <div class="fp-note" id="fp-note-font_body"></div>
     </div>
   </div>
 </div>
+
+<script>
+(function () {
+  'use strict';
+  var catalog = [];
+  var loaded = new Set();       // specs already injected as <link>
+  var resultsLink = {};         // per-target batch preview <link>
+
+  function bareFamily(n) { return String(n || '').trim().replace(/\s+/g, '+'); }
+
+  // Build a CSS2 `family=` fragment from a font's real variants (matches server).
+  function buildSpec(family, variants) {
+    var fam = bareFamily(family);
+    var up = new Set(), it = new Set();
+    (variants || []).forEach(function (v) {
+      if (v === 'regular') up.add(400);
+      else if (v === 'italic') it.add(400);
+      else if (/^\d+$/.test(v)) up.add(parseInt(v, 10));
+      else { var m = /^(\d+)italic$/.exec(v); if (m) it.add(parseInt(m[1], 10)); }
+    });
+    var ups = [...up].sort(function (a, b) { return a - b; });
+    var its = [...it].sort(function (a, b) { return a - b; });
+    if (!ups.length && !its.length) return fam;
+    if (!its.length) return (ups.length === 1 && ups[0] === 400) ? fam : fam + ':wght@' + ups.join(';');
+    var parts = [];
+    ups.forEach(function (w) { parts.push('0,' + w); });
+    its.forEach(function (w) { parts.push('1,' + w); });
+    return fam + ':ital,wght@' + parts.join(';');
+  }
+
+  // Inject a stylesheet <link> for one font spec (deduped) so previews render.
+  function loadFontLink(spec) {
+    if (!spec || loaded.has(spec)) return;
+    loaded.add(spec);
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=' + spec + '&display=swap';
+    document.head.appendChild(link);
+  }
+
+  // Batch-load the visible result families (regular weight) for row previews.
+  function loadResultsPreview(target, families) {
+    if (!families.length) return;
+    var href = 'https://fonts.googleapis.com/css2?' + families.map(function (f) { return 'family=' + bareFamily(f); }).join('&') + '&display=swap';
+    var link = resultsLink[target];
+    if (!link) { link = document.createElement('link'); link.rel = 'stylesheet'; document.head.appendChild(link); resultsLink[target] = link; }
+    link.href = href;
+  }
+
+  function setCurrent(target, family, spec) {
+    document.getElementById('fp-val-' + target).value = family;
+    document.getElementById('fp-spec-' + target).value = spec || '';
+    document.getElementById('fp-curname-' + target).textContent = family;
+    var prev = document.getElementById('fp-curprev-' + target);
+    prev.style.fontFamily = "'" + family + "'";
+    loadFontLink(spec || bareFamily(family));
+    // Apply the new font to the live preview WITHOUT reloading (a reload would
+    // snap the iframe back to the last-saved font). Marks the preview dirty so
+    // the override engine injects the change.
+    window._previewDirty = true;
+    if (typeof window.debouncedPush === 'function') { try { window.debouncedPush(); } catch (e) {} }
+  }
+
+  function renderResults(target, query) {
+    var box = document.querySelector('.fp-results[data-target="' + target + '"]');
+    var q = (query || '').trim().toLowerCase();
+    var list = q ? catalog.filter(function (f) { return f.family.toLowerCase().indexOf(q) !== -1; }) : catalog;
+    list = list.slice(0, 60);
+    if (!list.length) { box.innerHTML = '<div class="fp-row"><span class="fp-row-sample">No matches</span></div>'; box.hidden = false; return; }
+    loadResultsPreview(target, list.map(function (f) { return f.family; }));
+    box.innerHTML = list.map(function (f) {
+      return '<div class="fp-row" data-family="' + f.family.replace(/"/g, '&quot;') + '">' +
+        '<span class="fp-row-name">' + f.family + '</span>' +
+        '<span class="fp-row-sample" style="font-family:\'' + f.family.replace(/'/g, '') + "'\">Ag The quick brown fox</span></div>";
+    }).join('');
+    box.querySelectorAll('.fp-row').forEach(function (row) {
+      row.addEventListener('mousedown', function (e) {
+        e.preventDefault(); // keep focus / stop blur closing before click
+        var fam = row.getAttribute('data-family');
+        var entry = catalog.find(function (c) { return c.family === fam; });
+        setCurrent(target, fam, entry ? buildSpec(fam, entry.variants) : bareFamily(fam));
+        box.hidden = true;
+        var input = document.querySelector('.fp-search[data-target="' + target + '"]');
+        if (input) input.value = '';
+      });
+    });
+    box.hidden = false;
+  }
+
+  function wirePicker(target) {
+    var input = document.querySelector('.fp-search[data-target="' + target + '"]');
+    var box = document.querySelector('.fp-results[data-target="' + target + '"]');
+    if (!input) return;
+    input.addEventListener('focus', function () { renderResults(target, input.value); });
+    input.addEventListener('input', function () { renderResults(target, input.value); });
+    input.addEventListener('blur', function () { setTimeout(function () { box.hidden = true; }, 150); });
+    // Typing an exact family + Enter works even when the catalog can't load.
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var typed = input.value.trim();
+        if (!typed) return;
+        var entry = catalog.find(function (c) { return c.family.toLowerCase() === typed.toLowerCase(); });
+        var fam = entry ? entry.family : typed;
+        setCurrent(target, fam, entry ? buildSpec(fam, entry.variants) : bareFamily(fam));
+        box.hidden = true; input.value = '';
+      }
+    });
+  }
+
+  function init() {
+    ['font_heading', 'font_body'].forEach(function (target) {
+      // Seed the current preview using the already-saved spec (or bare family).
+      var fam = document.getElementById('fp-val-' + target).value;
+      var spec = document.getElementById('fp-spec-' + target).value;
+      var prev = document.getElementById('fp-curprev-' + target);
+      prev.style.fontFamily = "'" + fam + "'";
+      loadFontLink(spec || bareFamily(fam));
+      wirePicker(target);
+    });
+    fetch('/admin/design/fonts').then(function (r) { return r.json(); }).then(function (data) {
+      if (data.ok && data.fonts) { catalog = data.fonts; }
+      else {
+        var msg = (data.error || 'Font catalog unavailable') + ' — you can still type any Google font name and press Enter.';
+        ['font_heading', 'font_body'].forEach(function (t) { var n = document.getElementById('fp-note-' + t); if (n) { n.textContent = msg; n.classList.add('err'); } });
+      }
+    }).catch(function () {
+      ['font_heading', 'font_body'].forEach(function (t) { var n = document.getElementById('fp-note-' + t); if (n) { n.textContent = 'Could not load font catalog — type a font name and press Enter.'; n.classList.add('err'); } });
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
 
 <%# ─── 4. SECTION VISIBILITY ─── %>
 <div class="editor-section" data-tab="sections">
@@ -840,6 +1015,14 @@
       <div class="ep-row">
         <label class="vis-item"><input type="checkbox" name="vis_header" <%= d.vis_header !== 'false' ? 'checked' : '' %>> Show Header</label>
         <label class="vis-item"><input type="checkbox" name="vis_footer" <%= d.vis_footer !== 'false' ? 'checked' : '' %>> Show Footer</label>
+      </div>
+
+      <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:14px 0 6px;">BUILT-IN NAV LINKS</div>
+      <div class="ep-hint" style="margin-bottom:8px;">Toggle the always-on header links. CMS pages &amp; custom links are managed in the <strong>Links</strong> tab.</div>
+      <div class="vis-grid-compact">
+        <label class="vis-item"><input type="checkbox" name="vis_nav_home" <%= d.vis_nav_home !== 'false' ? 'checked' : '' %>> Home link</label>
+        <label class="vis-item"><input type="checkbox" name="vis_nav_blog" <%= d.vis_nav_blog !== 'false' ? 'checked' : '' %>> Blog link</label>
+        <label class="vis-item"><input type="checkbox" name="vis_nav_cta" <%= d.vis_nav_cta !== 'false' ? 'checked' : '' %>> CTA button</label>
       </div>
 
       <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:14px 0 6px;">STRUCTURE</div>
@@ -2717,6 +2900,18 @@
 
     <div style="border:1px solid var(--border);border-radius:2px;margin-bottom:8px;padding:10px 12px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="font-size:0.75rem;font-weight:600;color:var(--on-surface);">Public Design Switcher</span>
+        <select name="el_design_switcher" style="width:auto;padding:3px 6px;font-size:0.68rem;" onchange="previewReload()">
+          <option value="true" <%= d.el_design_switcher === 'true' ? 'selected' : '' %>>On</option>
+          <option value="false" <%= d.el_design_switcher !== 'true' ? 'selected' : '' %>>Off</option>
+        </select>
+      </div>
+      <div class="ep-hint">Fixed floating palette dropdown that lets <em>any public visitor</em> repaint the live site from preset color designs (stored per-visitor, never saved to the DB).<br>
+        <strong>Source:</strong> views/partials/design-switcher.ejs</div>
+    </div>
+
+    <div style="border:1px solid var(--border);border-radius:2px;margin-bottom:8px;padding:10px 12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
         <span style="font-size:0.75rem;font-weight:600;color:var(--on-surface);">Notification Bell</span>
         <select name="el_notification_bell" style="width:auto;padding:3px 6px;font-size:0.68rem;" onchange="previewReload()">
           <option value="true" <%= d.el_notification_bell !== 'false' ? 'selected' : '' %>>On</option>
@@ -3029,12 +3224,34 @@ function dpSwitch(tab) {
   });
   // Persist tab to URL hash so refresh / deep-links survive
   try { history.replaceState(null, '', '#tab=' + tab); } catch (e) {}
+  // Bring the newly-active tab fully into view within the scroll strip
+  var act = document.querySelector('#dpTabs .dp-tab.active');
+  if (act && act.scrollIntoView) act.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  dpUpdateTabScroll();
+}
+// Nudge the tab strip left (-1) or right (+1)
+function dpScrollTabs(dir) {
+  var el = document.getElementById('dpTabs');
+  if (el) el.scrollBy({ left: dir * Math.max(120, el.clientWidth * 0.6), behavior: 'smooth' });
+}
+// Show/hide the arrows + edge fades based on how far the strip can scroll
+function dpUpdateTabScroll() {
+  var el = document.getElementById('dpTabs');
+  var wrap = document.getElementById('dpTabsWrap');
+  if (!el || !wrap) return;
+  var maxScroll = el.scrollWidth - el.clientWidth;
+  wrap.classList.toggle('dp-scroll-l', el.scrollLeft > 2);
+  wrap.classList.toggle('dp-scroll-r', el.scrollLeft < maxScroll - 2);
 }
 (function() {
-  var initial = 'source';
+  var initial = 'design';
   var m = location.hash.match(/tab=([a-z]+)/);
   if (m && ['source','design','copy','sections','templates','brand'].indexOf(m[1]) !== -1) initial = m[1];
   dpSwitch(initial);
+  var tabsEl = document.getElementById('dpTabs');
+  if (tabsEl) tabsEl.addEventListener('scroll', dpUpdateTabScroll, { passive: true });
+  window.addEventListener('resize', dpUpdateTabScroll);
+  dpUpdateTabScroll();
 })();
 
 // ── Accordion toggle ──
@@ -3479,9 +3696,13 @@ var cssVarTransform = {
   nav_logo_size:        { vars: ['--nav-logo-size'],         transform: function(v) { return (parseInt(v,10)||48) + 'px'; } },
   nav_logo_overlap_x:   { vars: ['--nav-logo-overlap-x'],    transform: function(v) { return (parseInt(v,10)||0) + 'px'; } },
   nav_logo_overlap_y:   { vars: ['--nav-logo-overlap-y'],    transform: function(v) { return (parseInt(v,10)||0) + 'px'; } },
-  // Plain color overrides (text fields) — also push as CSS vars
-  nav_brand_color:      { vars: ['--nav-brand-color'],     transform: function(v) { return v || 'currentColor'; } },
-  nav_tagline_color:    { vars: ['--nav-tagline-color'],   transform: function(v) { return v || 'currentColor'; } },
+  // Plain color overrides (text fields) — also push as CSS vars.
+  // Empty ⇒ return '' so the push loop SKIPS it and the server-rendered
+  // fallback chain stands (nav_text_color → var(--on-ivory,var(--dark))).
+  // Returning 'currentColor' here made the wordmark inherit the <a> link
+  // colour (purple, once visited) instead of the real brand colour.
+  nav_brand_color:      { vars: ['--nav-brand-color'],     transform: function(v) { return v || ''; } },
+  nav_tagline_color:    { vars: ['--nav-tagline-color'],   transform: function(v) { return v || ''; } },
 };
 // Body data-attributes to push into the iframe body element
 var bodyDataMap = {
@@ -3528,14 +3749,19 @@ var _GF = {
   'Lexend': 'Lexend:wght@300;400;500;600;700',
   'Geist': 'Geist:wght@300;400;500;600;700',
 };
-function loadFontInIframe(doc, fontName) {
-  if (!doc || !doc.head || !fontName || !_GF[fontName]) return;
+function loadFontInIframe(doc, fontName, spec) {
+  if (!doc || !doc.head || !fontName) return;
+  // Prefer the saved CSS2 spec (any catalog font, real weights), then the curated
+  // map, then a bare family — mirrors the server so the preview matches the site.
+  var frag = (spec && spec.trim()) || _GF[fontName] || fontName.trim().replace(/\s+/g, '+');
   var id = 'slab-font-' + fontName.replace(/\s+/g, '-').toLowerCase();
-  if (doc.getElementById(id)) return; // already loaded
+  var href = 'https://fonts.googleapis.com/css2?family=' + frag + '&display=swap';
+  var existing = doc.getElementById(id);
+  if (existing) { if (existing.getAttribute('href') !== href) existing.setAttribute('href', href); return; }
   var link = doc.createElement('link');
   link.id = id;
   link.rel = 'stylesheet';
-  link.href = 'https://fonts.googleapis.com/css2?family=' + _GF[fontName] + '&display=swap';
+  link.href = href;
   doc.head.appendChild(link);
 }
 
@@ -3694,15 +3920,22 @@ function pushToPreview() {
     if (!inp) return;
     var t = cssVarTransform[name];
     var val = t.transform(inp.value);
+    // Skip empty results — never inject invalid CSS ("--var: !important;")
+    // and, for the color fields, leave the server-rendered fallback in place.
+    if (val === '' || val == null) return;
     for (var vi = 0; vi < t.vars.length; vi++) css += t.vars[vi] + ':' + val + ' !important;';
   });
   Object.keys(fontMap).forEach(function(name) {
-    var sel = document.querySelector('select[name="' + name + '"]');
+    // The font picker stores the family in a hidden input (not a <select>).
+    var sel = document.querySelector('[name="' + name + '"]');
     if (!sel) return;
-    css += fontMap[name] + ":'" + sel.value + "',sans-serif !important;";
+    var fallback = name === 'font_heading' ? 'serif' : 'sans-serif';
+    css += fontMap[name] + ":'" + sel.value + "'," + fallback + " !important;";
     if (name === 'font_body') fontBodyVal = sel.value;
     if (name === 'font_heading') fontHeadVal = sel.value;
   });
+  var fontHeadSpec = (document.querySelector('[name="font_heading_spec"]') || {}).value || '';
+  var fontBodySpec = (document.querySelector('[name="font_body_spec"]') || {}).value || '';
   // Append server-side-computed contrast vars (surface, border, on-* text colors).
   // These are derived from the raw colors so must be recalculated client-side
   // whenever the user changes a color input, rather than being taken from cssVarMap.
@@ -3712,7 +3945,11 @@ function pushToPreview() {
   css += '}';
   // Force font on body + headings for templates that hardcode font-family (landing.ejs)
   if (fontBodyVal) css += " body,p,a,span,div,li,input,textarea,select,button{font-family:'" + fontBodyVal + "',sans-serif !important;}";
-  if (fontHeadVal) css += " h1,h2,h3,h4,h5,h6{font-family:'" + fontHeadVal + "',serif !important;}";
+  // Headings AND the nav wordmark use the heading font on the live site — the
+  // broad span/a rule above would otherwise force the wordmark to the body font,
+  // making it render smaller/different (a serif vs sans at the same size). Higher
+  // specificity here (class beats bare `span`) wins among the !important rules.
+  if (fontHeadVal) css += " h1,h2,h3,h4,h5,h6,.nav-wordmark-top,.nav-wordmark-top .nav-wordmark-accent{font-family:'" + fontHeadVal + "',serif !important;}";
 
   // ── 2) Layout ──
   var layoutSel = document.querySelector('select[name="landing_layout"]');
@@ -3726,8 +3963,8 @@ function pushToPreview() {
     style.textContent = css;
 
     // Load Google Fonts in iframe so font-family changes are visible
-    if (fontBodyVal) loadFontInIframe(doc, fontBodyVal);
-    if (fontHeadVal) loadFontInIframe(doc, fontHeadVal);
+    if (fontBodyVal) loadFontInIframe(doc, fontBodyVal, fontBodySpec);
+    if (fontHeadVal) loadFontInIframe(doc, fontHeadVal, fontHeadSpec);
 
     // Layout
     if (layout) doc.body.setAttribute('data-layout', layout);
@@ -3872,16 +4109,18 @@ function pushToPreview() {
     var cssVarsObj = {};
     Object.keys(cssVarMap).forEach(function(n) { var inp = document.querySelector('input[name="' + n + '"]'); if (inp) { var vars = cssVarMap[n]; for (var vi = 0; vi < vars.length; vi++) cssVarsObj[vars[vi]] = inp.value; } });
     Object.keys(cssVarTransform).forEach(function(n) { var inp = document.querySelector('[name="' + n + '"]'); if (inp) { var t = cssVarTransform[n]; var val = t.transform(inp.value); for (var vi = 0; vi < t.vars.length; vi++) cssVarsObj[t.vars[vi]] = val; } });
-    Object.keys(fontMap).forEach(function(n) { var sel = document.querySelector('select[name="' + n + '"]'); if (sel) cssVarsObj[fontMap[n]] = "'" + sel.value + "',sans-serif"; });
+    Object.keys(fontMap).forEach(function(n) { var el = document.querySelector('[name="' + n + '"]'); if (el) cssVarsObj[fontMap[n]] = "'" + el.value + "'," + (n === 'font_heading' ? 'serif' : 'sans-serif'); });
     // Merge computed contrast vars into the postMessage payload
     var _cmp = computedVarsFromInputs();
     Object.keys(_cmp).forEach(function(v) { cssVarsObj[v] = _cmp[v]; });
     var extraCss = '';
     if (fontBodyVal) extraCss += " body,p,a,span,div,li,input,textarea,select,button{font-family:'" + fontBodyVal + "',sans-serif !important;}";
     if (fontHeadVal) extraCss += " h1,h2,h3,h4,h5,h6{font-family:'" + fontHeadVal + "',serif !important;}";
+    // Build font stylesheet URLs from spec → curated map → bare family (mirrors server).
+    var _fontFrag = function(name, spec) { return (spec && spec.trim()) || _GF[name] || (name || '').trim().replace(/\s+/g, '+'); };
     var fonts = [];
-    if (fontBodyVal && _GF[fontBodyVal]) fonts.push('https://fonts.googleapis.com/css2?family=' + _GF[fontBodyVal] + '&display=swap');
-    if (fontHeadVal && _GF[fontHeadVal]) fonts.push('https://fonts.googleapis.com/css2?family=' + _GF[fontHeadVal] + '&display=swap');
+    if (fontBodyVal) fonts.push('https://fonts.googleapis.com/css2?family=' + _fontFrag(fontBodyVal, fontBodySpec) + '&display=swap');
+    if (fontHeadVal) fonts.push('https://fonts.googleapis.com/css2?family=' + _fontFrag(fontHeadVal, fontHeadSpec) + '&display=swap');
     var bodyAttrs = {};
     Object.keys(bodyDataMap).forEach(function(name) {
       var el = document.querySelector('[name="' + name + '"]');
@@ -3893,8 +4132,14 @@ function pushToPreview() {
 }
 
 // Debounced push
+// _previewDirty gates the live-preview overrides: they only apply once the admin
+// has actually changed something. On a clean load (or right after save) the
+// iframe shows the TRUE server render, so the preview matches the live site
+// exactly — no JS-approximated contrast vars / fonts injected over the real page.
+var _previewDirty = false;
 var pushTimer;
 function debouncedPush() {
+  _previewDirty = true;
   clearTimeout(pushTimer);
   pushTimer = setTimeout(pushToPreview, 80);
 }
@@ -3949,14 +4194,17 @@ var _pvFrame = document.getElementById('previewFrame');
 var _pvStatus = document.querySelector('.preview-bar span[style*="auto"]');
 _pvFrame.addEventListener('load', function() {
   setTimeout(function() {
-    pushToPreview();
+    // Only overlay edits when the admin has made unsaved changes; otherwise the
+    // iframe already IS the true server render and must be left untouched.
+    if (_previewDirty) pushToPreview();
     if (_pvStatus) _pvStatus.textContent = _previewReady ? 'Live Preview' : 'Preview (no DOM access — using postMessage)';
   }, 300);
-  setTimeout(pushToPreview, 1000);
+  setTimeout(function() { if (_previewDirty) pushToPreview(); }, 1000);
 });
-// Initial push after page load
+// Initial push after page load — only if there are pending edits (there won't be
+// on a fresh load, so the preview reflects exactly what's saved/rendered).
 setTimeout(function() {
-  pushToPreview();
+  if (_previewDirty) pushToPreview();
   if (_pvStatus) _pvStatus.textContent = _previewReady ? 'Live Preview' : 'Preview (connecting...)';
 }, 500);
 

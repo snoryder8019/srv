@@ -9,6 +9,7 @@ import { callLLM, tryParseAgentResponse, webSearch } from '../../plugins/agentMc
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import { enrichDesignContrast } from '../../plugins/colorContrast.js';
 import { CUSTOM_TEMPLATES } from './sections.js';
+import { config } from '../../config/config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TENANT_VIEWS_ROOT = path.resolve(__dirname, '..', '..', 'views', 'tenants');
@@ -24,6 +25,11 @@ export const DESIGN_DEFAULTS = {
   color_bg:            '#F5F3EF',
   font_heading:        'Cormorant Garamond',
   font_body:           'Jost',
+  // CSS2 `family=` fragments built from the picked Google Font's real weights
+  // (e.g. "Fraunces:wght@400;600;700"). Empty → renderers fall back to the
+  // curated map, then to the bare family name. Set by the font picker.
+  font_heading_spec:   '',
+  font_body_spec:      '',
   // ── Contrast / utility colors ──
   color_dark:          '#0F1B30',       // main text color
   color_white:         '#FDFCFA',       // page background / white surface
@@ -59,6 +65,10 @@ export const DESIGN_DEFAULTS = {
   vis_blog:            'false',
   vis_footer:          'true',
   vis_admin_link:      'true',
+  // ── Built-in header nav links (toggle the hardcoded items on/off) ──
+  vis_nav_home:        'true',          // "Home" link in the header nav
+  vis_nav_blog:        'true',          // "Blog" link in the header nav
+  vis_nav_cta:         'true',          // CTA button in the header nav
   // ── Custom element toggles ──
   el_bug_button:       'true',         // floating bug/ticket button
   el_notification_bell:'true',         // notification bell (platform announcements)
@@ -66,6 +76,7 @@ export const DESIGN_DEFAULTS = {
   el_preview_banner:   'true',         // preview-mode top banner
   el_maintenance_banner:'true',        // maintenance cooldown banner
   el_gltf_viewer:      'false',        // 3D model viewer (heavy)
+  el_design_switcher:  'false',        // public floating design-switcher (visitor repaints site live from preset palettes)
   agent_name:          'Assistant',
   agent_greeting:      'Hi! I can write blog posts, update site copy, or build new sections. What would you like to create?',
   portfolio_layout:    'grid',
@@ -838,9 +849,10 @@ COLOR FIELDS (hex values):
 - color_accent_light: Light accent — text on dark backgrounds (default: #E8D08A)
 - color_bg: Section backgrounds — ivory/cream tones (default: #F5F3EF)
 
-FONT FIELDS:
-- font_heading: One of: Cormorant Garamond, Playfair Display, Lora, Merriweather, Libre Baskerville
-- font_body: One of: Jost, Inter, Poppins, Raleway, Nunito, DM Sans
+FONT FIELDS (any Google Font — use the EXACT family name as it appears on fonts.google.com):
+- font_heading: any Google Font family for headings. Prefer characterful serif/display faces (e.g. Cormorant Garamond, Playfair Display, Fraunces, DM Serif Display, Libre Baskerville) unless the brand calls for something else.
+- font_body: any Google Font family for body text. Prefer highly legible sans-serifs (e.g. Jost, Inter, Poppins, DM Sans, Manrope, Work Sans).
+- Do NOT set font_heading_spec / font_body_spec — those are derived automatically from the family name.
 
 LAYOUT FIELDS:
 - landing_layout: classic, bold, minimal, magazine, dark, or startup (overall landing page layout)
@@ -921,7 +933,7 @@ DESIGN TIPS:
 - Keep color palettes cohesive. Primary/deep/mid should be shades of the same hue.
 - Accent colors should contrast with primary for CTAs and highlights.
 - Background color should be light and neutral for readability.
-- Serif fonts (Cormorant Garamond, Playfair Display) work well for headings; sans-serif (Jost, Inter) for body.
+- Any Google Font may be used. Serif/display faces (Cormorant Garamond, Playfair Display, Fraunces) work well for headings; sans-serif (Jost, Inter, Manrope) for body. Pair a distinctive heading with a clean, legible body.
 - Consider accessibility — ensure sufficient contrast between text and background colors.
 ${designCtx}`;
 
@@ -940,6 +952,14 @@ ${designCtx}`;
     const fullPrompt = systemPrompt + researchCtx;
     const raw = await callLLM(messages, fullPrompt);
     const parsed = tryParseAgentResponse(raw);
+
+    // The agent picks a font by NAME; enrich with the CSS2 weight spec from the
+    // catalog so the picked font renders with its real weights (not just 400).
+    if (parsed && parsed.fill && typeof parsed.fill === 'object') {
+      const fkey = tenantFontsKey(req);
+      if (parsed.fill.font_heading) parsed.fill.font_heading_spec = await specForFamily(parsed.fill.font_heading, fkey);
+      if (parsed.fill.font_body) parsed.fill.font_body_spec = await specForFamily(parsed.fill.font_body, fkey);
+    }
 
     res.json(parsed);
   } catch (err) {
@@ -1066,6 +1086,87 @@ router.get('/email-preview/:template', async (req, res) => {
   } catch (err) {
     console.error('Email preview render error:', err);
     res.status(500).send('Preview error: ' + err.message);
+  }
+});
+
+// ── Google Fonts catalog (Web Fonts Developer API) ───────────────────────────
+// Powers the full-catalog font picker. The catalog is ~1,900 families and rarely
+// changes, so it's cached process-wide for a day. Each entry carries its real
+// `variants` so the client can build a CSS2 request that only asks for weights
+// the font actually has (avoids Google's 400-on-missing-weight behavior).
+let _fontCatalog = null;
+let _fontCatalogAt = 0;
+const FONT_CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
+
+// The Web Fonts Developer API takes a Google Cloud API key. Tenants already
+// store one at `public.googlePlacesKey` (used for Google Places reviews) on the
+// same Cloud project, so reuse it — keeping fonts consistent with the tenant's
+// existing Google key. Falls back to a global GOOGLE_FONTS_API_KEY env var.
+function tenantFontsKey(req) {
+  return req.tenant?.public?.googlePlacesKey || config.GOOGLE_FONTS_API_KEY || null;
+}
+
+// Fetch (and cache) the Google Fonts catalog with the given key. The catalog is
+// identical for every key, so it's cached process-wide and served to any tenant
+// once loaded. Returns null when there's no key AND nothing cached yet; throws
+// on a Google API error so the route can surface it.
+async function getFontCatalog(apiKey) {
+  if (_fontCatalog && (Date.now() - _fontCatalogAt) < FONT_CATALOG_TTL_MS) return _fontCatalog;
+  if (!apiKey) return null;
+  const url = `https://www.googleapis.com/webfonts/v1/webfonts?sort=popularity&key=${encodeURIComponent(apiKey)}`;
+  const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error?.message || `Google Fonts HTTP ${r.status}`);
+  _fontCatalog = (j.items || []).map(f => ({ family: f.family, category: f.category, variants: f.variants || ['regular'] }));
+  _fontCatalogAt = Date.now();
+  return _fontCatalog;
+}
+
+const _bareFamily = (n) => String(n || '').trim().replace(/\s+/g, '+');
+
+// Build a CSS2 `family=` fragment from a font's real variants — only requesting
+// weights the font actually has (mirrors the client-side builder in the picker).
+function buildFontSpec(family, variants) {
+  const fam = _bareFamily(family);
+  const up = new Set(), it = new Set();
+  (variants || []).forEach(v => {
+    if (v === 'regular') up.add(400);
+    else if (v === 'italic') it.add(400);
+    else if (/^\d+$/.test(v)) up.add(parseInt(v, 10));
+    else { const m = /^(\d+)italic$/.exec(v); if (m) it.add(parseInt(m[1], 10)); }
+  });
+  const ups = [...up].sort((a, b) => a - b);
+  const its = [...it].sort((a, b) => a - b);
+  if (!ups.length && !its.length) return fam;
+  if (!its.length) return (ups.length === 1 && ups[0] === 400) ? fam : fam + ':wght@' + ups.join(';');
+  const parts = [];
+  ups.forEach(w => parts.push('0,' + w));
+  its.forEach(w => parts.push('1,' + w));
+  return fam + ':ital,wght@' + parts.join(';');
+}
+
+// Resolve a font name → its CSS2 spec via the catalog, falling back to the bare
+// family (renders at regular weight) when the catalog is unavailable/unknown.
+async function specForFamily(family, apiKey) {
+  if (!family) return '';
+  try {
+    const cat = await getFontCatalog(apiKey);
+    const entry = cat && cat.find(f => f.family.toLowerCase() === String(family).toLowerCase());
+    if (entry) return buildFontSpec(entry.family, entry.variants);
+  } catch { /* fall through to bare family */ }
+  return _bareFamily(family);
+}
+
+router.get('/fonts', async (req, res) => {
+  try {
+    const fonts = await getFontCatalog(tenantFontsKey(req));
+    if (!fonts) {
+      return res.json({ ok: false, error: 'No Google API key for this tenant — add a Google Places/Cloud key (public.googlePlacesKey) or set GOOGLE_FONTS_API_KEY.', fonts: [] });
+    }
+    res.json({ ok: true, fonts });
+  } catch (e) {
+    console.error('[design/fonts] error:', e.message);
+    res.status(502).json({ ok: false, error: e.message, fonts: [] });
   }
 });
 

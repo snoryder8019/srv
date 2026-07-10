@@ -5,6 +5,10 @@ import { ObjectId } from 'mongodb';
 import { getSlabDb, getTenantDb } from '../plugins/mongo.js';
 import { issueAdminJWT, issuePortalJWT, createLoginToken } from '../middleware/jwtAuth.js';
 import { isSuperAdminEmail } from '../middleware/superadmin.js';
+import { bustTenantCache } from '../middleware/tenant.js';
+import { encrypt } from '../plugins/crypto.js';
+import { buildDriveAuthUrl, exchangeCode as exchangeGoogleCode } from '../plugins/googleDrive.js';
+import { buildPhotosAuthUrl } from '../plugins/googlePhotos.js';
 import { config } from '../config/config.js';
 
 const router = express.Router();
@@ -24,6 +28,13 @@ const centralAuthLimiter = rateLimit({
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
+
+// Microsoft (Azure AD / Entra ID) v2.0 endpoints. {tenant} is filled per-request
+// ('common' by default, or a tenant's own Directory ID for white-glove).
+const MS_AUTH_URL = (t) => `https://login.microsoftonline.com/${t}/oauth2/v2.0/authorize`;
+const MS_TOKEN_URL = (t) => `https://login.microsoftonline.com/${t}/oauth2/v2.0/token`;
+const MS_GRAPH_ME_URL = 'https://graph.microsoft.com/v1.0/me';
+const MS_SCOPE = 'openid profile email offline_access User.Read';
 
 // ── OAuth credential resolver ────────────────────────────────────────────────
 
@@ -50,6 +61,36 @@ function getOAuthCreds(req) {
     clientId: config.GGLCID,
     clientSecret: config.GGLSEC,
     callbackUrl: `${config.DOMAIN}/auth/google/callback`,
+    source: 'platform',
+  };
+}
+
+/**
+ * Get Microsoft (Azure AD) OAuth credentials for this request.
+ * Tenant override wins; platform default is fallback.
+ */
+function getMicrosoftCreds(req) {
+  const tenantCid = req.tenant?.public?.microsoftOAuthClientId;
+  const tenantSec = req.tenant?.secrets?.microsoftOAuthSecret;
+  const tenantAad = req.tenant?.public?.microsoftOAuthTenant;
+
+  if (tenantCid && tenantSec) {
+    // Tenant has their own Azure app — callback goes to their domain
+    return {
+      clientId: tenantCid,
+      clientSecret: tenantSec,
+      azureTenant: tenantAad || config.MS_TENANT,
+      callbackUrl: `https://${req.hostname}/auth/microsoft/callback`,
+      source: 'tenant',
+    };
+  }
+
+  // Platform default — callback to slab.madladslab.com
+  return {
+    clientId: config.MSCID,
+    clientSecret: config.MSSEC,
+    azureTenant: config.MS_TENANT,
+    callbackUrl: `${config.DOMAIN}/auth/microsoft/callback`,
     source: 'platform',
   };
 }
@@ -93,6 +134,34 @@ function redirectToGoogle(req, res, { authType, linkClientId }) {
   res.redirect(`${GOOGLE_AUTH_URL}?${params}`);
 }
 
+// ── Redirect to Microsoft ─────────────────────────────────────────────────────
+
+function redirectToMicrosoft(req, res, { authType, linkClientId }) {
+  const creds = getMicrosoftCreds(req);
+
+  const state = buildState({
+    authType,
+    returnDomain: req.hostname,
+    tenantDbName: req.tenant?.db || null,
+    oauthSource: creds.source,
+    callbackUrl: creds.callbackUrl,
+    azureTenant: creds.azureTenant,
+    linkClientId: linkClientId || null,
+  });
+
+  const params = new URLSearchParams({
+    client_id: creds.clientId,
+    redirect_uri: creds.callbackUrl,
+    response_type: 'code',
+    scope: MS_SCOPE,
+    response_mode: 'query',
+    prompt: 'select_account',
+    state,
+  });
+
+  res.redirect(`${MS_AUTH_URL(creds.azureTenant)}?${params}`);
+}
+
 // ── Admin Google OAuth ───────────────────────────────────────────────────────
 router.get('/google', (req, res) => {
   redirectToGoogle(req, res, { authType: 'admin' });
@@ -114,6 +183,211 @@ router.get('/google/superadmin', (req, res) => {
 // ── Delegate Google OAuth ────────────────────────────────────────────────────
 router.get('/google/delegate', (req, res) => {
   redirectToGoogle(req, res, { authType: 'delegate' });
+});
+
+// ── Google asset-import connectors (Drive, Photos) ───────────────────────────
+// Separate from login: request the service scope with offline access so we get a
+// long-lived refresh token. Always uses the SHARED platform app so the single
+// registered redirect URI (config.DOMAIN + this path) covers every tenant domain;
+// tenant identity travels in the signed state. Initiated on the tenant domain
+// (req.tenant resolved); the callback lands on config.DOMAIN.
+const GOOGLE_CONNECTORS = {
+  drive: {
+    buildUrl: buildDriveAuthUrl,
+    tokenKey: 'googleDriveRefreshToken', userKey: 'googleDriveUser', atKey: 'googleDriveConnectedAt',
+  },
+  photos: {
+    buildUrl: buildPhotosAuthUrl,
+    tokenKey: 'googlePhotosRefreshToken', userKey: 'googlePhotosUser', atKey: 'googlePhotosConnectedAt',
+  },
+};
+
+router.get('/google/:service(drive|photos)', (req, res) => {
+  const service = req.params.service;
+  const svc = GOOGLE_CONNECTORS[service];
+  if (!config.GGLCID || !config.GGLSEC) {
+    return res.redirect(`/admin/assets?${service}=error&msg=` + encodeURIComponent('Google app not configured'));
+  }
+  const callbackUrl = `${config.DOMAIN}/auth/google/${service}/callback`;
+  const state = buildState({
+    purpose: 'gconnect',
+    service,
+    returnDomain: req.hostname,
+    tenantDbName: req.tenant?.db || null,
+    callbackUrl,
+  });
+  res.redirect(svc.buildUrl({ clientId: config.GGLCID, redirectUri: callbackUrl, state }));
+});
+
+// Connector callback → exchange code, store encrypted refresh token on the tenant
+// doc, redirect back to the tenant's asset library.
+router.get('/google/:service(drive|photos)/callback', async (req, res) => {
+  const service = req.params.service;
+  const svc = GOOGLE_CONNECTORS[service];
+  let returnDomain = 'slab.madladslab.com';
+  try {
+    const { code, state, error, error_description } = req.query;
+    if (error) throw new Error(error_description || error);
+    if (!code || !state) throw new Error('Missing authorization code');
+
+    let ctx;
+    try { ctx = verifyState(state); }
+    catch { return res.redirect('/admin/login?error=oauth_expired'); }
+    if (ctx.purpose !== 'gconnect' || ctx.service !== service) throw new Error('State mismatch');
+    returnDomain = ctx.returnDomain || returnDomain;
+
+    const callbackUrl = ctx.callbackUrl || `${config.DOMAIN}/auth/google/${service}/callback`;
+    const { refreshToken, email } = await exchangeGoogleCode({
+      clientId: config.GGLCID, clientSecret: config.GGLSEC, code, redirectUri: callbackUrl,
+    });
+
+    // Store on the originating tenant (resolved by db name — the callback runs on
+    // config.DOMAIN, so req.tenant here is the platform, not the tenant).
+    if (!ctx.tenantDbName) throw new Error('Missing tenant context');
+    await getSlabDb().collection('tenants').updateOne(
+      { db: ctx.tenantDbName },
+      {
+        $set: {
+          [`secrets.${svc.tokenKey}`]: encrypt(refreshToken),
+          [`public.${svc.userKey}`]: email || null,
+          [`public.${svc.atKey}`]: new Date(),
+          updatedAt: new Date(),
+        },
+      }
+    );
+    bustTenantCache(returnDomain);
+    res.redirect(`https://${returnDomain}/admin/assets?${service}=connected`);
+  } catch (err) {
+    console.error(`[auth] Google ${service} connect failed:`, err.message);
+    res.redirect(`https://${returnDomain}/admin/assets?${service}=error&msg=` + encodeURIComponent(err.message));
+  }
+});
+
+// ── Microsoft OAuth entry points (mirror the Google flows above) ─────────────
+router.get('/microsoft', (req, res) => {
+  redirectToMicrosoft(req, res, { authType: 'admin' });
+});
+router.get('/microsoft/client', (req, res) => {
+  redirectToMicrosoft(req, res, { authType: 'client', linkClientId: req.query.cid || null });
+});
+router.get('/microsoft/superadmin', (req, res) => {
+  redirectToMicrosoft(req, res, { authType: 'superadmin' });
+});
+router.get('/microsoft/delegate', (req, res) => {
+  redirectToMicrosoft(req, res, { authType: 'delegate' });
+});
+
+// ── Central Microsoft OAuth redirect — always uses platform creds ────────────
+router.get('/microsoft/central', (req, res) => {
+  const azureTenant = config.MS_TENANT;
+  const callbackUrl = `${config.DOMAIN}/auth/microsoft/callback`;
+  const state = buildState({
+    authType: 'central',
+    returnDomain: 'slab.madladslab.com',
+    tenantDbName: null,
+    oauthSource: 'platform',
+    callbackUrl,
+    azureTenant,
+  });
+
+  const params = new URLSearchParams({
+    client_id: config.MSCID,
+    redirect_uri: callbackUrl,
+    response_type: 'code',
+    scope: MS_SCOPE,
+    response_mode: 'query',
+    prompt: 'select_account',
+    state,
+  });
+
+  res.redirect(`${MS_AUTH_URL(azureTenant)}?${params}`);
+});
+
+// ── Shared Microsoft callback — all MS flows return here ──────────────────────
+router.get('/microsoft/callback', async (req, res) => {
+  try {
+    // 1. Verify state token
+    const { code, state: stateToken } = req.query;
+    if (!code || !stateToken) return res.redirect('/admin/login?error=oauth');
+
+    let ctx;
+    try {
+      ctx = verifyState(stateToken);
+    } catch {
+      return res.redirect('/admin/login?error=oauth_expired');
+    }
+
+    const {
+      returnDomain,
+      tenantDbName,
+      oauthSource,
+      callbackUrl,
+      azureTenant = config.MS_TENANT,
+    } = ctx;
+
+    // 2. Resolve OAuth credentials for token exchange
+    let clientId, clientSecret;
+    if (oauthSource === 'tenant' && tenantDbName) {
+      const slab = getSlabDb();
+      const tenantDoc = await slab.collection('tenants').findOne({ db: tenantDbName });
+      clientId = tenantDoc?.public?.microsoftOAuthClientId;
+      if (tenantDoc?.secrets?.microsoftOAuthSecret) {
+        const { decrypt } = await import('../plugins/crypto.js');
+        clientSecret = decrypt(tenantDoc.secrets.microsoftOAuthSecret);
+      }
+    }
+    // Fallback to platform default
+    if (!clientId || !clientSecret) {
+      clientId = config.MSCID;
+      clientSecret = config.MSSEC;
+    }
+
+    // 3. Exchange code for tokens
+    const tokenRes = await fetch(MS_TOKEN_URL(azureTenant), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: callbackUrl,
+        grant_type: 'authorization_code',
+        scope: MS_SCOPE,
+      }),
+    });
+
+    const tokens = await tokenRes.json();
+    if (!tokens.access_token) {
+      console.error('[auth] MS token exchange failed:', tokens);
+      return res.redirect(`https://${returnDomain}/admin/login?error=oauth`);
+    }
+
+    // 4. Get Microsoft profile from Graph
+    const meRes = await fetch(MS_GRAPH_ME_URL, {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const me = await meRes.json();
+    // Work/school accounts expose the address in `mail`; some only have `userPrincipalName`.
+    const email = (me.mail || me.userPrincipalName || '').toLowerCase();
+    if (!email) {
+      console.error('[auth] MS profile missing email:', me);
+      return res.redirect(`https://${returnDomain}/admin/login?error=oauth`);
+    }
+
+    const profile = {
+      email,
+      id: me.id,
+      name: me.displayName || '',
+      given_name: me.givenName || '',
+      family_name: me.surname || '',
+    };
+
+    // 5. Hand off to the shared dispatch (find/create user + route by authType)
+    return dispatchAuth(req, res, ctx, profile, 'microsoft');
+  } catch (err) {
+    console.error('[auth] MS OAuth callback error:', err);
+    res.redirect('/admin/login?error=oauth');
+  }
 });
 
 // ── Shared callback — all OAuth flows return here ────────────────────────────
@@ -188,223 +462,244 @@ router.get('/google/callback', async (req, res) => {
       return res.redirect(`https://${returnDomain}/admin/login?error=oauth`);
     }
 
-    // 5. Find or create user — link Google to existing local account by email
-    const db = tenantDbName ? getTenantDb(tenantDbName) : getSlabDb();
-    const users = db.collection('users');
-    let user = await users.findOne({ email: profile.email });
-
-    if (user) {
-      // Link Google provider to existing user if not already linked
-      const updates = {};
-      if (!user.googleId) updates.googleId = profile.id;
-      if (!user.providers || !user.providers.includes('google')) {
-        updates.providers = [...(user.providers || []), 'google'].filter((v, i, a) => a.indexOf(v) === i);
-      }
-      if (!user.displayName && profile.name) updates.displayName = profile.name;
-      if (Object.keys(updates).length) {
-        await users.updateOne({ _id: user._id }, { $set: updates });
-        user = { ...user, ...updates };
-      }
-    } else {
-      const result = await users.insertOne({
-        googleId: profile.id,
-        providers: ['google'],
-        email: profile.email,
-        displayName: profile.name || `${profile.given_name || ''} ${profile.family_name || ''}`.trim(),
-        firstName: profile.given_name || '',
-        lastName: profile.family_name || '',
-        password: '',
-        isAdmin: false,
-        tutorials: { seen: {}, dismissed: {}, autoPlay: true, lastReset: null },
-        createdAt: new Date(),
-      });
-      user = await users.findOne({ _id: result.insertedId });
-    }
-
-    // ── OpsTrain portal flow ──────────────────────────────────────────────────
-    if (authType === 'opstrain') {
-      const token = jwt.sign(
-        {
-          email: profile.email,
-          displayName: profile.name || profile.given_name || profile.email,
-          firstName: profile.given_name || '',
-          lastName: profile.family_name || '',
-          googleId: profile.id,
-          isAdmin: isSuperAdminEmail(profile.email),
-          sso: true,
-        },
-        config.JWT_SECRET,
-        { expiresIn: '5m' }
-      );
-      const dest = new URL('https://ops-train.madladslab.com/auth/sso');
-      dest.searchParams.set('token', token);
-      return res.redirect(dest.toString());
-    }
-
-    // ── GraffitiTV portal flow ─────────────────────────────────────────────────
-    if (authType === 'graffititv') {
-      const token = jwt.sign(
-        {
-          email: profile.email,
-          displayName: profile.name || profile.given_name || profile.email,
-          googleId: profile.id,
-          sso: true,
-        },
-        config.JWT_SECRET,
-        { expiresIn: '5m' }
-      );
-      const dest = new URL('https://graffititv.madladslab.com/auth/sso');
-      dest.searchParams.set('token', token);
-      return res.redirect(dest.toString());
-    }
-
-    // ── Games portal flow — issue a one-time JWT back to games.madladslab.com ──
-    // Uses Google profile directly — games manages its own user DB independently
-    if (authType === 'games') {
-      const gamesToken = jwt.sign(
-        {
-          email: profile.email,
-          displayName: profile.name || profile.given_name || profile.email,
-          firstName: profile.given_name || '',
-          lastName: profile.family_name || '',
-          googleId: profile.id,
-          games: true,
-        },
-        config.JWT_SECRET,
-        { expiresIn: '5m' }
-      );
-      const dest = new URL('https://games.madladslab.com/auth/sso');
-      dest.searchParams.set('token', gamesToken);
-      return res.redirect(dest.toString());
-    }
-
-    // ── Left Field (pitch) portal flow — one-time JWT to pitch.madladslab.com ──
-    // Pitch manages its own per-user JSON store; we just vouch for the identity.
-    if (authType === 'pitch') {
-      const pitchToken = jwt.sign(
-        {
-          email: profile.email,
-          displayName: profile.name || profile.given_name || profile.email,
-          firstName: profile.given_name || '',
-          lastName: profile.family_name || '',
-          googleId: profile.id,
-          isSuperadmin: isSuperAdminEmail(profile.email),
-          pitch: true,
-        },
-        config.JWT_SECRET,
-        { expiresIn: '5m' }
-      );
-      const dest = new URL('https://pitch.madladslab.com/auth/sso');
-      dest.searchParams.set('token', pitchToken);
-      return res.redirect(dest.toString());
-    }
-
-    // ── Delegate portal flow — match Google email to a sales_delegates record ──
-    if (authType === 'delegate') {
-      const slab = getSlabDb();
-      const delegate = await slab.collection('sales_delegates').findOne({ email: profile.email.toLowerCase() });
-      if (!delegate) {
-        return res.redirect(`https://${returnDomain}/delegates/login?error=${encodeURIComponent('No delegate account found for ' + profile.email + '. Apply to join the program first.')}`);
-      }
-      if (delegate.status === 'suspended') {
-        return res.redirect(`https://${returnDomain}/delegates/login?error=${encodeURIComponent('Your delegate account is suspended.')}`);
-      }
-      // Link Google to the delegate record (idempotent)
-      const updates = { updatedAt: new Date() };
-      if (!delegate.googleId) updates.googleId = profile.id;
-      if (!delegate.providers || !delegate.providers.includes('google')) {
-        updates.providers = [...(delegate.providers || []), 'google'].filter((v, i, a) => a.indexOf(v) === i);
-      }
-      await slab.collection('sales_delegates').updateOne({ _id: delegate._id }, { $set: updates });
-
-      const { issueDelegateJWT } = await import('./delegates.js');
-      issueDelegateJWT(delegate, res);
-      return res.redirect(`https://${returnDomain}/delegates/panel`);
-    }
-
-    // ── Central flow — find user's slabs, show picker or redirect ──
-    if (authType === 'central') {
-      return resolveSlabsAndRedirect(req, res, profile);
-    }
-
-    // ── Superadmin flow — issue a normal admin JWT, superadmin derived from email at request time ──
-    if (authType === 'superadmin') {
-      if (!isSuperAdminEmail(user.email)) {
-        return res.redirect(`https://${returnDomain}/superadmin/login?error=unauthorized`);
-      }
-      user.isAdmin = true;
-      issueAdminJWT(user, res, tenantDbName, returnDomain);
-      return res.redirect(`https://${returnDomain}/superadmin`);
-    }
-
-    // ── Client flow ──
-    if (authType === 'client') {
-      const updates = {};
-      if (!user.role) updates.role = 'client';
-
-      if (linkClientId && !user.clientId) {
-        try {
-          const client = await db.collection('clients').findOne({ _id: new ObjectId(linkClientId) });
-          if (client) {
-            updates.clientId = linkClientId;
-            await db.collection('clients').updateOne(
-              { _id: new ObjectId(linkClientId) },
-              { $set: { userId: user._id.toString(), updatedAt: new Date() } }
-            );
-          }
-        } catch {}
-      }
-
-      if (!updates.clientId && !user.clientId) {
-        const clientByEmail = await db.collection('clients').findOne({ email: user.email.toLowerCase() });
-        if (clientByEmail) {
-          updates.clientId = clientByEmail._id.toString();
-          await db.collection('clients').updateOne(
-            { _id: clientByEmail._id },
-            { $set: { userId: user._id.toString(), updatedAt: new Date() } }
-          );
-        }
-      }
-
-      if (Object.keys(updates).length) {
-        await users.updateOne({ _id: user._id }, { $set: updates });
-      }
-
-      issuePortalJWT(user, res);
-      return res.redirect(`https://${returnDomain}/onboard/account-linked`);
-    }
-
-    // ── Admin flow ──
-    const isSuperUser = isSuperAdminEmail(user.email);
-
-    if (!user.isAdmin && !isSuperUser && !user.isOwner) {
-      return res.redirect(`https://${returnDomain}/admin/login?error=unauthorized`);
-    }
-
-    // Superadmin or owner supersedes — grant admin access
-    if ((isSuperUser || user.isOwner) && !user.isAdmin) {
-      user.isAdmin = true;
-    }
-
-    // Custom domains can't receive cookies from slab.madladslab.com callback.
-    // Redirect with a one-time token — requireAdmin will exchange it for a cookie on the tenant domain.
-    // madladslab.com (apex) + *.madladslab.com all share the .madladslab.com cookie, so they take the direct path.
-    const isPlatform = returnDomain && (returnDomain === 'madladslab.com' || returnDomain.endsWith('.madladslab.com'));
-    const isCustom = returnDomain && !isPlatform && returnDomain !== 'localhost';
-    if (isCustom) {
-      const { createLoginToken } = await import('../middleware/jwtAuth.js');
-      const oneTimeToken = createLoginToken(user, tenantDbName, '2m');
-
-      return res.redirect(`https://${returnDomain}/admin?token=${oneTimeToken}`);
-    }
-
-    issueAdminJWT(user, res, tenantDbName, returnDomain);
-    res.redirect(`https://${returnDomain}/admin`);
+    // 5. Hand off to the shared dispatch (find/create user + route by authType)
+    return dispatchAuth(req, res, ctx, profile, 'google');
   } catch (err) {
     console.error('[auth] OAuth callback error:', err);
     res.redirect('/admin/login?error=oauth');
   }
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SHARED DISPATCH — provider-agnostic (Google or Microsoft). Given a normalized
+// profile { email, id, name, given_name, family_name } and the verified state
+// ctx, find/create the user, link the provider, and route by authType.
+// ══════════════════════════════════════════════════════════════════════════════
+async function dispatchAuth(req, res, ctx, profile, provider = 'google') {
+  const {
+    authType = 'admin',
+    returnDomain,
+    tenantDbName,
+    linkClientId,
+  } = ctx;
+
+  // Provider-specific identity field on the user doc (googleId | microsoftId) and
+  // the identity claims we forward to downstream portals in their SSO tokens.
+  const idField = provider === 'microsoft' ? 'microsoftId' : 'googleId';
+  const idClaims = { providerId: profile.id, authProvider: provider, [idField]: profile.id };
+
+  // Find or create user — link this provider to an existing local account by email
+  const db = tenantDbName ? getTenantDb(tenantDbName) : getSlabDb();
+  const users = db.collection('users');
+  let user = await users.findOne({ email: profile.email });
+
+  if (user) {
+    const updates = {};
+    if (!user[idField]) updates[idField] = profile.id;
+    if (!user.providers || !user.providers.includes(provider)) {
+      updates.providers = [...(user.providers || []), provider].filter((v, i, a) => a.indexOf(v) === i);
+    }
+    if (!user.displayName && profile.name) updates.displayName = profile.name;
+    if (Object.keys(updates).length) {
+      await users.updateOne({ _id: user._id }, { $set: updates });
+      user = { ...user, ...updates };
+    }
+  } else {
+    const result = await users.insertOne({
+      [idField]: profile.id,
+      providers: [provider],
+      email: profile.email,
+      displayName: profile.name || `${profile.given_name || ''} ${profile.family_name || ''}`.trim(),
+      firstName: profile.given_name || '',
+      lastName: profile.family_name || '',
+      password: '',
+      isAdmin: false,
+      tutorials: { seen: {}, dismissed: {}, autoPlay: true, lastReset: null },
+      createdAt: new Date(),
+    });
+    user = await users.findOne({ _id: result.insertedId });
+  }
+
+  // ── OpsTrain portal flow ──────────────────────────────────────────────────
+  if (authType === 'opstrain') {
+    const token = jwt.sign(
+      {
+        email: profile.email,
+        displayName: profile.name || profile.given_name || profile.email,
+        firstName: profile.given_name || '',
+        lastName: profile.family_name || '',
+        ...idClaims,
+        isAdmin: isSuperAdminEmail(profile.email),
+        sso: true,
+      },
+      config.JWT_SECRET,
+      { expiresIn: '5m' }
+    );
+    const dest = new URL('https://ops-train.madladslab.com/auth/sso');
+    dest.searchParams.set('token', token);
+    return res.redirect(dest.toString());
+  }
+
+  // ── GraffitiTV portal flow ─────────────────────────────────────────────────
+  if (authType === 'graffititv') {
+    const token = jwt.sign(
+      {
+        email: profile.email,
+        displayName: profile.name || profile.given_name || profile.email,
+        ...idClaims,
+        sso: true,
+      },
+      config.JWT_SECRET,
+      { expiresIn: '5m' }
+    );
+    const dest = new URL('https://graffititv.madladslab.com/auth/sso');
+    dest.searchParams.set('token', token);
+    return res.redirect(dest.toString());
+  }
+
+  // ── Games portal flow — issue a one-time JWT back to games.madladslab.com ──
+  // Uses the profile directly — games manages its own user DB independently
+  if (authType === 'games') {
+    const gamesToken = jwt.sign(
+      {
+        email: profile.email,
+        displayName: profile.name || profile.given_name || profile.email,
+        firstName: profile.given_name || '',
+        lastName: profile.family_name || '',
+        ...idClaims,
+        games: true,
+      },
+      config.JWT_SECRET,
+      { expiresIn: '5m' }
+    );
+    const dest = new URL('https://games.madladslab.com/auth/sso');
+    dest.searchParams.set('token', gamesToken);
+    return res.redirect(dest.toString());
+  }
+
+  // ── Left Field (pitch) portal flow — one-time JWT to pitch.madladslab.com ──
+  // Pitch manages its own per-user JSON store; we just vouch for the identity.
+  if (authType === 'pitch') {
+    const pitchToken = jwt.sign(
+      {
+        email: profile.email,
+        displayName: profile.name || profile.given_name || profile.email,
+        firstName: profile.given_name || '',
+        lastName: profile.family_name || '',
+        ...idClaims,
+        isSuperadmin: isSuperAdminEmail(profile.email),
+        pitch: true,
+      },
+      config.JWT_SECRET,
+      { expiresIn: '5m' }
+    );
+    const dest = new URL('https://pitch.madladslab.com/auth/sso');
+    dest.searchParams.set('token', pitchToken);
+    return res.redirect(dest.toString());
+  }
+
+  // ── Delegate portal flow — match email to a sales_delegates record ──
+  if (authType === 'delegate') {
+    const slab = getSlabDb();
+    const delegate = await slab.collection('sales_delegates').findOne({ email: profile.email.toLowerCase() });
+    if (!delegate) {
+      return res.redirect(`https://${returnDomain}/delegates/login?error=${encodeURIComponent('No delegate account found for ' + profile.email + '. Apply to join the program first.')}`);
+    }
+    if (delegate.status === 'suspended') {
+      return res.redirect(`https://${returnDomain}/delegates/login?error=${encodeURIComponent('Your delegate account is suspended.')}`);
+    }
+    // Link the provider to the delegate record (idempotent)
+    const updates = { updatedAt: new Date() };
+    if (!delegate[idField]) updates[idField] = profile.id;
+    if (!delegate.providers || !delegate.providers.includes(provider)) {
+      updates.providers = [...(delegate.providers || []), provider].filter((v, i, a) => a.indexOf(v) === i);
+    }
+    await slab.collection('sales_delegates').updateOne({ _id: delegate._id }, { $set: updates });
+
+    const { issueDelegateJWT } = await import('./delegates.js');
+    issueDelegateJWT(delegate, res);
+    return res.redirect(`https://${returnDomain}/delegates/panel`);
+  }
+
+  // ── Central flow — find user's slabs, show picker or redirect ──
+  if (authType === 'central') {
+    return resolveSlabsAndRedirect(req, res, profile, provider);
+  }
+
+  // ── Superadmin flow — issue a normal admin JWT, superadmin derived from email at request time ──
+  if (authType === 'superadmin') {
+    if (!isSuperAdminEmail(user.email)) {
+      return res.redirect(`https://${returnDomain}/superadmin/login?error=unauthorized`);
+    }
+    user.isAdmin = true;
+    issueAdminJWT(user, res, tenantDbName, returnDomain);
+    return res.redirect(`https://${returnDomain}/superadmin`);
+  }
+
+  // ── Client flow ──
+  if (authType === 'client') {
+    const updates = {};
+    if (!user.role) updates.role = 'client';
+
+    if (linkClientId && !user.clientId) {
+      try {
+        const client = await db.collection('clients').findOne({ _id: new ObjectId(linkClientId) });
+        if (client) {
+          updates.clientId = linkClientId;
+          await db.collection('clients').updateOne(
+            { _id: new ObjectId(linkClientId) },
+            { $set: { userId: user._id.toString(), updatedAt: new Date() } }
+          );
+        }
+      } catch {}
+    }
+
+    if (!updates.clientId && !user.clientId) {
+      const clientByEmail = await db.collection('clients').findOne({ email: user.email.toLowerCase() });
+      if (clientByEmail) {
+        updates.clientId = clientByEmail._id.toString();
+        await db.collection('clients').updateOne(
+          { _id: clientByEmail._id },
+          { $set: { userId: user._id.toString(), updatedAt: new Date() } }
+        );
+      }
+    }
+
+    if (Object.keys(updates).length) {
+      await users.updateOne({ _id: user._id }, { $set: updates });
+    }
+
+    issuePortalJWT(user, res);
+    return res.redirect(`https://${returnDomain}/onboard/account-linked`);
+  }
+
+  // ── Admin flow ──
+  const isSuperUser = isSuperAdminEmail(user.email);
+
+  if (!user.isAdmin && !isSuperUser && !user.isOwner) {
+    return res.redirect(`https://${returnDomain}/admin/login?error=unauthorized`);
+  }
+
+  // Superadmin or owner supersedes — grant admin access
+  if ((isSuperUser || user.isOwner) && !user.isAdmin) {
+    user.isAdmin = true;
+  }
+
+  // Custom domains can't receive cookies from slab.madladslab.com callback.
+  // Redirect with a one-time token — requireAdmin will exchange it for a cookie on the tenant domain.
+  // madladslab.com (apex) + *.madladslab.com all share the .madladslab.com cookie, so they take the direct path.
+  const isPlatform = returnDomain && (returnDomain === 'madladslab.com' || returnDomain.endsWith('.madladslab.com'));
+  const isCustom = returnDomain && !isPlatform && returnDomain !== 'localhost';
+  if (isCustom) {
+    const { createLoginToken } = await import('../middleware/jwtAuth.js');
+    const oneTimeToken = createLoginToken(user, tenantDbName, '2m');
+
+    return res.redirect(`https://${returnDomain}/admin?token=${oneTimeToken}`);
+  }
+
+  issueAdminJWT(user, res, tenantDbName, returnDomain);
+  res.redirect(`https://${returnDomain}/admin`);
+}
 
 // ── Google One Tap / Sign In With Google (credential response) ──────────────
 router.post('/google/one-tap', async (req, res) => {
@@ -522,27 +817,30 @@ async function findSlabsForEmail(email) {
  * After auth, resolve user into a single tenant or show the picker.
  * Handles: 0 slabs (no account), 1 slab (auto-redirect), N slabs (picker).
  */
-async function resolveSlabsAndRedirect(req, res, profile) {
+async function resolveSlabsAndRedirect(req, res, profile, provider = 'google') {
   const email = profile.email.toLowerCase();
   const slabs = await findSlabsForEmail(email);
 
   if (slabs.length === 0) {
     return res.render('auth/central-login', {
       oauthCid: config.GGLCID || '',
-      errorMsg: 'No workspace found for this Google account. Contact your administrator or sign up.',
+      msCid: config.MSCID || '',
+      errorMsg: 'No workspace found for this account. Contact your administrator or sign up.',
     });
   }
 
   if (slabs.length === 1) {
     // Single slab — go straight there
-    return redirectToSlab(res, slabs[0], profile);
+    return redirectToSlab(res, slabs[0], profile, provider);
   }
 
   // Multiple slabs — show picker
-  // Create a short-lived picker token carrying the Google profile
+  // Create a short-lived picker token carrying the profile + provider
   const pickerToken = jwt.sign({
     email: profile.email,
+    providerId: profile.id || profile.sub,
     googleId: profile.id || profile.sub,
+    provider,
     displayName: profile.name || '',
     picker: true,
   }, config.JWT_SECRET, { expiresIn: '10m' });
@@ -553,7 +851,7 @@ async function resolveSlabsAndRedirect(req, res, profile) {
 /**
  * Issue a one-time token for a specific tenant and redirect to their admin.
  */
-async function redirectToSlab(res, slab, profile) {
+async function redirectToSlab(res, slab, profile, provider = 'google') {
   const db = getTenantDb(slab.tenantDb);
   let user = await db.collection('users').findOne({ email: profile.email || profile.email?.toLowerCase() });
 
@@ -562,12 +860,13 @@ async function redirectToSlab(res, slab, profile) {
     return res.redirect('/auth/login?error=not_found');
   }
 
-  // Ensure Google provider is linked
+  // Ensure the sign-in provider is linked
+  const idField = provider === 'microsoft' ? 'microsoftId' : 'googleId';
   const updates = {};
   const gid = profile.id || profile.sub;
-  if (gid && !user.googleId) updates.googleId = gid;
-  if (!user.providers?.includes('google')) {
-    updates.providers = [...(user.providers || []), 'google'].filter((v, i, a) => a.indexOf(v) === i);
+  if (gid && !user[idField]) updates[idField] = gid;
+  if (!user.providers?.includes(provider)) {
+    updates.providers = [...(user.providers || []), provider].filter((v, i, a) => a.indexOf(v) === i);
   }
   if (!user.displayName && profile.name) updates.displayName = profile.name;
   if (Object.keys(updates).length) {
@@ -619,7 +918,7 @@ router.get('/login', (req, res) => {
   if (error === 'not_found') errorMsg = 'Account not found. Please try again.';
   if (error === 'oauth') errorMsg = 'Google sign-in failed. Please try again.';
   if (error === 'expired') errorMsg = 'Session expired. Please sign in again.';
-  res.render('auth/central-login', { oauthCid: config.GGLCID || '', errorMsg });
+  res.render('auth/central-login', { oauthCid: config.GGLCID || '', msCid: config.MSCID || '', errorMsg });
 });
 
 // ── Central email/password login — find slab by email, verify, redirect ─────
@@ -840,10 +1139,10 @@ router.get('/enter-slab', async (req, res) => {
 
     await redirectToSlab(res, chosen, {
       email: payload.email,
-      id: payload.googleId,
-      sub: payload.googleId,
+      id: payload.providerId || payload.googleId,
+      sub: payload.providerId || payload.googleId,
       name: payload.displayName,
-    });
+    }, payload.provider || 'google');
   } catch {
     res.redirect('/auth/login?error=expired');
   }

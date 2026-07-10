@@ -44,10 +44,24 @@ export const config = {
   // Brave Search — shared across tenants
   SEARCH_API_KEY: process.env.SEARCH_API_KEY,
 
+  // Google Fonts (Web Fonts Developer API) — powers the full-catalog font picker
+  GOOGLE_FONTS_API_KEY: process.env.GOOGLE_FONTS_API_KEY,
+
   // Google OAuth — shared for superadmin + tenant admin login
   GGLCID: process.env.GGLCID,
   GGLSEC: process.env.GGLSEC,
   DOMAIN: process.env.DOMAIN || 'https://slab.madladslab.com',
+
+  // Microsoft OAuth (Azure AD / Entra ID) — platform-wide sign-in.
+  // Register an app at https://portal.azure.com → App registrations. Add the
+  // redirect URI `${DOMAIN}/auth/microsoft/callback` (Web platform). Client secret
+  // under Certificates & secrets. MS_TENANT: 'common' = any Microsoft account
+  // (work/school + personal), 'organizations' = work/school only, or a specific
+  // Directory (tenant) ID to lock to one org. Tenants can override with their own
+  // Azure app under /admin/settings (white glove).
+  MSCID: process.env.MSCID,
+  MSSEC: process.env.MSSEC,
+  MS_TENANT: process.env.MS_TENANT || 'common',
 
   // Master encryption key for tenant secrets
   MASTER_KEY: process.env.MASTER_KEY,

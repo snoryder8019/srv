@@ -71,14 +71,17 @@ router.get('/', async (req, res) => {
     filter.$or = [{ name: rx }, { email: rx }, { company: rx }, { message: rx }];
   }
 
-  const [items, counts] = await Promise.all([
+  const [items, counts, honeypot] = await Promise.all([
     db.collection('inquiries').find(filter).sort({ createdAt: -1 }).limit(200).toArray(),
     db.collection('inquiries').aggregate([
       { $group: { _id: { $ifNull: ['$status', 'new'] }, n: { $sum: 1 } } },
     ]).toArray(),
+    // Bots caught by the honeypot trap — a subset of spam, surfaced separately
+    // so the tenant can see the trap is working (and spot false-positives).
+    db.collection('inquiries').countDocuments({ 'spamFiltered.type': 'honeypot' }),
   ]);
 
-  const tally = { new: 0, read: 0, replied: 0, converted: 0, archived: 0, spam: 0, total: 0 };
+  const tally = { new: 0, read: 0, replied: 0, converted: 0, archived: 0, spam: 0, honeypot, total: 0 };
   for (const c of counts) {
     const k = c._id || 'new';
     if (tally[k] !== undefined) tally[k] = c.n;
@@ -240,7 +243,8 @@ router.get('/global-spam/data', async (req, res) => {
 
 router.post('/global-spam/add', express.json(), async (req, res) => {
   if (!req.isSuperAdmin) return res.status(403).json({ error: 'Superadmin only' });
-  const type = req.body?.type === 'subject' ? 'subject' : 'email';
+  const t = req.body?.type;
+  const type = t === 'subject' ? 'subject' : t === 'keyword' ? 'keyword' : 'email';
   const key = (req.body?.key || '').trim();
   if (!key) return res.status(400).json({ error: 'key required' });
   if (type === 'email' && !key.includes('@')) return res.status(400).json({ error: 'valid email required' });
@@ -254,7 +258,8 @@ router.post('/global-spam/add', express.json(), async (req, res) => {
 
 router.post('/global-spam/remove', express.json(), async (req, res) => {
   if (!req.isSuperAdmin) return res.status(403).json({ error: 'Superadmin only' });
-  const type = req.body?.type === 'subject' ? 'subject' : 'email';
+  const t = req.body?.type;
+  const type = t === 'subject' ? 'subject' : t === 'keyword' ? 'keyword' : 'email';
   const key = (req.body?.key || '').trim();
   if (!key) return res.status(400).json({ error: 'key required' });
   try {

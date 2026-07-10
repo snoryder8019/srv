@@ -379,13 +379,15 @@ const CLIENTS = <%- JSON.stringify(clients.map(c=>({id:String(c._id), name:c.nam
 function wordCount(t) { return (t||'').trim().split(/\s+/).filter(Boolean).length; }
 
 // ── Voice Recording (hold to record) ─────────────────────────────────────────
-let recFinalText = ''; // accumulated confirmed words — never wiped on restart
-let recStopping  = false;
+let recFinalText     = ''; // accumulated confirmed words — never wiped on restart
+let recStopping      = false;
+let recFinalizing    = false; // released, waiting for the engine to flush its final buffer
+let recFinalizeTimer = null;  // safety net if onend never fires
 
 function startRec(e) {
   // Prevent hold triggering twice on touch+mouse devices
   if (e && e.pointerType === 'mouse' && e.buttons !== 1) return;
-  if (recognition) return; // already running
+  if (recognition || recFinalizing) return; // already running or still flushing
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { alert('Speech recognition needs Chrome or Edge. You can still type your note directly.'); return; }
@@ -393,37 +395,44 @@ function startRec(e) {
   // Seed once from whatever is already typed
   if (!recFinalText) recFinalText = document.getElementById('recText').value.trimEnd();
   if (recFinalText) recFinalText += ' ';
-  recStopping = false;
+  recStopping   = false;
+  recFinalizing = false;
 
   function attach() {
     const r = new SR();
     r.continuous     = true;
-    r.interimResults = false; // finals only — no rolling-window duplication
+    r.interimResults = true; // stream live so the field updates as you speak
     r.lang           = 'en-US';
 
     r.onresult = e => {
+      // Confirmed words accumulate into recFinalText exactly once; the still-forming
+      // phrase is shown as transient interim text and never stored (no duplication).
+      let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) {
-          recFinalText += e.results[i][0].transcript.trim() + ' ';
-        }
+        const res = e.results[i];
+        if (res.isFinal) recFinalText += res[0].transcript.trim() + ' ';
+        else             interim      += res[0].transcript;
       }
-      document.getElementById('recText').value = recFinalText;
+      document.getElementById('recText').value = (recFinalText + interim).trimStart();
     };
 
     r.onerror = e => {
       if (e.error === 'not-allowed') {
         recStopping = true;
-        stopRec();
         alert('Microphone blocked — allow mic access in your browser settings then try again.');
+        clearRec();
       }
-      // other errors: let onend restart if still held
+      // other errors: let onend restart if still held, or finalize if released
     };
 
     r.onend = () => {
-      // Only auto-restart if the user is still holding the button
+      // Auto-end mid-hold (e.g. after silence) — restart to keep listening
       if (!recStopping) {
         try { recognition = attach(); recognition.start(); } catch(_) {}
+        return;
       }
+      // User released: this is the true end of the buffer — finalize + save now
+      if (recFinalizing) finalizeRec();
     };
 
     return r;
@@ -447,37 +456,68 @@ function startRec(e) {
   }, 1000);
 }
 
+// Button released — but the engine is still async-flushing its final buffer.
+// Don't read the transcript yet: spin the wheel and let onend (or the timeout
+// safety net) call finalizeRec() once the last words have actually landed.
 function stopRec() {
-  if (!recognition && !recTimer) return; // nothing running
-  recStopping = true;
-  try { recognition && recognition.stop(); } catch(_) {}
-  recognition = null;
+  if (recStopping || recFinalizing) return; // already stopping / finalizing
+  if (!recognition && !recTimer) return;    // nothing running
+  recStopping   = true;
+  recFinalizing = true;
   clearInterval(recTimer);
   recTimer = null;
+
   const btn = document.getElementById('recBtn');
+  btn.className = currentId ? 'rec-btn append' : 'rec-btn idle'; // drop red pulse
+  if (window.SlabLoader) SlabLoader.button(btn, true, 'Transcribing…');
+
+  try { recognition && recognition.stop(); }
+  catch(_) { finalizeRec(); return; }
+
+  // Safety net: if onend never fires, finalize anyway.
+  recFinalizeTimer = setTimeout(() => { if (recFinalizing) finalizeRec(); }, 2000);
+}
+
+// Single place that captures the transcript, restores the button and saves.
+function finalizeRec() {
+  if (!recFinalizing) return; // guard against onend + timeout double-firing
+  recFinalizing = false;
+  clearTimeout(recFinalizeTimer);
+  recFinalizeTimer = null;
+  try { recognition && recognition.stop(); } catch(_) {}
+  recognition = null;
+
+  const btn = document.getElementById('recBtn');
+  if (window.SlabLoader) SlabLoader.button(btn, false);
   btn.className   = currentId ? 'rec-btn append' : 'rec-btn idle';
   btn.textContent = currentId ? '🎙 Hold to Add More' : '🎙 Hold to Record';
-  const secs = recSecs;
+
   recSecs = 0;
   const transcript = recFinalText.trim();
-  document.getElementById('recText').style.display = 'none';
+  const ta = document.getElementById('recText');
+  ta.value = '';               // clear so the next hold doesn't re-seed saved text
+  ta.style.display = 'none';
   document.getElementById('recTimer').textContent = '';
   recFinalText = '';
   if (transcript) saveFromTranscript(transcript);
 }
 
 function clearRec() {
-  recStopping = true;
+  recStopping   = true;
+  recFinalizing = false;
+  clearTimeout(recFinalizeTimer);
+  recFinalizeTimer = null;
   try { recognition && recognition.stop(); } catch(_) {}
   recognition = null;
   clearInterval(recTimer);
   recTimer = null;
   recSecs = 0;
   recFinalText = '';
+  const btn = document.getElementById('recBtn');
+  if (window.SlabLoader) SlabLoader.button(btn, false);
   document.getElementById('recText').value = '';
   document.getElementById('recText').style.display = 'none';
   document.getElementById('recTimer').textContent = '';
-  const btn = document.getElementById('recBtn');
   btn.className   = 'rec-btn idle';
   btn.textContent = '🎙 Hold to Record';
 }
@@ -788,41 +828,53 @@ function renderDistExtras() {
 }
 
 async function runDistribute() {
+  const status = document.getElementById('distStatus');
   if (!currentId || !selectedTargets.size) {
-    document.getElementById('distStatus').textContent = 'Select at least one destination above.';
+    status.textContent = 'Select at least one destination above.';
     return;
   }
-  await saveNote();
-  const btn = document.getElementById('distBtn');
-  btn.disabled = true; btn.textContent = 'Sending…';
-  document.getElementById('distStatus').textContent = `Processing ${selectedTargets.size} destination(s)…`;
-  document.getElementById('distResults').innerHTML  = '';
 
+  // Build + validate targets BEFORE disabling the button, so a validation
+  // failure can never leave "Sending…" stuck and un-clickable.
+  let validationError = '';
   const targets = [...selectedTargets].map(t => {
     const obj = { section: t };
-    if (t === 'blog')   obj.category    = document.getElementById('distBlogCategory')?.value?.trim() || '';
+    if (t === 'blog')   obj.category     = document.getElementById('distBlogCategory')?.value?.trim() || '';
     if (t === 'email')  obj.targetFunnel = document.getElementById('distEmailFunnel')?.value || 'all';
     if (t === 'web') {
       const key = document.getElementById('distWebKey')?.value?.trim();
-      if (!key) { document.getElementById('distStatus').textContent = '⚠ Web Copy requires a copy key.'; return null; }
+      if (!key) { validationError = '⚠ Web Copy requires a copy key.'; return null; }
       obj.sectionKey = key;
     }
     if (t === 'client_note') {
       const cid = document.getElementById('distClientId')?.value;
-      if (!cid) { document.getElementById('distStatus').textContent = '⚠ Client Note requires a client to be selected.'; return null; }
+      if (!cid) { validationError = '⚠ Client Note requires a client to be selected.'; return null; }
       obj.clientId = cid;
     }
     if (t === 'ticket') obj.priority = document.getElementById('distPriority')?.value || 'medium';
     return obj;
   }).filter(Boolean);
 
-  if (!targets.length) return;
+  // Stop on any validation problem — don't silently drop a chosen destination.
+  if (validationError) { status.textContent = validationError; return; }
+  if (!targets.length) { status.textContent = 'Select at least one destination above.'; return; }
 
-  const r = await api('POST', `/admin/notes/${currentId}/distribute`, { targets });
-  btn.disabled = false; btn.textContent = 'Send Selected';
+  const btn = document.getElementById('distBtn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  status.textContent = `Processing ${targets.length} destination(s)…`;
+  document.getElementById('distResults').innerHTML = '';
 
-  if (r.results) {
-    document.getElementById('distStatus').textContent = '';
+  let r;
+  try {
+    await saveNote();
+    r = await api('POST', `/admin/notes/${currentId}/distribute`, { targets });
+  } finally {
+    // Always restore the button, even if saveNote/api throws.
+    btn.disabled = false; btn.textContent = 'Send Selected';
+  }
+
+  if (r && r.results) {
+    status.textContent = '';
     const res = document.getElementById('distResults');
     r.results.forEach(item => {
       const d = document.createElement('div');
@@ -830,8 +882,8 @@ async function runDistribute() {
       d.textContent = item.ok ? `✓ ${item.target}: ${item.detail}` : `✗ ${item.target}: ${item.error}`;
       res.appendChild(d);
     });
-  } else if (r.error) {
-    document.getElementById('distStatus').textContent = '⚠ ' + r.error;
+  } else {
+    status.textContent = '⚠ ' + ((r && r.error) || 'Distribute failed — please try again.');
   }
 }
 

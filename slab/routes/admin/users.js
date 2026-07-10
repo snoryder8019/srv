@@ -1,6 +1,7 @@
 import express from 'express';
 import { ObjectId } from 'mongodb';
 import { getDb } from '../../plugins/mongo.js';
+import { permissionCatalog, permissionKeys } from '../../plugins/featureRegistry.js';
 
 const router = express.Router();
 
@@ -15,6 +16,7 @@ router.get('/', async (req, res) => {
       user: req.adminUser,
       users,
       clients,
+      permCatalog: permissionCatalog(),
       success: req.query.success || null,
       error: req.query.error || null,
     });
@@ -36,12 +38,12 @@ router.post('/:id/role', async (req, res) => {
 
     const updates = { role };
 
-    // Grant or revoke admin access
-    if (role === 'admin') {
-      updates.isAdmin = true;
-    } else {
-      updates.isAdmin = false;
-    }
+    // Admin-panel access is gated purely on isAdmin. A collaborator is a
+    // *restricted* admin — they work inside the panel but are scoped down by
+    // their `permissions` array (see plugins/featureRegistry.js). Only clients
+    // are portal-only. Leaving collaborators at isAdmin:false locked them out
+    // entirely, which contradicts assigning them feature permissions.
+    updates.isAdmin = role === 'admin' || role === 'collaborator';
 
     await db.collection('users').updateOne({ _id: userId }, { $set: updates });
     res.redirect('/admin/users?success=Role updated');
@@ -90,7 +92,10 @@ router.post('/:id/link-client', async (req, res) => {
 
 // ── Update permissions ────────────────────────────────────────────────────────
 router.post('/:id/permissions', async (req, res) => {
-  const perms = Array.isArray(req.body.permissions) ? req.body.permissions : (req.body.permissions ? [req.body.permissions] : []);
+  const raw = Array.isArray(req.body.permissions) ? req.body.permissions : (req.body.permissions ? [req.body.permissions] : []);
+  // Keep only known feature keys so a stale/tampered form can't store junk.
+  const valid = new Set(permissionKeys());
+  const perms = [...new Set(raw.filter((p) => valid.has(p)))];
 
   try {
     const db = req.db;

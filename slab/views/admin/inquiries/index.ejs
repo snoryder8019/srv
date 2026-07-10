@@ -137,6 +137,12 @@
   <% } %>
 
   <% if (status === 'spam') { %>
+  <% if (tally.honeypot) { %>
+  <div class="text-slate" style="font-size:0.74rem;margin-bottom:10px;padding:8px 10px;background:rgba(220,38,38,0.06);border-radius:6px;">
+    🕳️ <strong><%= tally.honeypot %></strong> caught by the bot honeypot. These are held here (not deleted) in case a real
+    person was ever snagged by autofill — restore any genuine inquiry from its detail page.
+  </div>
+  <% } %>
   <div class="inq-block" id="inqBlocklist">
     <h3>Blocked Senders</h3>
     <div class="text-slate" style="font-size:0.74rem;margin-bottom:8px;">
@@ -156,14 +162,17 @@
       Entries here apply to <strong>every</strong> tenant. Matching submissions are filed straight into each tenant's
       Spam tab (not dropped) — tenants delete their own. A sender or message is auto-promoted here once
       <strong><%= typeof globalSpamThreshold !== 'undefined' ? globalSpamThreshold : 3 %></strong> different tenants flag it; anything you flag is added instantly.
+      <strong>Keyword</strong> entries (plus a built-in list — JACKPOT, casino, viagra, etc.) fire when the term
+      appears anywhere in a submission's subject or body, regardless of sender.
     </div>
     <div id="inqGlobalRows" class="text-slate" style="font-size:0.78rem;">Loading…</div>
     <div class="add">
       <select id="inqGlobalType" style="padding:6px 8px;border:1px solid var(--border);background:var(--ivory);font-size:0.78rem;border-radius:2px;">
         <option value="email">Email</option>
         <option value="subject">Subject / text</option>
+        <option value="keyword">Keyword (scans subject + body)</option>
       </select>
-      <input type="text" id="inqGlobalInput" placeholder="email@example.com or spam phrase">
+      <input type="text" id="inqGlobalInput" placeholder="email, spam phrase, or keyword e.g. JACKPOT">
       <button type="button" id="inqGlobalAdd" class="filter-btn">Add global</button>
     </div>
   </div>
@@ -298,7 +307,7 @@
       globalRows.innerHTML = j.list.map(g => {
         const d = new Date(g.updatedAt || g.createdAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
         const src = g.source === 'superadmin' ? 'added by superadmin' : (g.reportCount || 0) + ' tenants flagged';
-        const label = g.type === 'subject' ? '“' + g.key + '”' : g.key;
+        const label = (g.type === 'subject' || g.type === 'keyword') ? '“' + g.key + '”' : g.key;
         return '<div class="row">' +
           '<div><strong>' + label + '</strong> <span class="meta">[' + g.type + ']</span>' +
             '<div class="meta">' + src + ' · ' + d + '</div>' +

@@ -73,8 +73,47 @@ export function stripCJK(s) {
     .replace(/\s{2,}/g, ' ').replace(/\s+([,.!?;:])/g, '$1').trim();
 }
 
+// ── Transient-failure retry (2026-07-02) ─────────────────────────────────────
+// The Ollama/SD cluster fronts requests through a load balancer that can briefly
+// 502/503/504 (a backend cold-load, an instance restart) or drop the socket
+// mid-flight ("wsarecv: connection forcibly closed"). Those are transient and
+// clear within a second or two, so we retry them ONCE with a short backoff.
+// We do NOT retry genuine slow-inference timeouts (AbortSignal.timeout) — the
+// backend was simply too slow, and a retry would just burn the caller's budget
+// again. We also never retry 4xx (401 bad key, 400 bad request) — those are ours.
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
+
+function isTransientNetErr(e) {
+  const m = String(e?.message || e || '');
+  return /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|socket hang up|fetch failed|forcibly closed|wsarecv/i.test(m);
+}
+
+// makeInit() must return a FRESH fetch init each call — an AbortSignal.timeout()
+// signal is single-use and can't be shared across attempts. Returns the ok Response.
+async function fetchOkWithRetry(url, makeInit, { tries = 2, backoffMs = 800, label = 'backend' } = {}) {
+  let lastErr;
+  for (let attempt = 1; attempt <= tries; attempt++) {
+    try {
+      const res = await fetch(url, makeInit());
+      if (res.ok) return res;
+      const body = await res.text().catch(() => '');
+      const err = new Error(`${label} request failed (HTTP ${res.status}): ${body.slice(0, 200)}`);
+      err.status = res.status;
+      err.retryable = RETRYABLE_STATUS.has(res.status);
+      throw err;
+    } catch (e) {
+      lastErr = e;
+      // HTTP errors carry an explicit .retryable; network errors decide by message.
+      const retryable = (typeof e?.retryable === 'boolean') ? e.retryable : isTransientNetErr(e);
+      if (!retryable || attempt === tries) throw e;
+      await new Promise(r => setTimeout(r, backoffMs * attempt));
+    }
+  }
+  throw lastErr;
+}
+
 export async function callLLM(messages, systemPrompt, timeoutMs = 90000) {
-  const res = await fetch(OLLAMA_URL, {
+  const res = await fetchOkWithRetry(OLLAMA_URL, () => ({
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -86,11 +125,7 @@ export async function callLLM(messages, systemPrompt, timeoutMs = 90000) {
       stream: false,
     }),
     signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error('LLM request failed: ' + errText.slice(0, 200));
-  }
+  }), { label: 'LLM' });
   const data = await res.json();
   // Always strip the model's <think> reasoning block — no caller wants it.
   return stripThink(data.choices?.[0]?.message?.content || '');
@@ -177,7 +212,9 @@ export async function generateSdImage(prompt, negativePrompt, sizePreset) {
   };
   if (negativePrompt) payload.negative_prompt = negativePrompt;
 
-  const res = await fetch(SD_URL, {
+  // Retry a transient LB 502/503/504 or dropped socket once (see fetchOkWithRetry).
+  // A genuine 90s timeout is NOT retried — one SD generation already ate the budget.
+  const res = await fetchOkWithRetry(SD_URL, () => ({
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -185,12 +222,7 @@ export async function generateSdImage(prompt, negativePrompt, sizePreset) {
     },
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(90000),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error('Stable Diffusion request failed: ' + errText.slice(0, 200));
-  }
+  }), { label: 'Stable Diffusion' });
 
   const data = await res.json();
   const b64 = data?.data?.[0]?.b64_json;

@@ -39,9 +39,12 @@
   };
   const _hFont = design.font_heading || 'Cormorant Garamond';
   const _bFont = design.font_body || 'Jost';
-  const _hFontUrl = _FONT_MAP[_hFont] || _FONT_MAP['Cormorant Garamond'];
-  const _bFontUrl = _FONT_MAP[_bFont] || _FONT_MAP['Jost'];
-  const _fontsParam = _hFont === _bFont ? _hFontUrl : _hFontUrl + '&family=' + _bFontUrl;
+  // Prefer the saved CSS2 spec (built from the picked font's real weights), then
+  // the curated map, then a bare family name so ANY Google font still loads.
+  const _bareFamily = (n) => String(n || '').trim().replace(/\s+/g, '+');
+  const _hFontUrl = (design.font_heading_spec && design.font_heading_spec.trim()) || _FONT_MAP[_hFont] || _bareFamily(_hFont);
+  const _bFontUrl = (design.font_body_spec && design.font_body_spec.trim()) || _FONT_MAP[_bFont] || _bareFamily(_bFont);
+  const _fontsParam = _hFontUrl === _bFontUrl ? _hFontUrl : _hFontUrl + '&family=' + _bFontUrl;
 %>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=<%= _fontsParam %>&display=swap" rel="stylesheet">

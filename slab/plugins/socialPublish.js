@@ -10,6 +10,8 @@
 // decrypted only at publish/test time. Decrypted values are NEVER logged.
 // ─────────────────────────────────────────────────────────────────────────────
 import { encrypt, decrypt } from './crypto.js';
+import sharp from 'sharp';
+import { uploadBuffer } from './s3.js';
 
 // Fetch a remote media file into a Buffer (used by adapters that upload bytes).
 async function fetchMedia(url) {
@@ -31,18 +33,65 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // you must poll the container until it reports FINISHED before publishing, or
 // the publish call fails ("media not finished processing"). `field` differs:
 // Instagram exposes `status_code`, Threads exposes `status`.
-async function pollMetaContainer(statusUrl, field, { timeoutMs = 150000, intervalMs = 5000 } = {}) {
+async function pollMetaContainer(statusUrl, field, { timeoutMs = 150000, intervalMs = 5000, firstDelayMs = intervalMs } = {}) {
   const deadline = Date.now() + timeoutMs;
   let last = '';
+  let wait = firstDelayMs;
   while (Date.now() < deadline) {
-    await sleep(intervalMs);
+    await sleep(wait);
+    wait = intervalMs;
     const r = await fetch(statusUrl, { signal: AbortSignal.timeout(15000) });
     const j = await r.json().catch(() => ({}));
     last = j[field] || last;
     if (last === 'FINISHED') return;
-    if (last === 'ERROR' || last === 'EXPIRED') throw new Error(`video processing ${last}${j.error_message ? ': ' + j.error_message : ''}`);
+    if (last === 'ERROR' || last === 'EXPIRED') throw new Error(`media processing ${last}${j.error_message ? ': ' + j.error_message : ''}`);
   }
-  throw new Error(`video still processing after ${Math.round(timeoutMs / 1000)}s — try again shortly`);
+  throw new Error(`media still processing after ${Math.round(timeoutMs / 1000)}s — try again shortly`);
+}
+
+// Instagram's Content Publishing API accepts ONLY JPEG for image_url — a PNG/WebP
+// still fails the container step with "Only photo or video can be accepted as media
+// type" (code 9004, subcode 2207052), which reads misleadingly as a fetch failure.
+// (Facebook, Mastodon, Bluesky, LinkedIn all accept PNG, so this is IG-specific.)
+// Transcode any non-JPEG still to JPEG, re-upload it, and post that URL instead.
+// The re-upload reuses the source URL's tenant prefix so it lands in the same space.
+// Best-effort: on any transcode/upload failure we fall back to the original URL.
+const JPEG_URL_RE = /\.(jpe?g)(\?|#|$)/i;
+async function ensureJpegForMeta(url) {
+  try {
+    if (JPEG_URL_RE.test(String(url || ''))) return url; // already JPEG
+    const { buffer } = await fetchMedia(url);
+    const jpeg = await sharp(buffer)
+      .flatten({ background: { r: 255, g: 255, b: 255 } }) // drop alpha (JPEG has none)
+      .jpeg({ quality: 90, chromaSubsampling: '4:2:0' })
+      .toBuffer();
+    let prefix = 'default';
+    try { const seg = new URL(url).pathname.replace(/^\/+/, '').split('/')[0]; if (seg) prefix = seg; } catch {}
+    const { url: jpegUrl } = await uploadBuffer(jpeg, { prefix, folder: 'assets/auto/ig', name: 'ig.jpg', contentType: 'image/jpeg' });
+    return jpegUrl;
+  } catch {
+    return url;
+  }
+}
+
+// Publish a Meta container, retrying the transient "Media ID is not available" /
+// "not ready for publishing" error (code 9007, subcode 2207027) — the container is
+// FINISHED but the publish edge briefly lags behind. Any other error is terminal.
+async function metaPublishRetry(publishUrl, body, { retries = 4, delayMs = 4000 } = {}) {
+  let lastJson = {}, lastStatus = 0;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const r = await fetch(publishUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body), signal: AbortSignal.timeout(25000),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.id) return j;
+    lastJson = j; lastStatus = r.status;
+    const e = j?.error || {};
+    if ((e.error_subcode === 2207027 || e.code === 9007) && attempt < retries) { await sleep(delayMs); continue; }
+    break;
+  }
+  throw metaError(lastJson, lastStatus, 'publish');
 }
 
 // Build a rich, human-readable error from a Meta Graph API response. Meta packs
@@ -131,6 +180,40 @@ function normalizeHttpUrl(u) {
   if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
   try { const x = new URL(u); return (x.protocol === 'http:' || x.protocol === 'https:') ? x.href : null; }
   catch { return null; }
+}
+
+// LinkedIn image upload (v2 assets API): register an upload → PUT the bytes →
+// return the asset URN to attach to a ugcPost. Works with a w_member_social
+// (member) or w_organization_social (organization) token; owner = author URN.
+async function linkedinUploadImage(url, creds) {
+  const headers = {
+    Authorization: `Bearer ${creds.accessToken}`,
+    'Content-Type': 'application/json',
+    'X-Restli-Protocol-Version': '2.0.0',
+  };
+  const reg = await fetch('https://api.linkedin.com/v2/assets?action=registerUpload', {
+    method: 'POST', headers,
+    body: JSON.stringify({ registerUploadRequest: {
+      recipes: ['urn:li:digitalmediaRecipe:feedshare-image'],
+      owner: creds.authorUrn,
+      serviceRelationships: [{ relationshipType: 'OWNER', identifier: 'urn:li:userGeneratedContent' }],
+    } }),
+    signal: AbortSignal.timeout(20000),
+  });
+  const rj = await reg.json().catch(() => ({}));
+  if (!reg.ok) throw new Error('image register failed: ' + (rj.message || `HTTP ${reg.status}`));
+  const asset = rj?.value?.asset;
+  const uploadUrl = rj?.value?.uploadMechanism?.['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest']?.uploadUrl;
+  if (!asset || !uploadUrl) throw new Error('image register: LinkedIn returned no upload URL');
+  const { buffer, contentType } = await fetchMedia(url);
+  const put = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${creds.accessToken}`, 'Content-Type': contentType },
+    body: buffer,
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!put.ok) throw new Error('image upload failed: HTTP ' + put.status);
+  return asset;
 }
 
 export const PLATFORMS = {
@@ -473,11 +556,13 @@ export const PLATFORMS = {
     },
     async publish({ post, creds }) {
       if (!creds.igUserId || !creds.accessToken) throw new Error('Missing IG user id or token');
-      const img = (post.mediaUrls || [])[0];
+      let img = (post.mediaUrls || [])[0];
       if (!img) throw new Error('Instagram requires an image or video — attach a public media URL');
       const isVid = isVideoUrl(img);
       const G = 'https://graph.facebook.com/v21.0';
       const caption = [post.body, post.link].filter(Boolean).join('\n\n');
+      // Instagram rejects non-JPEG stills — transcode PNG/WebP to JPEG first.
+      if (!isVid) img = await ensureJpegForMeta(img);
       // 1. create container — video posts go up as REELS with a video_url.
       const containerBody = isVid
         ? { media_type: 'REELS', video_url: img, caption, access_token: creds.accessToken }
@@ -489,16 +574,16 @@ export const PLATFORMS = {
       });
       const cj = await cr.json().catch(() => ({}));
       if (!cr.ok || !cj.id) throw metaError(cj, cr.status, 'container');
-      // 1b. video containers process asynchronously — wait for FINISHED.
-      if (isVid) await pollMetaContainer(`${G}/${cj.id}?fields=status_code&access_token=${encodeURIComponent(creds.accessToken)}`, 'status_code');
-      // 2. publish container
-      const pr = await fetch(`${G}/${creds.igUserId}/media_publish`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creation_id: cj.id, access_token: creds.accessToken }),
-        signal: AbortSignal.timeout(25000),
-      });
-      const pj = await pr.json().catch(() => ({}));
-      if (!pr.ok || !pj.id) throw metaError(pj, pr.status, 'publish');
+      // 1b. Meta processes BOTH image and video containers asynchronously — publishing
+      // before status_code=FINISHED fails with "Media ID is not available" (2207027).
+      // Videos can take minutes; images are usually a few seconds, so poll faster.
+      await pollMetaContainer(
+        `${G}/${cj.id}?fields=status_code&access_token=${encodeURIComponent(creds.accessToken)}`,
+        'status_code',
+        isVid ? {} : { timeoutMs: 60000, intervalMs: 3000, firstDelayMs: 1500 },
+      );
+      // 2. publish container (retries the transient not-ready race, 2207027)
+      const pj = await metaPublishRetry(`${G}/${creds.igUserId}/media_publish`, { creation_id: cj.id, access_token: creds.accessToken });
       return { id: pj.id };
     },
   },
@@ -509,10 +594,12 @@ export const PLATFORMS = {
     name: 'LinkedIn',
     icon: '💼',
     color: '#0A66C2',
-    caps: { text: true, link: true, media: false },
+    caps: { text: true, link: true, media: true },
     fields: [
       { key: 'authorUrn', label: 'Author URN', secret: false, placeholder: 'urn:li:person:xxxx or urn:li:organization:xxxx' },
       { key: 'accessToken', label: 'Access Token', secret: true, placeholder: 'OAuth2 access token' },
+      { key: 'clientId', label: 'Client ID (optional)', secret: false, optional: true, placeholder: 'from your LinkedIn app — enables token scope check' },
+      { key: 'clientSecret', label: 'Client Secret (optional)', secret: true, optional: true, placeholder: 'enables token scope check' },
     ],
     setup: 'Create an app at linkedin.com/developers, request the "Share on LinkedIn" + "Sign In with LinkedIn" products. Get an OAuth2 access token with `w_member_social` scope. Author URN is `urn:li:person:{id}` (member) or `urn:li:organization:{id}` (company page). Note: member tokens expire ~60 days.',
     portal: 'https://www.linkedin.com/developers/apps',
@@ -521,34 +608,58 @@ export const PLATFORMS = {
         headers: { Authorization: `Bearer ${creds.accessToken}` }, signal: AbortSignal.timeout(15000),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error((j.message || `HTTP ${r.status}`) + ' — token may be expired');
-      return { ok: true, profile: { name: j.name || j.given_name } };
+      if (r.ok) return { ok: true, profile: { name: j.name || j.given_name } };
+      // 401 = the token itself is bad/expired/revoked → a genuine failure.
+      if (r.status === 401) throw new Error((j.message || 'Unauthorized') + ' — access token is invalid or expired (401)');
+      // 403 "Not enough permissions" = the token authenticated fine but lacks the
+      // openid/profile scope userinfo requires. That's expected for a posting-only
+      // token (w_member_social / w_organization_social), which is all publishing
+      // needs — posting uses the Author URN directly. So the token IS valid.
+      if (r.status === 403) return { ok: true, profile: null, note: 'Token accepted (posting scope only — profile read not granted)' };
+      throw new Error(j.message || `HTTP ${r.status}`);
     },
     async publish({ post, creds }) {
       if (!creds.authorUrn || !creds.accessToken) throw new Error('Missing author URN or token');
       const text = [post.body, post.link].filter(Boolean).join('\n\n');
+      const headers = {
+        Authorization: `Bearer ${creds.accessToken}`,
+        'Content-Type': 'application/json',
+        'X-Restli-Protocol-Version': '2.0.0',
+      };
+      // Attach images (LinkedIn allows up to 9). Videos use a separate, heavier
+      // upload flow not implemented here — a video-only post still goes out as
+      // text rather than failing silently.
+      const imageUrls = (post.mediaUrls || []).filter(u => !isVideoUrl(u)).slice(0, 9);
+      const media = [];
+      for (const u of imageUrls) media.push({ status: 'READY', media: await linkedinUploadImage(u, creds) });
+
+      const shareContent = { shareCommentary: { text }, shareMediaCategory: media.length ? 'IMAGE' : 'NONE' };
+      if (media.length) shareContent.media = media;
+
       const r = await fetch('https://api.linkedin.com/v2/ugcPosts', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${creds.accessToken}`,
-          'Content-Type': 'application/json',
-          'X-Restli-Protocol-Version': '2.0.0',
-        },
+        method: 'POST', headers,
         body: JSON.stringify({
           author: creds.authorUrn,
           lifecycleState: 'PUBLISHED',
-          specificContent: {
-            'com.linkedin.ugc.ShareContent': {
-              shareCommentary: { text },
-              shareMediaCategory: 'NONE',
-            },
-          },
+          specificContent: { 'com.linkedin.ugc.ShareContent': shareContent },
           visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' },
         }),
-        signal: AbortSignal.timeout(25000),
+        signal: AbortSignal.timeout(30000),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.message || `HTTP ${r.status}`);
+      if (!r.ok) {
+        let msg = j.message || `HTTP ${r.status}`;
+        // The [/author] validation error means the token can't post AS this
+        // author entity — almost always an organization URN posted with a
+        // member-only token. Spell out the real requirement.
+        if (/\/author/i.test(msg) || (r.status === 422 && /author/i.test(JSON.stringify(j)))) {
+          const isOrg = /organization/i.test(creds.authorUrn || '');
+          msg = isOrg
+            ? `LinkedIn rejected the author (${creds.authorUrn}). Posting as a company page needs a token with the "w_organization_social" scope AND the authorizing user must be an ADMIN of that organization (Community Management API). Your current token can't post as this org.`
+            : `LinkedIn rejected the author (${creds.authorUrn}). Check the URN matches the token's member — re-run "Fetch from token" to get the correct urn:li:person id.`;
+        }
+        throw new Error(msg);
+      }
       const id = j.id || r.headers.get('x-restli-id');
       return { id, url: id ? `https://www.linkedin.com/feed/update/${id}` : undefined };
     },
@@ -734,12 +845,25 @@ export const PLATFORMS = {
   },
   youtube: {
     key: 'youtube', name: 'YouTube', icon: '▶', color: '#FF0000',
-    caps: { text: true, media: true }, comingSoon: true,
+    // connectOnly: credentials can be entered / OAuth-connected / verified now,
+    // but YouTube is NOT yet a compose/publish target (video-upload publishing is
+    // on the roadmap). It reuses the Google Business OAuth client — same Cloud
+    // project, just enable the YouTube Data API.
+    caps: { text: true, media: true }, connectOnly: true,
     fields: [
-      { key: 'channelId', label: 'Channel ID', secret: false },
-      { key: 'refreshToken', label: 'OAuth Refresh Token', secret: true },
+      { key: 'channelId', label: 'Channel ID', secret: false, placeholder: 'UC… (auto-filled on Connect)' },
+      { key: 'refreshToken', label: 'OAuth Refresh Token', secret: true, placeholder: 'from Connect with Google' },
     ],
-    setup: 'Google Cloud project + YouTube Data API v3 + OAuth2. Video upload support is on the roadmap.',
+    setup: 'Reuses your Google Business OAuth client — just enable the YouTube Data API v3 in the same Google Cloud project, then click "Connect with Google". Video-upload publishing is on the roadmap.',
+    async verify({ creds }) {
+      if (!creds.refreshToken || !creds.clientId || !creds.clientSecret) throw new Error('Connect with Google first (reuses your Google Business OAuth client).');
+      const token = await googleAccessToken(creds);
+      const r = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(googleApiError(j, r.status, 'YouTube verify failed'));
+      const ch = j.items?.[0];
+      return { ok: true, profile: { name: ch?.snippet?.title || 'YouTube channel', url: ch?.id ? `https://youtube.com/channel/${ch.id}` : undefined } };
+    },
   },
   tiktok: {
     key: 'tiktok', name: 'TikTok', icon: '♪', color: '#000000',
@@ -761,8 +885,127 @@ export const PLATFORMS = {
   },
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SETUP HELPERS — per-platform deep-links ("redirect buttons") to where each
+// credential is actually issued, in that platform's OWN developer console /
+// token tool, plus fallback setup instructions for platforms that lack one.
+// These are purely informational: they open the vendor's site in a new tab so
+// an admin can grab the value and paste it into the field. No OAuth/login flow.
+// `links` is attached onto each PLATFORMS entry and rendered in the Connections
+// UI; `setup` is only applied when the platform doesn't already define its own.
+// ─────────────────────────────────────────────────────────────────────────────
+const PLATFORM_SETUP_META = {
+  mastodon: {
+    links: [
+      { label: 'Create app', url: 'https://docs.joinmastodon.org/client/token/' },
+      { label: 'API docs', url: 'https://docs.joinmastodon.org/methods/statuses/' },
+    ],
+    setup: 'On your Mastodon instance: Preferences → Development → New application, grant the `write:statuses` scope, then copy the access token. Instance URL is your server (e.g. https://mastodon.social).',
+  },
+  bluesky: {
+    links: [
+      { label: 'App passwords', url: 'https://bsky.app/settings/app-passwords' },
+      { label: 'AT Protocol docs', url: 'https://docs.bsky.app/' },
+    ],
+    setup: 'Handle is your full Bluesky handle (e.g. you.bsky.social). Create a dedicated App Password under Settings → App Passwords — never your main password. Service defaults to https://bsky.social.',
+  },
+  discord: {
+    links: [
+      { label: 'Webhook guide', url: 'https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks' },
+      { label: 'Developer portal', url: 'https://discord.com/developers/applications' },
+    ],
+    setup: 'In your Discord server: Channel → Edit → Integrations → Webhooks → New Webhook → Copy Webhook URL. Posts are delivered to that channel.',
+  },
+  telegram: {
+    links: [
+      { label: 'Open BotFather', url: 'https://t.me/BotFather' },
+      { label: 'Bot API docs', url: 'https://core.telegram.org/bots/api' },
+    ],
+    setup: 'Message @BotFather → /newbot to get a Bot Token. Add the bot to your channel/group as an admin. Chat ID is @yourchannel (public) or the numeric -100… id (private).',
+  },
+  facebook: {
+    links: [
+      { label: 'Developer apps', url: 'https://developers.facebook.com/apps' },
+      { label: 'Graph API Explorer', url: 'https://developers.facebook.com/tools/explorer/' },
+      { label: 'Page token guide', url: 'https://developers.facebook.com/docs/pages/access-tokens' },
+    ],
+    setup: 'Create an app at developers.facebook.com → add Facebook Login and request `pages_manage_posts` + `pages_read_engagement`. In Graph API Explorer select your Page and generate a Page Access Token (extend it to a long-lived token). Page ID is on your Page → About.',
+  },
+  instagram: {
+    links: [
+      { label: 'Graph API Explorer', url: 'https://developers.facebook.com/tools/explorer/' },
+      { label: 'IG publishing docs', url: 'https://developers.facebook.com/docs/instagram-api/guides/content-publishing/' },
+    ],
+    setup: 'Requires an Instagram Business/Creator account linked to a Facebook Page (same Meta app as Facebook). Grant `instagram_basic` + `instagram_content_publish`. Get the IG User ID from the linked page (…?fields=instagram_business_account). Uses the same page/IG access token.',
+  },
+  linkedin: {
+    links: [
+      { label: 'Developer apps', url: 'https://www.linkedin.com/developers/apps' },
+      { label: 'Token generator', url: 'https://www.linkedin.com/developers/tools/oauth/token-generator' },
+      { label: 'Marketing API docs', url: 'https://learn.microsoft.com/linkedin/marketing/' },
+    ],
+  },
+  x: {
+    links: [
+      { label: 'Developer portal', url: 'https://developer.x.com/en/portal/dashboard' },
+      { label: 'Post API docs', url: 'https://docs.x.com/x-api/posts/creation-of-a-post' },
+    ],
+  },
+  reddit: {
+    links: [
+      { label: 'Create app', url: 'https://www.reddit.com/prefs/apps' },
+      { label: 'API docs', url: 'https://www.reddit.com/dev/api/' },
+    ],
+    setup: "Create a 'script' app at reddit.com/prefs/apps → the client ID is under the app name, the secret is next to it. Username/password are the posting account's own. Subreddit is the target (without the r/).",
+  },
+  threads: {
+    links: [
+      { label: 'Developer apps', url: 'https://developers.facebook.com/apps' },
+      { label: 'Threads API docs', url: 'https://developers.facebook.com/docs/threads' },
+    ],
+  },
+  googlebusiness: {
+    links: [
+      { label: 'Google Cloud Console', url: 'https://console.cloud.google.com/apis/dashboard' },
+      { label: 'OAuth Playground', url: 'https://developers.google.com/oauthplayground' },
+      { label: 'Business Profile API', url: 'https://developers.google.com/my-business' },
+    ],
+  },
+  youtube: {
+    links: [
+      { label: 'Enable YouTube API', url: 'https://console.cloud.google.com/apis/library/youtube.googleapis.com' },
+      { label: 'OAuth Playground', url: 'https://developers.google.com/oauthplayground' },
+      { label: 'Data API docs', url: 'https://developers.google.com/youtube/v3' },
+    ],
+  },
+  tiktok: {
+    links: [
+      { label: 'Developer portal', url: 'https://developers.tiktok.com/' },
+      { label: 'Content Posting API', url: 'https://developers.tiktok.com/doc/content-posting-api-get-started/' },
+    ],
+    setup: 'Register at developers.tiktok.com, create an app with the Content Posting API, complete the audit, and run the OAuth flow for the open_id + access token. (Support is on the roadmap.)',
+  },
+  pinterest: {
+    links: [
+      { label: 'Developer apps', url: 'https://developers.pinterest.com/apps/' },
+      { label: 'API v5 docs', url: 'https://developers.pinterest.com/docs/api/v5/' },
+    ],
+  },
+};
+
+// Attach setup links (and any fallback instructions) onto the live registry so
+// PLATFORM_LIST / LIVE_PLATFORMS expose them to the Connections view.
+for (const [key, meta] of Object.entries(PLATFORM_SETUP_META)) {
+  const p = PLATFORMS[key];
+  if (!p) continue;
+  if (meta.links) p.links = meta.links;
+  if (meta.setup && !p.setup) p.setup = meta.setup;
+}
+
 export const PLATFORM_LIST = Object.values(PLATFORMS);
-export const LIVE_PLATFORMS = PLATFORM_LIST.filter(p => !p.comingSoon);
+// LIVE_PLATFORMS drives the compose pills & publish targets — connect-only
+// platforms (e.g. YouTube: connectable but no publish adapter yet) are excluded.
+export const LIVE_PLATFORMS = PLATFORM_LIST.filter(p => !p.comingSoon && !p.connectOnly);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CREDENTIAL HELPERS
@@ -822,11 +1065,71 @@ export function maskAccount(account) {
     tokenManaged: account.tokenManaged === true,
     tokenType: account.tokenType || null,
     tokenExpiresAt: account.tokenExpiresAt || null,
+    liveEnabled: account.liveEnabled === true,
   };
   for (const f of (def.fields || [])) {
     if (f.secret) out.secretsSet[f.key] = !!account.secrets?.[f.key];
   }
   return out;
+}
+
+// ── Public "follow us" links ─────────────────────────────────────────────────
+// Derive a public profile URL for a configured account so the tenant footer can
+// show a "connect with us" icon per linked platform. Prefers the stored
+// profile.url (captured on Test/connect); otherwise derives one from the public
+// credentials. Returns null when the platform exposes no public profile (e.g. a
+// Discord webhook) or isn't publishable yet.
+function derivePublicUrl(account) {
+  const p = account.platform;
+  const c = account.credentials || {};
+  const prof = account.profile || {};
+  if (prof.url) return prof.url;
+  const handle = (prof.name || '').replace(/^@/, '').replace(/^u\//, '');
+  switch (p) {
+    case 'facebook':  return c.pageId ? `https://facebook.com/${c.pageId}` : null;
+    case 'instagram': return handle ? `https://instagram.com/${handle}` : null;
+    case 'threads':   return handle ? `https://threads.net/@${handle}` : null;
+    case 'x':         return handle ? `https://x.com/${handle}` : null;
+    case 'bluesky':   return c.identifier ? `https://bsky.app/profile/${c.identifier}` : null;
+    case 'reddit':    return c.username ? `https://reddit.com/u/${c.username}` : null;
+    case 'youtube':   return c.channelId ? `https://youtube.com/channel/${c.channelId}` : null;
+    case 'telegram':  return (c.chatId && c.chatId.startsWith('@')) ? `https://t.me/${c.chatId.slice(1)}` : null;
+    case 'mastodon':  return null; // only via profile.url (instance-specific)
+    default:          return null; // linkedin URN / discord webhook / etc.
+  }
+}
+
+// Public social links for the tenant footer — one entry per configured account
+// that has a resolvable public profile URL. { key, name, icon, url }.
+export async function getPublicSocialLinks(db) {
+  const accounts = await db.collection('social_accounts').find({}).toArray();
+  const out = [];
+  for (const a of accounts) {
+    const def = PLATFORMS[a.platform];
+    if (!def || def.comingSoon || !isAccountConfigured(a)) continue;
+    if (a.enabled === false) continue;
+    const url = derivePublicUrl(a);
+    if (!url) continue;
+    out.push({ key: a.platform, name: def.name, icon: def.icon, url });
+  }
+  return out;
+}
+
+// ── Meta cross-surface discovery ─────────────────────────────────────────────
+// One Meta app powers Facebook, Instagram & Threads. Given the Facebook Page
+// creds, find the Instagram Business/Creator account linked to that Page so the
+// admin never has to hunt for the numeric IG User ID by hand. Read-only Graph
+// call. Returns { igUserId, username } or null when none is linked / call fails.
+export async function discoverInstagramFromPage({ pageId, pageAccessToken } = {}) {
+  if (!pageId || !pageAccessToken) return null;
+  const r = await fetch(
+    `https://graph.facebook.com/v21.0/${pageId}?fields=instagram_business_account{id,username,name}&access_token=${encodeURIComponent(pageAccessToken)}`,
+    { signal: AbortSignal.timeout(15000) },
+  );
+  const j = await r.json().catch(() => ({}));
+  const iba = j?.instagram_business_account;
+  if (!r.ok || !iba?.id) return null;
+  return { igUserId: String(iba.id), username: iba.username || iba.name || null };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -878,10 +1181,196 @@ export async function publishToPlatform(platformKey, post, account) {
 // Publish a post document to all of its target platforms.
 // `accountsByPlatform` is a map { platformKey: accountDoc }. Returns the results array.
 export async function publishPost(post, accountsByPlatform) {
-  const targets = (post.platforms || []).filter(p => PLATFORMS[p] && !PLATFORMS[p].comingSoon);
+  const targets = (post.platforms || []).filter(p => PLATFORMS[p] && !PLATFORMS[p].comingSoon && !PLATFORMS[p].connectOnly);
   const results = [];
   for (const p of targets) {
     results.push(await publishToPlatform(p, post, accountsByPlatform[p]));
   }
   return results;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACCOUNT RESOURCE SLOTS — static per-channel brand assets (avatar, banner, …)
+//
+// Each platform declares the STATIC image slots that make up its account's look:
+// a profile picture, a cover/banner, etc. These are NOT posts — they're the
+// standing brand furniture of the channel. Slot shape:
+//   { key, label, w, h, shape:'square'|'circle', push?:true }
+// `push:true` means we have an adapter that can set it live via the platform's
+// API (pushResource below). Slots without it are record-only: Slab tracks the
+// assignment + recommended size, and the admin applies it in the platform's UI.
+// `w`/`h` are the platform's RECOMMENDED upload dimensions (shown as guidance).
+// ─────────────────────────────────────────────────────────────────────────────
+const PLATFORM_RESOURCE_SLOTS = {
+  facebook: [
+    { key: 'avatar', label: 'Profile Picture', w: 320, h: 320, shape: 'circle' },
+    { key: 'cover', label: 'Cover Photo', w: 820, h: 312 },
+  ],
+  instagram: [
+    { key: 'avatar', label: 'Profile Picture', w: 320, h: 320, shape: 'circle' },
+  ],
+  threads: [
+    { key: 'avatar', label: 'Profile Picture', w: 320, h: 320, shape: 'circle' },
+  ],
+  x: [
+    { key: 'avatar', label: 'Profile Photo', w: 400, h: 400, shape: 'circle' },
+    { key: 'header', label: 'Header', w: 1500, h: 500 },
+  ],
+  linkedin: [
+    { key: 'avatar', label: 'Logo / Photo', w: 400, h: 400, shape: 'circle' },
+    { key: 'cover', label: 'Cover / Banner', w: 1584, h: 396 },
+  ],
+  youtube: [
+    { key: 'avatar', label: 'Channel Icon', w: 800, h: 800, shape: 'circle' },
+    { key: 'banner', label: 'Channel Art', w: 2560, h: 1440 },
+  ],
+  googlebusiness: [
+    { key: 'logo', label: 'Logo', w: 720, h: 720 },
+    { key: 'cover', label: 'Cover Photo', w: 1024, h: 576 },
+  ],
+  reddit: [
+    { key: 'avatar', label: 'Avatar', w: 256, h: 256, shape: 'circle' },
+    { key: 'banner', label: 'Banner', w: 1920, h: 384 },
+  ],
+  pinterest: [
+    { key: 'avatar', label: 'Profile Picture', w: 280, h: 280, shape: 'circle' },
+  ],
+  // Push-capable platforms — assignment applies live via the API (see pushResource).
+  mastodon: [
+    { key: 'avatar', label: 'Avatar', w: 400, h: 400, shape: 'circle', push: true },
+    { key: 'header', label: 'Header', w: 1500, h: 500, push: true },
+  ],
+  bluesky: [
+    { key: 'avatar', label: 'Avatar', w: 1000, h: 1000, shape: 'circle', push: true },
+    { key: 'banner', label: 'Banner', w: 3000, h: 1000, push: true },
+  ],
+  discord: [
+    { key: 'avatar', label: 'Webhook Avatar', w: 512, h: 512, shape: 'circle', push: true },
+  ],
+  telegram: [
+    { key: 'photo', label: 'Channel Photo', w: 512, h: 512, shape: 'circle', push: true },
+  ],
+};
+
+// Attach resourceSlots onto the live registry so PLATFORM_LIST carries them.
+for (const [key, slots] of Object.entries(PLATFORM_RESOURCE_SLOTS)) {
+  if (PLATFORMS[key]) PLATFORMS[key].resourceSlots = slots;
+}
+
+// Public helpers for the Account Resources UI/routes.
+export function resourceSlotsFor(platformKey) {
+  return PLATFORM_RESOURCE_SLOTS[platformKey] || [];
+}
+export function findResourceSlot(platformKey, slotKey) {
+  return (PLATFORM_RESOURCE_SLOTS[platformKey] || []).find(s => s.key === slotKey) || null;
+}
+export function slotSupportsPush(platformKey, slotKey) {
+  return !!findResourceSlot(platformKey, slotKey)?.push;
+}
+
+// ── Live push adapters ───────────────────────────────────────────────────────
+// Set a platform's static resource (avatar/banner/…) live via its API, from a
+// public image URL. Only implemented where the platform actually exposes it.
+// `creds` is the DECRYPTED credential object (unpackCredentials). Returns
+// { ok, note? } on success or throws with a human-readable reason.
+
+async function pushMastodonResource(slotKey, imageUrl, creds) {
+  const base = (creds.instanceUrl || '').replace(/\/+$/, '');
+  if (!base || !creds.accessToken) throw new Error('Missing Mastodon instance URL or access token');
+  const field = slotKey === 'header' ? 'header' : 'avatar';
+  const { buffer, contentType } = await fetchMedia(imageUrl);
+  const fd = new FormData();
+  fd.append(field, new Blob([buffer], { type: contentType || 'image/png' }), `${field}.png`);
+  const r = await fetch(`${base}/api/v1/accounts/update_credentials`, {
+    method: 'PATCH', headers: { Authorization: `Bearer ${creds.accessToken}` }, body: fd,
+    signal: AbortSignal.timeout(60000),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `Mastodon HTTP ${r.status} — the token needs the write:accounts scope`);
+  return { ok: true, note: `Mastodon ${field} updated` };
+}
+
+async function pushBlueskyResource(slotKey, imageUrl, creds) {
+  const svc = (creds.service || 'https://bsky.social').replace(/\/+$/, '');
+  if (!creds.identifier || !creds.appPassword) throw new Error('Missing Bluesky handle or app password');
+  const sess = await fetch(`${svc}/xrpc/com.atproto.server.createSession`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier: creds.identifier, password: creds.appPassword }),
+    signal: AbortSignal.timeout(20000),
+  });
+  const sj = await sess.json().catch(() => ({}));
+  if (!sess.ok) throw new Error(sj.message || `Bluesky auth HTTP ${sess.status}`);
+  const auth = { Authorization: `Bearer ${sj.accessJwt}` };
+
+  const { buffer, contentType } = await fetchMedia(imageUrl);
+  if (buffer.length > 1000000) throw new Error('Bluesky caps profile images at ~1MB — use a smaller file');
+  const up = await fetch(`${svc}/xrpc/com.atproto.repo.uploadBlob`, {
+    method: 'POST', headers: { ...auth, 'Content-Type': contentType || 'image/png' },
+    body: buffer, signal: AbortSignal.timeout(30000),
+  });
+  const uj = await up.json().catch(() => ({}));
+  if (!up.ok || !uj.blob) throw new Error(uj.message || 'Bluesky blob upload failed');
+
+  // Preserve the profile's other fields — fetch the existing record, then merge.
+  let existing = {};
+  try {
+    const gr = await fetch(`${svc}/xrpc/com.atproto.repo.getRecord?repo=${encodeURIComponent(sj.did)}&collection=app.bsky.actor.profile&rkey=self`, { headers: auth, signal: AbortSignal.timeout(15000) });
+    const gj = await gr.json().catch(() => ({}));
+    if (gr.ok && gj.value) existing = gj.value;
+  } catch { /* first-time profile — start clean */ }
+
+  const field = slotKey === 'banner' ? 'banner' : 'avatar';
+  const record = { ...existing, $type: 'app.bsky.actor.profile', [field]: uj.blob };
+  const put = await fetch(`${svc}/xrpc/com.atproto.repo.putRecord`, {
+    method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo: sj.did, collection: 'app.bsky.actor.profile', rkey: 'self', record }),
+    signal: AbortSignal.timeout(20000),
+  });
+  const pj = await put.json().catch(() => ({}));
+  if (!put.ok) throw new Error(pj.message || `Bluesky profile update HTTP ${put.status}`);
+  return { ok: true, note: `Bluesky ${field} updated` };
+}
+
+async function pushDiscordResource(_slotKey, imageUrl, creds) {
+  if (!creds.webhookUrl) throw new Error('Missing Discord webhook URL');
+  const { buffer, contentType } = await fetchMedia(imageUrl);
+  const dataUri = `data:${contentType || 'image/png'};base64,${buffer.toString('base64')}`;
+  const r = await fetch(creds.webhookUrl, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ avatar: dataUri }), signal: AbortSignal.timeout(30000),
+  });
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    throw new Error(j.message || `Discord HTTP ${r.status}`);
+  }
+  return { ok: true, note: 'Discord webhook avatar updated' };
+}
+
+async function pushTelegramResource(_slotKey, imageUrl, creds) {
+  if (!creds.botToken || !creds.chatId) throw new Error('Missing Telegram bot token or chat id');
+  const { buffer, contentType } = await fetchMedia(imageUrl);
+  const fd = new FormData();
+  fd.append('chat_id', String(creds.chatId));
+  fd.append('photo', new Blob([buffer], { type: contentType || 'image/png' }), 'photo.png');
+  const r = await fetch(`https://api.telegram.org/bot${creds.botToken}/setChatPhoto`, {
+    method: 'POST', body: fd, signal: AbortSignal.timeout(60000),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!j.ok) throw new Error(j.description || `Telegram HTTP ${r.status} — the bot must be an admin of the channel`);
+  return { ok: true, note: 'Telegram channel photo updated' };
+}
+
+// Dispatch a live resource push. Throws for record-only platforms/slots.
+export async function pushResource({ platform, slot, imageUrl, creds }) {
+  if (!imageUrl) throw new Error('No image to push');
+  if (!slotSupportsPush(platform, slot)) {
+    throw new Error(`${PLATFORMS[platform]?.name || platform} doesn't support setting its ${slot} via API — set it in the app.`);
+  }
+  switch (platform) {
+    case 'mastodon': return pushMastodonResource(slot, imageUrl, creds);
+    case 'bluesky':  return pushBlueskyResource(slot, imageUrl, creds);
+    case 'discord':  return pushDiscordResource(slot, imageUrl, creds);
+    case 'telegram': return pushTelegramResource(slot, imageUrl, creds);
+    default: throw new Error(`No push adapter for ${platform}`);
+  }
 }

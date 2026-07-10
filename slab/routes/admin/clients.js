@@ -75,6 +75,24 @@ async function processEmailAttachments(req, clientId) {
 
 const router = express.Router();
 
+// Attachment uploader for outbound client emails. Multer runs BEFORE the route
+// handler, so a rejected upload — too many files (LIMIT_UNEXPECTED_FILE, whose
+// message is the cryptic "Unexpected field") or an oversized file — would escape
+// the route's try/catch and surface the raw multer message to the sender. Wrap
+// it so those failures redirect back to the Emails tab with a readable reason.
+const MAX_EMAIL_ATTACHMENTS = 20;
+function emailAttachmentUpload(req, res, next) {
+  clientFileUpload.array('attachments', MAX_EMAIL_ATTACHMENTS)(req, res, (err) => {
+    if (!err) return next();
+    let msg;
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') msg = `Too many attachments — max ${MAX_EMAIL_ATTACHMENTS} per email.`;
+    else if (err.code === 'LIMIT_FILE_SIZE') msg = 'An attachment is too large — 20 MB max per file.';
+    else msg = err.message || 'Attachment upload failed';
+    console.error(`[Clients] Attachment upload rejected (client ${req.params.id}):`, err.code || err.message);
+    return res.redirect(`/admin/clients/${req.params.id}?tab=emails&error=${encodeURIComponent(msg)}`);
+  });
+}
+
 // ── Client tag definitions ─────────────────────────────────────────────────
 const CLIENT_TAGS = {
   vip:            { label: 'VIP',           color: '#c9a848', bg: 'rgba(201,168,72,0.12)' },
@@ -620,7 +638,7 @@ RULES:
   }
 });
 
-router.post('/:id/emails/send', clientFileUpload.array('attachments', 10), async (req, res) => {
+router.post('/:id/emails/send', emailAttachmentUpload, async (req, res) => {
   try {
     const db = req.db;
     const client = await db.collection('clients').findOne({ _id: new ObjectId(req.params.id) });
@@ -670,7 +688,7 @@ router.post('/:id/emails/send', clientFileUpload.array('attachments', 10), async
 });
 
 // ── Inline reply to thread ──
-router.post('/:id/emails/reply', clientFileUpload.array('attachments', 10), async (req, res) => {
+router.post('/:id/emails/reply', emailAttachmentUpload, async (req, res) => {
   try {
     const db = req.db;
     const client = await db.collection('clients').findOne({ _id: new ObjectId(req.params.id) });

@@ -35,7 +35,9 @@ import { config } from '../config/config.js';
 import { notifyAdmin } from '../plugins/notify.js';
 import { normalizeEmail } from '../plugins/emailNormalize.js';
 import { checkGlobalSpam } from '../plugins/globalSpam.js';
+import { passedCaptcha } from '../plugins/captcha.js';
 import { captureLead } from '../plugins/subscribe.js';
+import { getPublicSocialLinks } from '../plugins/socialPublish.js';
 import { buildRssFeed, buildAtomFeed } from '../plugins/feeds.js';
 import { applyPipes } from '../plugins/pipes.js';
 
@@ -431,6 +433,23 @@ router.post('/contact', async (req, res) => {
     const { name, firstName, lastName, email, company, service, message } = req.body;
     const contactName = name || [firstName, lastName].filter(Boolean).join(' ') || '';
 
+    // Honeypot — a hidden field real users never fill; autofill bots trip it.
+    // We do NOT hard-drop: an aggressive password manager could fill it for a
+    // real person, and a silent drop would lose that lead invisibly. Instead we
+    // tag the submission and let it save as status:'spam' below, so a human
+    // false-positive is recoverable from the admin Spam tab (and bots just pile
+    // up there to be deleted). Logged so trips are visible in the journal.
+    const honeypotTripped = !!(req.body.website || req.body._hp || '').trim();
+    if (honeypotTripped) {
+      console.warn('[honeypot] contact trap tripped', {
+        tenant: req.tenant?.domain || '', ip: req.ip, email: (email || '').slice(0, 120),
+      });
+    }
+
+    // Proof-of-work CAPTCHA — blocks scripted POSTs that skip the browser
+    // widget. Responds/redirects itself on failure, so bail out here.
+    if (!passedCaptcha(req, res, { redirectTo: '/#contact' })) return;
+
     if (!email) return res.redirect('/#contact');
 
     // Spam blocklist check — sender (or a normalized variant) has been flagged
@@ -470,12 +489,15 @@ router.post('/contact', async (req, res) => {
     if (globalFlag.hit) {
       inquiry.status = 'spam';
       inquiry.spamFiltered = { scope: 'global', type: globalFlag.type, key: globalFlag.key, at: new Date() };
+    } else if (honeypotTripped) {
+      inquiry.status = 'spam';
+      inquiry.spamFiltered = { scope: 'honeypot', type: 'honeypot', at: new Date() };
     }
     await db.collection('inquiries').insertOne(inquiry);
 
-    // Globally-filtered submissions land in the Spam tab silently — don't ping
-    // the admin or forward to the tenant mailbox.
-    if (globalFlag.hit) return res.redirect('/?contacted=1#contact');
+    // Spam-tagged submissions (global filter or honeypot) land in the Spam tab
+    // silently — don't ping the admin or forward to the tenant mailbox.
+    if (globalFlag.hit || honeypotTripped) return res.redirect('/?contacted=1#contact');
 
     // Notify admin + forward to tenant email if configured
     const brand = res.locals.brand || {};
@@ -1143,6 +1165,16 @@ router.get('/api/footer-qr', async (req, res) => {
     }));
 
     res.json({ links: results });
+  } catch { res.json({ links: [] }); }
+});
+
+// Connected-social "follow us" links for the tenant footer. One icon per social
+// account the tenant has linked (with a resolvable public profile URL). Fetched
+// client-side by partials/footer.ejs so every render path gets them for free.
+router.get('/api/footer-social', async (req, res) => {
+  try {
+    const links = await getPublicSocialLinks(req.db);
+    res.json({ links });
   } catch { res.json({ links: [] }); }
 });
 

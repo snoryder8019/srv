@@ -38,6 +38,60 @@ export function subjectKeyFor({ service, message } = {}) {
   return normalizeSubject([service, message].filter(Boolean).join(' '));
 }
 
+// ── Content keyword filter ───────────────────────────────────────────────────
+// Distinct from the `subject` fingerprint above: those match a whole promoted
+// message. Keywords fire on a single spammy term appearing ANYWHERE in the
+// subject+body (e.g. "JACKPOT"), so varying the wording or sender doesn't dodge
+// them. Built-ins are terms that essentially never occur in a real inquiry;
+// superadmins add more via type:'keyword' global_spam rows.
+export const DEFAULT_SPAM_KEYWORDS = [
+  'jackpot', 'casino', 'viagra', 'cialis', 'lottery winner', 'you have won',
+  'claim your prize', 'bitcoin doubler', 'crypto giveaway', 'forex signals',
+  'guaranteed roi', 'get rich', 'work from home', 'buy backlinks',
+];
+
+// Lowercased, whitespace-collapsed FULL text for keyword scanning. Unlike
+// normalizeSubject this keeps punctuation and the whole body (no 280-char cap)
+// so a keyword buried deep in a long message still matches.
+export function keywordHaystack(text) {
+  return (text || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+// Does `haystack` contain `kw` as a standalone run? Word-boundary-ish guard so
+// e.g. 'cialis' doesn't match inside 'specialist'.
+export function containsKeyword(haystack, kw) {
+  if (!kw) return false;
+  const isWordChar = c => !!c && /[a-z0-9]/.test(c);
+  let from = 0;
+  while (true) {
+    const i = haystack.indexOf(kw, from);
+    if (i === -1) return false;
+    if (!isWordChar(haystack[i - 1]) && !isWordChar(haystack[i + kw.length])) return true;
+    from = i + 1;
+  }
+}
+
+// Normalize a keyword for storage: lowercase, collapse whitespace, cap length.
+export function normalizeKeyword(text) {
+  return (text || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 120);
+}
+
+// Scan combined subject+body against the built-in list plus any admin-added
+// type:'keyword' entries. Returns the first matching keyword, or null.
+async function matchKeywords(sdb, text) {
+  const haystack = keywordHaystack(text);
+  if (!haystack) return null;
+  for (const kw of DEFAULT_SPAM_KEYWORDS) {
+    if (containsKeyword(haystack, kw)) return kw;
+  }
+  const rows = await sdb.collection('global_spam')
+    .find({ active: true, type: 'keyword' }).project({ key: 1 }).limit(1000).toArray();
+  for (const r of rows) {
+    if (containsKeyword(haystack, r.key)) return r.key;
+  }
+  return null;
+}
+
 let indexed = false;
 async function ensureIndexes(sdb) {
   if (indexed) return;
@@ -126,6 +180,11 @@ export async function checkGlobalSpam({ email, message, service } = {}) {
     if (emailHit) return { hit: true, type: 'email', key: emailHit.key };
   }
 
+  // Content keyword scan — a single spammy term (e.g. "JACKPOT") anywhere in the
+  // subject/body flags it, regardless of sender or exact wording.
+  const kwHit = await matchKeywords(sdb, [service, message].filter(Boolean).join(' '));
+  if (kwHit) return { hit: true, type: 'keyword', key: kwHit };
+
   const subjKey = subjectKeyFor({ service, message });
   if (subjKey) {
     const patterns = await sdb.collection('global_spam')
@@ -153,8 +212,11 @@ export async function removeGlobalSpam(type, key) {
 export async function addGlobalSpam({ type, key, addedBy }) {
   const sdb = getSlabDb();
   await ensureIndexes(sdb);
-  const cleanKey = type === 'subject' ? normalizeSubject(key) : normalizeEmail(key);
+  const cleanKey = type === 'subject' ? normalizeSubject(key)
+    : type === 'keyword' ? normalizeKeyword(key)
+    : normalizeEmail(key);
   if (!cleanKey) throw new Error('Invalid key');
+  if (type === 'keyword' && cleanKey.length < 3) throw new Error('Keyword too short');
   await promote(sdb, type, cleanKey, 'superadmin', addedBy, new Date());
   return cleanKey;
 }

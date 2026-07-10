@@ -40,6 +40,7 @@ import { requireSuperAdmin } from '../middleware/superadmin.js';
 import { encrypt, decrypt } from '../plugins/crypto.js';
 import { config } from '../config/config.js';
 import { logActivity } from '../plugins/activityLog.js';
+import { notifyAdmin } from '../plugins/notify.js';
 
 // ── Multer (memory) for W-9 PDF upload ─────────────────────────────────────
 const taxUpload = multer({
@@ -243,6 +244,23 @@ router.post('/signup', async (req, res) => {
       actor: { email: email.toLowerCase().trim(), role: 'delegate' },
       details: { name: `${firstName} ${lastName}`, refCode },
     });
+
+    // Notify scott@madladslab.com (email + platform_events feed) — fire-and-forget
+    notifyAdmin({
+      type: 'signup',
+      app: 'slab-delegate',
+      email: email.toLowerCase().trim(),
+      name: `${firstName.trim()} ${lastName.trim()}`,
+      ip: req.ip,
+      data: {
+        'Program': 'Sales Delegate (Slab trial)',
+        'Ref Code': refCode,
+        'Phone': (phone || '').trim() || '—',
+        'Location': [city, state].filter(Boolean).join(', ') || '—',
+        'Status': 'pending review',
+        'Review': `${config.DOMAIN}/delegates/admin`,
+      },
+    }).catch((e) => console.error('[delegates] notifyAdmin failed:', e.message));
 
     res.render('delegates/signup-success', { name: firstName });
   } catch (err) {
@@ -929,7 +947,7 @@ router.get('/panel/sales-sheets', async (req, res) => {
   res.render('delegates/sales-sheets', {
     delegate,
     brands,
-    promo: { type: '30-day free trial', description: 'New signups get 30 days free on any platform when using your referral code.' },
+    promo: { type: '30-day free Slab trial', description: 'New signups get a 30-day free trial on Slab when using your referral code. Slab is the only product on trial right now — that is what you are selling.' },
   });
 });
 
@@ -970,7 +988,7 @@ router.get('/panel/sales-sheets/:tenantId', async (req, res) => {
     stats,
     leadStatuses: LEAD_STATUSES,
     leadTags: LEAD_TAGS,
-    promo: { type: '30-day free trial', description: 'New signups get 30 days free on any platform when using your referral code.' },
+    promo: { type: '30-day free Slab trial', description: 'New signups get a 30-day free trial on Slab when using your referral code. Slab is the only product on trial right now — that is what you are selling.' },
   });
 });
 

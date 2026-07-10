@@ -142,16 +142,31 @@
 
               <!-- Permissions -->
               <div style="grid-column:span 2;">
-                <label>Permissions</label>
-                <form method="POST" action="/admin/users/<%= u._id %>/permissions" style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
-                  <div class="perm-checks">
-                    <% const allPerms = ['blog', 'pages', 'copy', 'design', 'assets', 'clients', 'invoices', 'email-marketing', 'meetings', 'portfolio'];
-                       const userPerms = Array.isArray(u.permissions) ? u.permissions : [];
-                       allPerms.forEach(p => { %>
-                      <label><input type="checkbox" name="permissions" value="<%= p %>" <%= userPerms.includes(p) ? 'checked' : '' %>><%= p %></label>
+                <label>Feature Permissions</label>
+                <p style="font-size:0.72rem;color:var(--slate);margin:2px 0 8px;line-height:1.4;">
+                  Leave everything unchecked for <strong>full access</strong>. Check specific features to
+                  <strong>restrict</strong> this admin to only those. (The workspace owner always has full access.)
+                </p>
+                <form method="POST" action="/admin/users/<%= u._id %>/permissions">
+                  <%
+                    const userPerms = Array.isArray(u.permissions) ? u.permissions : [];
+                    const catalog = (typeof permCatalog !== 'undefined' ? permCatalog : []);
+                    const bySection = {};
+                    catalog.forEach(p => { (bySection[p.section] = bySection[p.section] || []).push(p); });
+                  %>
+                  <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;">
+                    <% Object.keys(bySection).forEach(section => { %>
+                      <div style="min-width:150px;">
+                        <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.6px;color:var(--slate);margin-bottom:4px;"><%= section %></div>
+                        <div class="perm-checks" style="display:flex;flex-direction:column;gap:3px;">
+                          <% bySection[section].forEach(p => { %>
+                            <label style="font-size:0.8rem;"><input type="checkbox" name="permissions" value="<%= p.key %>" <%= userPerms.includes(p.key) ? 'checked' : '' %>> <%= p.label %><% if (p.experimental) { %> <span style="font-size:0.6rem;color:var(--gold-light,#b8942f);">(beta)</span><% } %></label>
+                          <% }); %>
+                        </div>
+                      </div>
                     <% }); %>
                   </div>
-                  <button type="submit" class="btn btn-navy btn-xs">Save Perms</button>
+                  <button type="submit" class="btn btn-navy btn-xs" style="margin-top:10px;">Save Perms</button>
                 </form>
               </div>
 

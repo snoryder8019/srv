@@ -23,92 +23,41 @@
     <a href="/admin" class="sidebar-brand-name"><% const _bsp = parseInt((typeof brandDesign !== 'undefined' ? brandDesign : {}).nav_logo_split) || 0; if (_bsp > 0) { %><span style="color:var(--gold)"><%- (brand?.name||'').slice(0,_bsp) %></span><%- (brand?.name||'').slice(_bsp) %><% } else { %><%- brand?.name || '' %><% } %></a>
     <div class="sidebar-brand-sub">Admin Portal</div>
   </div>
-  <nav class="sidebar-nav">
-    <span class="sidebar-section">Overview</span>
-    <a href="/admin" class="<%= page === 'dashboard' ? 'active' : '' %>">
-      <span class="icon">▦</span> Dashboard
-    </a>
+  <nav class="sidebar-nav" id="sidebarNav">
+    <%#
+      Nav is data-driven from plugins/featureRegistry.js and gated per viewer by
+      middleware/permissions.js (res.locals.navGroups). To add a feature to the
+      menu, add it to the registry — do not hardcode links here.
 
-    <span class="sidebar-section">Content</span>
-    <a href="/admin/pages" class="<%= page === 'pages' ? 'active' : '' %>">
-      <span class="icon">◻</span> Pages
-    </a>
-    <a href="/admin/blog" class="<%= page === 'blog' ? 'active' : '' %>">
-      <span class="icon">✍</span> Blog
-    </a>
-    <a href="/admin/portfolio" class="<%= page === 'portfolio' ? 'active' : '' %>">
-      <span class="icon">◈</span> Portfolio
-    </a>
-    <a href="/admin/design" class="<%= page === 'design' ? 'active' : '' %>">
-      <span class="icon">◑</span> Design & Copy
-    </a>
-    <a href="/admin/assets" class="<%= page === 'assets' ? 'active' : '' %>">
-      <span class="icon">▤</span> Assets
-    </a>
-
-    <span class="sidebar-section">Clients & CRM</span>
-    <a href="/admin/inquiries" class="<%= page === 'inquiries' ? 'active' : '' %>">
-      <span class="icon">◇</span> Inquiries
-    </a>
-    <a href="/admin/clients" class="<%= page === 'clients' ? 'active' : '' %>">
-      <span class="icon">◉</span> Clients
-    </a>
-    <a href="/admin/onboarding" class="<%= page === 'onboarding' ? 'active' : '' %>">
-      <span class="icon">&#9638;</span> Onboarding
-    </a>
-    <a href="/admin/tickets" class="<%= page === 'tickets' ? 'active' : '' %>">
-      <span class="icon">&#9888;</span> Help Requests
-    </a>
-
-    <span class="sidebar-section">Meetings</span>
-    <a href="/admin/meetings" class="<%= page === 'meetings' ? 'active' : '' %>">
-      <span class="icon">◫</span> Meetings
-    </a>
-    <a href="/admin/meetings/booking" class="<%= page === 'booking' ? 'active' : '' %>">
-      <span class="icon">📅</span> Booking
-    </a>
-    <a href="/admin/notes" class="<%= page === 'notes' ? 'active' : '' %>">
-      <span class="icon">🎙</span> Notes
-    </a>
-
-    <span class="sidebar-section">Marketing</span>
-    <a href="/admin/email-marketing" class="<%= page === 'email-marketing' ? 'active' : '' %>">
-      <span class="icon">@</span> Email Marketing
-    </a>
-    <a href="/admin/social" class="<%= (page === 'social' || page === 'social-suggestions') ? 'active' : '' %>">
-      <span class="icon">📣</span> Social Media
-    </a>
-    <a href="/admin/social?tab=suggestions" class="<%= page === 'social-suggestions' ? 'active' : '' %>" style="padding-left:34px;font-size:0.78rem;">
-      <span class="icon">✦</span> Suggestions
-    </a>
-    <a href="/admin/qr-codes" class="<%= page === 'qr-codes' ? 'active' : '' %>">
-      <span class="icon">▣</span> QR Codes & Card
-    </a>
-    <a href="/admin/print-studio" class="<%= page === 'print-studio' ? 'active' : '' %>">
-      <span class="icon">🖨</span> Print Studio
-    </a>
-
-    <span class="sidebar-section">Finance</span>
-    <a href="/admin/bookkeeping" class="<%= page === 'bookkeeping' ? 'active' : '' %>">
-      <span class="icon">$</span> Bookkeeping
-    </a>
-    <a href="/admin/calculators" class="<%= page === 'calculators' ? 'active' : '' %>">
-      <span class="icon">🧮</span> Calculators
-    </a>
-    <a href="/admin/analytics" class="<%= page === 'analytics' ? 'active' : '' %>">
-      <span class="icon">📊</span> Analytics
-    </a>
-
-    <span class="sidebar-section">Admin</span>
-    <a href="/admin/users" class="<%= page === 'users' ? 'active' : '' %>">
-      <span class="icon">◈</span> Users & Permissions
-    </a>
-    <a href="/admin/settings" class="<%= page === 'settings' ? 'active' : '' %>">
-      <span class="icon">⚙</span> Settings & Keys
-    </a>
-    <a href="/admin/docs" class="<%= page === 'docs' ? 'active' : '' %>">
-      <span class="icon">☰</span> Docs & Guides
-    </a>
+      Base vs Advanced: a feature flagged `advanced:true` in the registry only
+      shows when the viewer flips the "Advanced" toggle below. Base tools are the
+      ones usable as soon as the domain name is set. The toggle is a client-side
+      preference (localStorage) — it changes what's shown, not what's permitted.
+    %>
+    <div class="nav-advanced-toggle">
+      <label class="adv-switch">
+        <input type="checkbox" id="advancedToggle">
+        <span class="adv-switch-track"><span class="adv-switch-thumb"></span></span>
+        <span class="adv-switch-label">Advanced</span>
+      </label>
+    </div>
+    <% (typeof navGroups !== 'undefined' ? navGroups : []).forEach(function(group) {
+         var _adv = group.items.filter(function(f){ return f.advanced; }).length;
+    %>
+      <div class="nav-group"<%- (_adv === group.items.length) ? ' data-advanced="1"' : '' %>>
+      <span class="sidebar-section"><%= group.section %></span>
+      <% group.items.forEach(function(f) { %>
+        <a href="<%= f.url %>"<%- f.advanced ? ' data-advanced="1"' : '' %> class="<%= (typeof page !== 'undefined' && page === f.page) ? 'active' : '' %>">
+          <span class="icon"><%- f.icon %></span> <%= f.label %><% if (f._badge === 'beta') { %><span style="margin-left:6px;font-size:0.55rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;background:rgba(52,211,153,0.18);color:#34d399;padding:1px 5px;border-radius:3px;vertical-align:middle;">beta</span><% } else if (f._badge === 'experimental') { %><span style="margin-left:6px;font-size:0.55rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;background:rgba(201,168,72,0.18);color:var(--gold-light,#e0c26a);padding:1px 5px;border-radius:3px;vertical-align:middle;">exp</span><% } %>
+        </a>
+        <% (f.subItems || []).forEach(function(s) { %>
+        <a href="<%= s.url %>"<%- f.advanced ? ' data-advanced="1"' : '' %> class="<%= (typeof page !== 'undefined' && page === s.page) ? 'active' : '' %>" style="padding-left:34px;font-size:0.78rem;">
+          <span class="icon"><%- s.icon %></span> <%= s.label %>
+        </a>
+        <% }); %>
+      <% }); %>
+      </div>
+    <% }); %>
     <% if (typeof isSuperAdmin !== 'undefined' && isSuperAdmin) { %>
     <span class="sidebar-section">Platform</span>
     <a href="/superadmin" style="color:var(--gold-light);font-weight:600;">
@@ -168,6 +117,34 @@
       if (window.innerWidth <= 820) close();
     });
   });
+
+  // ── Advanced toggle ──
+  // Hides features flagged `advanced` in the registry until the viewer opts in.
+  // Preference is per-browser (localStorage). A section whose items are all
+  // advanced collapses entirely when off.
+  (function() {
+    var nav = document.getElementById('sidebarNav');
+    var chk = document.getElementById('advancedToggle');
+    if (!nav || !chk) return;
+    var KEY = 'slab.sidebar.advanced';
+
+    function apply(on) {
+      nav.classList.toggle('advanced-on', on);
+    }
+
+    // Default off; but if the page the viewer is currently on is an advanced
+    // feature, force it on so the active item never vanishes.
+    var stored = localStorage.getItem(KEY) === '1';
+    var onActiveAdvanced = !!nav.querySelector('a.active[data-advanced]');
+    var on = stored || onActiveAdvanced;
+    chk.checked = on;
+    apply(on);
+
+    chk.addEventListener('change', function() {
+      apply(chk.checked);
+      localStorage.setItem(KEY, chk.checked ? '1' : '0');
+    });
+  })();
 
   // ── Slab Switcher ──
   var switcherBtn = document.getElementById('slabSwitcherBtn');

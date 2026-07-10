@@ -102,7 +102,7 @@
 <div class="settings-grid">
   <h1 style="font-size:1.2rem;font-weight:600;margin-bottom:16px;">Settings</h1>
 
-  <% if (saved) { %><div class="saved-toast">Settings saved.</div><% } %>
+  <% if (saved) { %><div class="saved-toast"><%= (typeof saved === 'string' && saved !== '1' && saved !== 'save') ? saved : 'Settings saved.' %></div><% } %>
   <% if (error) { %><div class="error-toast"><%= (typeof error === 'string' && error !== 'save') ? error : 'Failed to save settings.' %></div><% } %>
 
   <div class="status-bar status-<%= settings.status || 'preview' %>">
@@ -664,6 +664,45 @@
       </div>
     </div>
 
+    <!-- ═══════════ MICROSOFT SIGN-IN (WHITE GLOVE) ═══════════ -->
+    <div class="settings-section">
+      <h2>
+        &#9635; Microsoft Sign-In
+        <% if (settings.microsoftOAuthConnected) { %><span class="field-set" style="font-size:0.68rem;">&#9679; configured</span><% } %>
+        <button type="button" class="guide-toggle" onclick="toggleGuide('msauth')">&#9432; What is this?</button>
+      </h2>
+      <p class="desc">Let your team sign in to the admin with their <strong>Microsoft (Entra ID / Office 365)</strong> account. Leave blank to use the shared MadLadsLab Microsoft app; fill this in to run sign-in through <strong>your own</strong> Azure app (white glove).</p>
+
+      <div class="guide-panel" id="guide-msauth">
+        <ol>
+          <li>Go to <a href="https://entra.microsoft.com/" target="_blank">Entra ID &rarr; App registrations</a> and <strong>New registration</strong>.</li>
+          <li>Under <strong>Redirect URI</strong>, choose platform <strong>Web</strong> and paste the exact URL shown below.</li>
+          <li>Copy the <strong>Application (client) ID</strong> into the field below.</li>
+          <li>Under <strong>Certificates &amp; secrets</strong>, create a <strong>client secret</strong> and paste its <em>Value</em> below.</li>
+          <li>Pick who may sign in: <code>common</code> (any Microsoft account), <code>organizations</code> (any work/school), or your <strong>Directory (tenant) ID</strong> to lock to your org only.</li>
+          <li>Click <strong>Save Settings</strong>. A "Sign in with Microsoft" button appears on your admin login.</li>
+        </ol>
+        <div class="guide-tip">Delegated permission needed: <code>User.Read</code> (default). No mailbox access is requested — this is sign-in only.</div>
+      </div>
+
+      <div class="field-row">
+        <label>Application (client) ID</label>
+        <input type="text" name="microsoftOAuthClientId" value="<%= settings.microsoftOAuthClientId || '' %>" placeholder="00000000-0000-0000-0000-000000000000">
+      </div>
+      <div class="field-row">
+        <label>Client Secret <% if (settings.microsoftOAuthSecret_set) { %><span class="field-set">&#9679; configured</span><% } %></label>
+        <input type="password" name="microsoftOAuthSecret" value="<%= settings.microsoftOAuthSecret || '' %>" placeholder="Client secret value (not the Secret ID)">
+      </div>
+      <div class="field-row">
+        <label>Directory (Azure Tenant) <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--slate);">— who can sign in</span></label>
+        <input type="text" name="microsoftOAuthTenant" value="<%= settings.microsoftOAuthTenant || '' %>" placeholder="common (default) · organizations · or your Directory (tenant) ID">
+      </div>
+      <div class="field-row">
+        <label>Authorized Redirect URI <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--slate);">(add this exact URL to your Azure app)</span></label>
+        <input type="text" value="<%= settings.microsoftOAuthRedirect %>" readonly onclick="this.select()" style="font-family:monospace;font-size:0.72rem;background:var(--ivory);">
+      </div>
+    </div>
+
     <!-- ═══════════ EMAIL DNS ═══════════ -->
     <div class="settings-section">
       <h2>
@@ -917,6 +956,55 @@
       </div>
     </div>
 
+    <!-- ═══════════ ASSET IMPORT — GOOGLE DRIVE & PHOTOS ═══════════ -->
+    <div class="settings-section">
+      <h2>&#9672; Asset Import &mdash; Google Drive &amp; Photos</h2>
+      <p class="desc">Pull images straight from Google Drive or Google Photos into your Asset Library. Uses the platform's shared Google app — nothing to configure, just connect the account you want to import from. Manage and browse under <a href="/admin/assets" style="color:var(--gold);">Assets</a>.</p>
+
+      <!-- Google Drive -->
+      <div class="field-row">
+        <label>Google Drive
+          <% if (settings.googleDriveConnected) { %><span class="field-set">&#9679; connected<%= settings.googleDriveUser ? ' — ' + settings.googleDriveUser : '' %></span><% } %>
+        </label>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <% if (settings.googleDriveConnected) { %>
+            <a href="/auth/google/drive" class="btn-test" style="text-decoration:none;display:inline-block;background:var(--navy);">Reconnect</a>
+            <button type="button" onclick="disconnectAssetSource('drive')" style="background:none;border:1px solid var(--border);color:var(--slate);border-radius:3px;font-size:0.7rem;padding:5px 11px;cursor:pointer;">Disconnect</button>
+          <% } else { %>
+            <a href="/auth/google/drive" class="btn-test" style="text-decoration:none;display:inline-block;">Connect Google Drive</a>
+          <% } %>
+        </div>
+        <div class="field-hint">Browse and import any image from the connected Drive. Scope: <code>drive.readonly</code> (restricted — requires Google app verification for production).</div>
+      </div>
+
+      <!-- Google Photos -->
+      <div class="field-row" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+        <label>Google Photos
+          <% if (settings.googlePhotosConnected) { %><span class="field-set">&#9679; connected<%= settings.googlePhotosUser ? ' — ' + settings.googlePhotosUser : '' %></span><% } %>
+        </label>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <% if (settings.googlePhotosConnected) { %>
+            <a href="/auth/google/photos" class="btn-test" style="text-decoration:none;display:inline-block;background:var(--navy);">Reconnect</a>
+            <button type="button" onclick="disconnectAssetSource('photos')" style="background:none;border:1px solid var(--border);color:var(--slate);border-radius:3px;font-size:0.7rem;padding:5px 11px;cursor:pointer;">Disconnect</button>
+          <% } else { %>
+            <a href="/auth/google/photos" class="btn-test" style="text-decoration:none;display:inline-block;">Connect Google Photos</a>
+          <% } %>
+        </div>
+        <div class="field-hint">Pick photos in Google's own picker, then import them. Scope: <code>photospicker.mediaitems.readonly</code> (sensitive — no CASA assessment needed).</div>
+      </div>
+
+      <script>
+        function disconnectAssetSource(svc) {
+          var label = svc === 'drive' ? 'Google Drive' : 'Google Photos';
+          if (!confirm('Disconnect ' + label + ' from this site?')) return;
+          fetch('/admin/assets/' + svc + '/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { if (d.success) location.reload(); else alert(d.error || 'Disconnect failed'); })
+            .catch(function (e) { alert('Disconnect failed: ' + e.message); });
+        }
+      </script>
+    </div>
+
       </div><!-- /acc-body --></div><!-- /GROUP: INTEGRATIONS -->
 
     <button type="submit" style="padding:12px 32px;background:var(--gold);color:var(--on-surface);border:none;border-radius:3px;font-family:'Jost',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;letter-spacing:0.04em;">Save Settings</button>
@@ -930,150 +1018,13 @@
       <a href="/admin/social" class="guide-toggle" style="text-decoration:none;">Open Portal &rarr;</a>
     </h2>
     <p class="desc">
-      Connect accounts to publish &amp; schedule from the <a href="/admin/social">Social portal</a>. Keys are encrypted at rest.
-      <strong style="color:#16a34a;">First check</strong> = keys saved &middot;
-      <strong style="color:#16a34a;">second check</strong> = live connection verified.
+      The one place to connect your accounts for publishing &amp; scheduling from the <a href="/admin/social">Social portal</a>. Secrets are encrypted (AES-256-GCM) at rest — you'll only ever see a masked hint after saving.
     </p>
 
-    <% if (typeof publicBaseUrl !== 'undefined') { %>
-    <div class="guide-panel open" style="margin-bottom:18px;">
-      <div style="font-size:0.72rem;font-weight:600;color:var(--navy);margin-bottom:8px;">App Compliance URLs — paste these into your Meta / social app settings</div>
-      <% const _urls = [
-           { label: 'Privacy Policy URL', url: publicBaseUrl + '/privacy' },
-           { label: 'Terms of Service URL', url: publicBaseUrl + '/terms' },
-           { label: 'Data Deletion Callback URL', url: publicBaseUrl + '/data-deletion' },
-         ]; %>
-      <% _urls.forEach(u => { %>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
-        <span style="font-size:0.68rem;color:var(--slate);min-width:170px;"><%= u.label %></span>
-        <code style="flex:1;min-width:200px;font-size:0.72rem;"><%= u.url %></code>
-        <button type="button" class="btn-test" style="padding:5px 11px;font-size:0.66rem;" onclick="navigator.clipboard.writeText('<%= u.url %>');this.textContent='Copied';setTimeout(()=>this.textContent='Copy',1200);">Copy</button>
-        <a href="<%= u.url %>" target="_blank" rel="noopener" class="btn-test" style="padding:5px 11px;font-size:0.66rem;background:transparent;color:var(--navy);border:1px solid var(--border);text-decoration:none;">Open</a>
-      </div>
-      <% }) %>
-      <div class="guide-tip" style="margin-top:8px;">In your Meta app → <strong>App Settings → Basic</strong>: set the Privacy Policy &amp; Terms URLs. Under <strong>Data Deletion</strong>, choose "Data Deletion Request Callback URL" and paste the third URL. Meta will call it when a user removes your app. Add your <strong>App Secret</strong> to the Facebook connection below so we can verify those callbacks.</div>
-    </div>
-    <% } %>
+    <%- include('partials/social-connections') %>
 
-    <div class="social-list">
-    <% socialPlatforms.forEach(p => { const st = (typeof socialStatus !== 'undefined' && socialStatus[p.key]) || {}; %>
-      <div class="social-item" data-key="<%= p.key %>">
-        <div class="social-head">
-          <span class="social-ic"><%= p.icon %></span>
-          <span class="social-name"><%= p.name %><% if (p.comingSoon) { %> <span class="soon">(soon)</span><% } %></span>
-          <span class="social-checks">
-            <span class="chk chk-entered <%= st.configured ? 'on' : '' %>" title="API keys entered">&#10003; Entered</span>
-            <span class="chk chk-verified <%= st.verified ? 'on' : '' %>" title="Connection verified">&#10003; Verified</span>
-          </span>
-          <% if (!p.comingSoon) { %>
-          <button type="button" class="btn-input" onclick="toggleSocial('<%= p.key %>')"><%= st.configured ? 'Edit' : 'Input keys' %></button>
-          <% } else { %>
-          <span class="soon-label">Coming soon</span>
-          <% } %>
-        </div>
-        <% if (!p.comingSoon) { %>
-        <div class="social-form" id="social-form-<%= p.key %>" style="display:none;">
-          <div class="social-setup"><%= p.setup %><% if (p.portal) { %> <a href="<%= p.portal %>" target="_blank" rel="noopener">Open developer portal &rarr;</a><% } %></div>
-          <% p.fields.forEach(f => { const isSet = st.secretsSet && st.secretsSet[f.key]; const val = (!f.secret && st.credentials) ? (st.credentials[f.key] || '') : ''; %>
-          <div class="field-row">
-            <label><%= f.label %><% if (f.secret && isSet) { %> <span class="field-set">&#9679; saved</span><% } %></label>
-            <input type="<%= f.secret ? 'password' : 'text' %>" data-field="<%= f.key %>" value="<%= val %>"
-                   placeholder="<%= f.secret && isSet ? 'saved — leave blank to keep' : f.placeholder %>" autocomplete="off">
-          </div>
-          <% }) %>
-          <div class="social-actions">
-            <button type="button" class="btn-test" onclick="saveSocial('<%= p.key %>', this)">Save keys</button>
-            <button type="button" class="btn-test" style="background:var(--gold);color:var(--on-surface);" onclick="verifySocial('<%= p.key %>', this)">Verify connection</button>
-            <% if (['facebook','instagram','threads'].includes(p.key)) { %>
-            <button type="button" class="btn-test" style="background:transparent;color:var(--navy);border:1px solid var(--border);" onclick="upgradeSocial('<%= p.key %>', this)">🔄 Make permanent</button>
-            <% } %>
-            <span class="test-result" id="social-result-<%= p.key %>"></span>
-          </div>
-          <% if (['facebook','instagram','threads'].includes(p.key)) { %>
-          <div style="font-size:0.68rem;color:var(--slate);margin-top:6px;">
-            <% if (st.tokenType === 'PAGE' && !st.tokenExpiresAt) { %>
-              <span style="color:#16a34a;">✓ Token is permanent (never expires) — auto-managed.</span>
-            <% } else if (st.tokenExpiresAt) { %>
-              ↻ Auto-renews · expires <%= new Date(st.tokenExpiresAt).toLocaleDateString() %>
-            <% } else { %>
-              Add App ID + App Secret, then Save (or “Make permanent”) to enable auto-renew.
-            <% } %>
-          </div>
-          <% } %>
-        </div>
-        <% } %>
-      </div>
-    <% }) %>
-    </div>
   </div>
 
-  <script>
-  function toggleSocial(key) {
-    const f = document.getElementById('social-form-' + key);
-    if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none';
-  }
-  function _socialPayload(key) {
-    const form = document.getElementById('social-form-' + key);
-    const payload = {};
-    form.querySelectorAll('input[data-field]').forEach(i => {
-      const v = i.value.trim();
-      if (v) payload[i.dataset.field] = v;   // omit blanks → existing secrets kept
-    });
-    return payload;
-  }
-  function _setCheck(key, which, on) {
-    const el = document.querySelector('.social-item[data-key="' + key + '"] .chk-' + which);
-    if (el) el.classList.toggle('on', !!on);
-  }
-  async function saveSocial(key, btn) {
-    const out = document.getElementById('social-result-' + key);
-    btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
-    out.textContent = ''; out.className = 'test-result';
-    try {
-      const r = await fetch('/admin/social/connections/' + key, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(_socialPayload(key)),
-      });
-      const d = await r.json();
-      if (d.ok) {
-        _setCheck(key, 'entered', d.account && d.account.configured);
-        out.textContent = '✓ Keys saved' + (d.account && d.account.configured ? '' : ' (some fields still missing)');
-        out.className = 'test-result test-ok';
-      } else { out.textContent = '✕ ' + (d.error || 'Save failed'); out.className = 'test-result test-fail'; }
-    } catch (e) { out.textContent = '✕ Request failed'; out.className = 'test-result test-fail'; }
-    btn.disabled = false; btn.textContent = orig;
-  }
-  async function verifySocial(key, btn) {
-    const out = document.getElementById('social-result-' + key);
-    btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Verifying…';
-    out.textContent = ''; out.className = 'test-result';
-    try {
-      const r = await fetch('/admin/social/connections/' + key + '/test', {
-        method: 'POST', headers: { 'Accept': 'application/json' },
-      });
-      const d = await r.json();
-      _setCheck(key, 'verified', d.ok);
-      out.textContent = (d.ok ? '✓ ' : '✕ ') + (d.note || d.error || (d.ok ? 'Verified' : 'Failed'));
-      out.className = 'test-result ' + (d.ok ? 'test-ok' : 'test-fail');
-    } catch (e) { out.textContent = '✕ Request failed'; out.className = 'test-result test-fail'; }
-    btn.disabled = false; btn.textContent = orig;
-  }
-  async function upgradeSocial(key, btn) {
-    const out = document.getElementById('social-result-' + key);
-    btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Upgrading…';
-    out.textContent = ''; out.className = 'test-result';
-    try {
-      const r = await fetch('/admin/social/connections/' + key + '/upgrade', {
-        method: 'POST', headers: { 'Accept': 'application/json' },
-      });
-      const d = await r.json();
-      out.textContent = (d.ok ? '✓ ' : '✕ ') + (d.note || d.error || (d.ok ? 'Upgraded' : 'Failed'));
-      out.className = 'test-result ' + (d.ok ? 'test-ok' : 'test-fail');
-    } catch (e) { out.textContent = '✕ Request failed'; out.className = 'test-result test-fail'; }
-    btn.disabled = false; btn.textContent = orig;
-  }
-  </script>
   <% } %>
 </div>
 

@@ -962,6 +962,7 @@ async function generateSdBackground(prompt, negPrompt, _ctx) {
   btn.disabled = true;
   btn.textContent = 'Generating...';
   status.textContent = 'Calling Stable Diffusion — this takes 10-45s…';
+  const genOverlay = window.SlabLoader ? SlabLoader.overlay(canvasArea, 'Generating background…') : null;
   // Tick counter so user knows it's alive
   let elapsed = 0;
   const ticker = setInterval(() => {
@@ -1019,6 +1020,7 @@ async function generateSdBackground(prompt, negPrompt, _ctx) {
     status.textContent = '⚠ ' + err.message;
   } finally {
     clearInterval(ticker);
+    if (genOverlay) genOverlay.done();
   }
   if (btn) { btn.disabled = false; btn.textContent = 'Generate Background'; }
   // Also restore any other copies (mobile overlay clone)
@@ -1580,9 +1582,11 @@ async function getBgRemover() {
 async function removeLayerBg(id, btn) {
   const l = layers.find(x => x.id === id);
   if (!l || l.type !== 'image' || !l.img) return;
-  if (btn && btn.disabled) return;
+  if (btn && (btn.disabled || btn._slabBusy)) return;
   const orig = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = '…'; btn.title = 'Removing background…'; }
+  if (btn && window.SlabLoader) { SlabLoader.button(btn, true, ''); btn.title = 'Removing background…'; }
+  else if (btn) { btn.disabled = true; btn.textContent = '…'; btn.title = 'Removing background…'; }
+  const bgOverlay = window.SlabLoader ? SlabLoader.overlay(canvasArea, 'Removing background…') : null;
   try {
     // Rasterize the already-loaded (CORS-clean) image at natural size so we
     // never re-fetch a remote URL that might block cross-origin.
@@ -1618,7 +1622,9 @@ async function removeLayerBg(id, btn) {
     console.error('Background removal failed:', err);
     alert('Background removal failed: ' + (err && err.message ? err.message : err));
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = orig || '✂'; btn.title = 'Remove background'; }
+    if (bgOverlay) bgOverlay.done();
+    if (btn && window.SlabLoader && btn._slabBusy) { SlabLoader.button(btn, false); btn.title = 'Remove background'; }
+    else if (btn) { btn.disabled = false; btn.textContent = orig || '✂'; btn.title = 'Remove background'; }
   }
 }
 
@@ -1671,7 +1677,12 @@ function addImageLayer(src, name) {
   // crossOrigin only for remote URLs; blob:/data: are same-origin and setting
   // it causes load failures in some Chromium builds
   if (/^https?:/i.test(src)) img.crossOrigin = 'anonymous';
+  // Spinner over the canvas while a (possibly remote) image downloads. blob:/data:
+  // resolve instantly, so only bother wheeling for http(s) sources.
+  const loadOverlay = (window.SlabLoader && /^https?:/i.test(src))
+    ? SlabLoader.overlay(canvasArea, 'Adding image…') : null;
   img.onload = () => {
+    if (loadOverlay) loadOverlay.done();
     const scale = Math.min(canvasW / img.naturalWidth, canvasH / img.naturalHeight, 1);
     const w = img.naturalWidth * scale;
     const h = img.naturalHeight * scale;
@@ -1681,7 +1692,7 @@ function addImageLayer(src, name) {
       removeLayerBgColor(layer.id, undefined, { silent: true });
     }
   };
-  img.onerror = () => alert('Could not load image — if it is a remote URL, the host may block cross-origin loading.');
+  img.onerror = () => { if (loadOverlay) loadOverlay.done(); alert('Could not load image — if it is a remote URL, the host may block cross-origin loading.'); };
   img.src = corsSrc(src);
 }
 function addVideoLayer(src, name) {
@@ -2703,9 +2714,11 @@ document.getElementById('downloadPngBtn').addEventListener('click', () => {
   restore();
 });
 
-document.getElementById('saveLibBtn').addEventListener('click', async () => {
+document.getElementById('saveLibBtn').addEventListener('click', async (ev) => {
   const status = document.getElementById('exportStatus');
+  const saveBtn = ev.currentTarget;
   status.textContent = 'Uploading...';
+  if (window.SlabLoader) SlabLoader.button(saveBtn, true, 'Uploading…');
   const restore = beginExportRender();
   const alpha = document.getElementById('exportAlpha')?.checked;
   try {
@@ -2725,6 +2738,7 @@ document.getElementById('saveLibBtn').addEventListener('click', async () => {
     status.textContent = data.success ? '✓ Saved to library!' : ('Error: '+(data.error||'Failed'));
     setTimeout(() => { status.textContent = ''; }, 3000);
   } catch(err) { restore(); status.textContent = 'Error: '+err.message; }
+  finally { if (window.SlabLoader) SlabLoader.button(saveBtn, false); }
 });
 
 // ═══════════════════════════════════════════
@@ -2737,7 +2751,8 @@ function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').
 //  Called from agent panel to load a design
 //  as editable layers in the canvas
 // ═══════════════════════════════════════════
-window.loadAgentDesign = function(design) {
+window.loadAgentDesign = function(design, opts) {
+  opts = opts || {};
   // Set canvas size
   const DIMS = {
     'ig-post':[1080,1080],'ig-story':[1080,1920],'fb-post':[1200,630],
@@ -2785,8 +2800,9 @@ window.loadAgentDesign = function(design) {
   renderLayerList();
   if (!totalImages) render();
 
-  // Close agent panel
-  document.getElementById('agentPanel')?.classList.remove('open');
+  // Close agent panel (skipped on auto-load-for-review so the user can still
+  // switch variations / retry while inspecting the canvas).
+  if (!opts.keepPanel) document.getElementById('agentPanel')?.classList.remove('open');
 };
 
 // init
@@ -2954,7 +2970,8 @@ renderLayerList();
     history.push({ role: 'user', content: text });
     inputEl.value = '';
 
-    const loadingEl = addMessage('agent', '<span class="ap-msg-loading">Designing... (SD backgrounds may take 15-45s)</span>');
+    const _wheel = window.SlabLoader ? SlabLoader.spinnerHTML() + ' ' : '';
+    const loadingEl = addMessage('agent', '<span class="ap-msg-loading">' + _wheel + 'Designing... (SD backgrounds may take 15-45s)</span>');
 
     try {
       const folder = document.getElementById('exportFolder')?.value || 'clients';
@@ -2965,8 +2982,23 @@ renderLayerList();
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: history, mode: 'generate', folder, clientId }),
       });
-      const data = await r.json();
+      // Guard against non-JSON responses. When the AI/SD backend is slow or
+      // restarts mid-request, the proxy returns an HTML error page (502/503/504)
+      // — blindly calling r.json() then throws the cryptic "Unexpected token '<'".
+      const raw = await r.text();
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        loadingEl.remove();
+        throw new Error(
+          [502, 503, 504].includes(r.status)
+            ? `The design service timed out or was unavailable (HTTP ${r.status}). SD backgrounds can take 15-45s each — please try again.`
+            : `Unexpected server response (HTTP ${r.status}). Please try again in a moment.`
+        );
+      }
       loadingEl.remove();
+      if (!r.ok) throw new Error(data.error || `Request failed (HTTP ${r.status})`);
 
       // Store design for retry/edit
       lastDesign = data.design || null;
@@ -3002,6 +3034,16 @@ renderLayerList();
 
       const msgEl = addMessage('agent', replyHtml);
       history.push({ role: 'assistant', content: data.message || 'Done.' });
+
+      // Auto-load the generated design into the canvas for immediate review —
+      // otherwise the agent just saves to the library and the canvas stays empty
+      // until the user hunts for "Edit Layers". Loads the first variation; the
+      // "Edit Layers" buttons still let them switch to another variation.
+      if (lastDesign) {
+        const reviewDesign = { ...lastDesign };
+        if (variations[0]?.sdBgUrl) reviewDesign.sdBgUrl = variations[0].sdBgUrl;
+        window.loadAgentDesign(reviewDesign, { keepPanel: true });
+      }
 
       // Wire up buttons inside this message
       msgEl.querySelectorAll('[data-action]').forEach(btn => {

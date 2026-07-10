@@ -24,6 +24,27 @@ import bcrypt from 'bcrypt';
 
 const router = express.Router();
 
+/**
+ * Signup funnel logging — records every stage of the signup so the superadmin
+ * overview can scrutinize the click, conversions, validation bounces, and
+ * crashes. Fire-and-forget; never blocks or breaks the signup itself.
+ *
+ * action: 'signup_attempt' | 'signup_rejected' | 'signup_failed'
+ * (the terminal success is logged separately as action 'signup').
+ */
+function logSignupStage(action, { slug, email, brandName, method, reason, error, req }) {
+  const status = action === 'signup_attempt' ? 'pending'
+    : action === 'signup_rejected' ? 'rejected' : 'failed';
+  logActivity({
+    category: 'registration', action, status,
+    tenantDomain: slug ? `${slug}.madladslab.com` : null,
+    actor: { email: email || null, role: 'owner' },
+    details: { subdomain: slug || null, brandName: brandName || null, method: method || null, reason: reason || null },
+    error: error || null,
+    ip: req?.ip || null,
+  });
+}
+
 function getStripe() {
   if (!config.SLAB_STRIPE_SECRET) return null;
   return new Stripe(config.SLAB_STRIPE_SECRET);
@@ -288,24 +309,38 @@ router.get('/check-ref', async (req, res) => {
 });
 
 router.post('/google-signup', async (req, res) => {
+  const { credential, subdomain, brandName, brandLocation, design, tagline, ref } = req.body;
+  const slug = (subdomain || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+  logSignupStage('signup_attempt', { slug, brandName: brandName?.trim(), method: 'google', req });
   try {
-    const { credential, subdomain, brandName, brandLocation, design, tagline, ref } = req.body;
-    if (!credential) return res.status(400).json({ error: 'Missing Google credential' });
+    if (!credential) {
+      logSignupStage('signup_rejected', { slug, brandName: brandName?.trim(), method: 'google', reason: 'missing_credential', req });
+      return res.status(400).json({ error: 'Missing Google credential' });
+    }
 
-    const slug = (subdomain || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
-    if (!slug || slug.length < 2) return res.status(400).json({ error: 'Invalid subdomain' });
-    if (!brandName?.trim()) return res.status(400).json({ error: 'Business name required' });
+    if (!slug || slug.length < 2) {
+      logSignupStage('signup_rejected', { slug, brandName: brandName?.trim(), method: 'google', reason: 'invalid_subdomain', req });
+      return res.status(400).json({ error: 'Invalid subdomain' });
+    }
+    if (!brandName?.trim()) {
+      logSignupStage('signup_rejected', { slug, method: 'google', reason: 'missing_brand', req });
+      return res.status(400).json({ error: 'Business name required' });
+    }
 
     // Verify Google token
     const tokenInfo = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + credential);
     const profile = await tokenInfo.json();
     if (!profile.email || profile.aud !== config.GGLCID) {
+      logSignupStage('signup_rejected', { slug, brandName: brandName?.trim(), method: 'google', reason: 'invalid_google_credential', req });
       return res.status(401).json({ error: 'Invalid Google credential' });
     }
 
     const slab = getSlabDb();
     const exists = await slab.collection('tenants').findOne({ 'meta.subdomain': slug });
-    if (exists) return res.status(409).json({ error: 'Subdomain taken' });
+    if (exists) {
+      logSignupStage('signup_rejected', { slug, email: profile.email, brandName: brandName?.trim(), method: 'google', reason: 'subdomain_taken', req });
+      return res.status(409).json({ error: 'Subdomain taken' });
+    }
 
     const result = await provisionTenant({
       subdomain: slug,
@@ -444,6 +479,7 @@ router.post('/google-signup', async (req, res) => {
     res.json({ ok: true, domain: result.domain, adminUrl });
   } catch (err) {
     console.error('[onboarding] Google signup failed:', err);
+    logSignupStage('signup_failed', { slug, brandName: brandName?.trim(), method: 'google', error: err.message, req });
     res.status(500).json({ error: err.message || 'Signup failed' });
   }
 });
@@ -452,17 +488,22 @@ router.post('/google-signup', async (req, res) => {
 router.post('/signup', async (req, res) => {
   const { subdomain, brandName, brandLocation, email, password, design, tagline, ref } = req.body;
   const slug = (subdomain || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+  logSignupStage('signup_attempt', { slug, email: email?.trim(), brandName: brandName?.trim(), method: 'email', req });
 
-  if (!slug || slug.length < 2) return res.status(400).json({ error: 'Invalid subdomain' });
-  if (!brandName?.trim()) return res.status(400).json({ error: 'Business name required' });
-  if (!email?.trim()) return res.status(400).json({ error: 'Email required' });
-  if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
-  if (!/[A-Z]/.test(password)) return res.status(400).json({ error: 'Password must include an uppercase letter' });
-  if (!/[0-9]/.test(password)) return res.status(400).json({ error: 'Password must include a number' });
+  const reject = (reason, msg) => {
+    logSignupStage('signup_rejected', { slug, email: email?.trim(), brandName: brandName?.trim(), method: 'email', reason, req });
+    return res.status(reason === 'subdomain_taken' ? 409 : 400).json({ error: msg });
+  };
+  if (!slug || slug.length < 2) return reject('invalid_subdomain', 'Invalid subdomain');
+  if (!brandName?.trim()) return reject('missing_brand', 'Business name required');
+  if (!email?.trim()) return reject('missing_email', 'Email required');
+  if (!password || password.length < 8) return reject('weak_password', 'Password must be at least 8 characters');
+  if (!/[A-Z]/.test(password)) return reject('weak_password', 'Password must include an uppercase letter');
+  if (!/[0-9]/.test(password)) return reject('weak_password', 'Password must include a number');
 
   const slab = getSlabDb();
   const exists = await slab.collection('tenants').findOne({ 'meta.subdomain': slug });
-  if (exists) return res.status(409).json({ error: 'Subdomain taken' });
+  if (exists) return reject('subdomain_taken', 'Subdomain taken');
 
   try {
     const result = await provisionTenant({
@@ -639,13 +680,7 @@ router.post('/signup', async (req, res) => {
     res.json({ ok: true, domain: result.domain, adminUrl });
   } catch (err) {
     console.error('[onboarding] Signup failed:', err);
-    logActivity({
-      category: 'registration', action: 'signup',
-      tenantDomain: `${slug}.madladslab.com`, status: 'failed',
-      actor: { email: email?.trim(), role: 'owner' },
-      details: { subdomain: slug, brandName: brandName?.trim() },
-      error: err.message, ip: req.ip,
-    });
+    logSignupStage('signup_failed', { slug, email: email?.trim(), brandName: brandName?.trim(), method: 'email', error: err.message, req });
     res.status(500).json({ error: err.message || 'Signup failed' });
   }
 });

@@ -469,14 +469,24 @@ async function distributeNote(db, note, target, req) {
       if (!target.clientId) throw new Error('Select a client first');
       const client = await db.collection('clients').findOne({ _id: new ObjectId(target.clientId) });
       if (!client) throw new Error('Client not found');
+
+      const newNote = {
+        id: new ObjectId(), content: tldr, source: 'voice_note',
+        noteId: note._id, createdBy: req.adminUser.email, createdAt: now,
+      };
+
+      // Legacy tolerance: some client docs have `notes` as a plain string (or
+      // absent), which makes $push fail. Coerce to an array — preserving any
+      // existing string as a legacy entry — and $set the whole array.
+      const existing = Array.isArray(client.notes)
+        ? client.notes
+        : (typeof client.notes === 'string' && client.notes.trim()
+            ? [{ id: new ObjectId(), content: client.notes.trim(), source: 'legacy', createdAt: now }]
+            : []);
+
       await db.collection('clients').updateOne(
         { _id: client._id },
-        { $push: { notes: {
-            id: new ObjectId(), content: tldr, source: 'voice_note',
-            noteId: note._id, createdBy: req.adminUser.email, createdAt: now,
-          }},
-          $set: { updatedAt: now },
-        },
+        { $set: { notes: [...existing, newNote], updatedAt: now } },
       );
       return `Note added to client "${client.name || client.email}"`;
     }
