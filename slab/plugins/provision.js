@@ -14,23 +14,13 @@ const LINODE_API = 'https://api.linode.com/v4';
 // ── Default collections to seed in a new tenant DB ─────────────────────────
 
 const SEED_COLLECTIONS = {
-  design: [
-    { key: 'color_primary', value: '#1C2B4A' },
-    { key: 'color_accent', value: '#C9A848' },
-    { key: 'color_bg', value: '#F5F3EF' },
-    { key: 'font_heading', value: 'Cormorant Garamond' },
-    { key: 'font_body', value: 'Jost' },
-    { key: 'vis_hero', value: 'true' },
-    { key: 'vis_services', value: 'true' },
-    { key: 'vis_portfolio', value: 'true' },
-    { key: 'vis_about', value: 'true' },
-    { key: 'vis_process', value: 'true' },
-    { key: 'vis_reviews', value: 'false' },
-    { key: 'vis_contact', value: 'true' },
-    { key: 'vis_blog', value: 'false' },
-    { key: 'agent_name', value: 'Assistant' },
-    { key: 'agent_greeting', value: 'How can I help you today?' },
-  ],
+  // Design is SPARSE: a new tenant stores no design rows at all. Every key falls
+  // through to config/schema.js DESIGN_DEFAULTS at read time, so a fresh tenant
+  // renders on the current platform defaults and picks up new schema keys for
+  // free. The tenant's `design` collection accrues only the values they change.
+  // (The old partial seed drifted from the schema — e.g. vis_reviews — and is
+  // gone; read-time defaulting is the single source of truth.)
+  design: [],
   copy: [],
   blog: [],
   portfolio: [],
@@ -46,6 +36,8 @@ const SEED_COLLECTIONS = {
   contacts: [],
   onboarding_forms: [],
   onboarding_responses: [],
+  jobs: [],              // Careers: postings. Mirrors blog doc shape + hiring fields.
+  job_applications: [],  // Careers: one doc per submission; resumeKey → private S3.
 };
 
 // ── Main provisioning function ──────────────────────────────────────────────

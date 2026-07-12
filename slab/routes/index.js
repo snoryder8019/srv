@@ -40,6 +40,39 @@ import { captureLead } from '../plugins/subscribe.js';
 import { getPublicSocialLinks } from '../plugins/socialPublish.js';
 import { buildRssFeed, buildAtomFeed } from '../plugins/feeds.js';
 import { applyPipes } from '../plugins/pipes.js';
+import { fetchChannelUploads } from '../plugins/youtube.js';
+import { FEATURES } from '../plugins/featureRegistry.js';
+
+// Build the landing "every feature" showcase. A curated list wins
+// (design.landing_features_json — JSON [{title,blurb,stage,section}]); otherwise
+// seed from the feature registry so every feature shows by default, stage-badged
+// (experimental flag → 'experimental', everything else → 'stable'). This is what
+// lets the platform's own site advertise stable/beta/experimental features.
+function buildFeatureShowcase(design = {}) {
+  let curated = [];
+  try {
+    const raw = design.landing_features_json;
+    if (raw && String(raw).trim()) curated = JSON.parse(raw);
+  } catch { curated = []; }
+  if (Array.isArray(curated) && curated.length) {
+    return curated
+      .map(f => ({
+        title: String(f.title || '').trim(),
+        blurb: String(f.blurb || '').trim(),
+        stage: ['stable', 'beta', 'experimental'].includes(f.stage) ? f.stage : 'stable',
+        section: f.section || '',
+      }))
+      .filter(f => f.title);
+  }
+  return FEATURES
+    .filter(f => f.label && f.key !== 'dashboard')
+    .map(f => ({
+      title: f.label,
+      blurb: '',
+      stage: f.experimental ? 'experimental' : 'stable',
+      section: f.section || '',
+    }));
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TENANT_VIEWS_ROOT = path.resolve(__dirname, '..', 'views', 'tenants');
@@ -194,6 +227,8 @@ function buildVisibility(design) {
     reviews:   design.vis_reviews   !== 'false',
     contact:   design.vis_contact   !== 'false',
     blog:      design.vis_blog      === 'true',
+    careers:   design.vis_careers   === 'true',
+    videos:    design.vis_videos    !== 'false',
     footer:    design.vis_footer    !== 'false',
     admin_link: design.vis_admin_link !== 'false',
     qr:        design.vis_qr        === 'true',
@@ -697,16 +732,20 @@ router.get('/', async (req, res) => {
   try {
     const db = req.db;
 
-    // ── Resolve homepage source ──
-    // Priority is driven by design.home_source so the /admin/design panel can
-    // explicitly switch between custom EJS, slab template, and standard layout.
+    // ── Resolve homepage source ── (two-value model: 'slab' | 'custom')
+    //   'custom' → tenant's bespoke views/tenants/<sub>/home.ejs
+    //   'slab'   → activated Slab template if present, else the standard layout
+    // Legacy rows (auto/layout/template) and a 'custom' row whose EJS file is
+    // missing all resolve to slab rendering, so the homepage never blanks.
     const sub = req.tenant?.meta?.subdomain;
     const tenantHome = sub ? path.join(TENANT_VIEWS_ROOT, sub, 'home.ejs') : null;
     const hasCustomEjs = !!(tenantHome && fs.existsSync(tenantHome));
-    const designSource = (await db.collection('design').findOne({ key: 'home_source' }))?.value || 'auto';
+    const rawSource = (await db.collection('design').findOne({ key: 'home_source' }))?.value || 'slab';
 
-    const wantCustom   = designSource === 'custom'   || (designSource === 'auto' && hasCustomEjs);
-    const wantTemplate = designSource === 'template' || (designSource === 'auto' && !hasCustomEjs);
+    // Custom wins only when the bespoke file actually exists. ('auto' is honored
+    // for legacy tenants not yet migrated — same "prefer EJS if present" rule.)
+    const wantCustom   = hasCustomEjs && (rawSource === 'custom' || rawSource === 'auto');
+    const wantTemplate = !wantCustom; // slab path: template-or-standard-layout
 
     // ── Tenant-specific home.ejs override ──
     if (wantCustom && hasCustomEjs) {
@@ -719,17 +758,32 @@ router.get('/', async (req, res) => {
       const copy = { ...COPY_DEFAULTS };
       for (const item of rawCopy) copy[item.key] = item.value;
       await applyPipes({ db, tenant: req.tenant, design, copy });
+
+      // Auto-feed latest uploads from the tenant's YouTube channel (keyless RSS).
+      // Only when a channel is configured; failures degrade to an empty feed so a
+      // flaky YouTube response never takes down the homepage.
+      const ytChannel = String(design.youtube_channel || '').trim();
+      const ytLimit = parseInt(design.youtube_limit || '6', 10) || 6;
+      const ytTag = String(design.youtube_tag || '').trim();
+      let youtube = { ok: false, videos: [] };
+      if (ytChannel) {
+        try { youtube = await fetchChannelUploads({ channel: ytChannel, limit: ytLimit, tag: ytTag }); }
+        catch (e) { youtube = { ok: false, videos: [], error: e.message }; }
+      }
+      const features = buildFeatureShowcase(design);
+
       return res.render(`tenants/${sub}/home`, {
         design, logos, brandModels, copy,
         brand: res.locals.brand || {},
         tenant: req.tenant,
         visibility: buildVisibility(design),
         centralAuthUrl: config.DOMAIN + '/auth/login',
+        youtube, features,
       });
     }
 
-    // ── Active template override ──
-    if (wantTemplate || designSource === 'template') {
+    // ── Slab path: activated template if present, else fall through to layout ──
+    if (wantTemplate) {
       const activeTemplate = await db.collection('active_template').findOne({});
       if (activeTemplate) {
         const tpl = await db.collection('templates').findOne({ _id: activeTemplate.templateId });
@@ -786,7 +840,7 @@ router.get('/', async (req, res) => {
 
     // Resolve {{ }} content pipes across copy + custom sections (form embeds,
     // brand/design vars, etc). Mutates copy values + section strings in place.
-    await applyPipes({ db, tenant: req.tenant, design, copy, nodes: [customSections] });
+    await applyPipes({ db, tenant: req.tenant, design, copy, nodes: [customSections, portfolio] });
 
     // Latest 3 blog posts for home page blog section
     const latestPosts = design.vis_blog === 'true'
@@ -908,6 +962,8 @@ function contentPermalinkHandler(ct) {
       if (!post) return next();
       const copy = { ...COPY_DEFAULTS };
       for (const item of rawCopy) copy[item.key] = item.value;
+      // Resolve {{ }} content pipes in the post body (e.g. {{youtube "…"}} embeds).
+      await applyPipes({ db, tenant: req.tenant, design, copy, nodes: [post] });
       const brandName = req.tenant?.brand?.name || '';
       const postUrl = `${absBase(req, ct)}/${post.slug}`;
       res.setSeo?.({
@@ -1188,6 +1244,9 @@ router.get('/:slug', async (req, res, next) => {
       getBrandLogos(db),
     ]);
     if (!pg) return next();
+
+    // Resolve {{ }} content pipes in the page body (e.g. {{youtube "…"}} embeds).
+    await applyPipes({ db, tenant: req.tenant, design, nodes: [pg] });
 
     const brandName = req.tenant?.brand?.name || '';
     const pgUrl = `${req.protocol}://${req.hostname}/${pg.slug}`;

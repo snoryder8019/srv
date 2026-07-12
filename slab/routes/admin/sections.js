@@ -7,6 +7,9 @@ import { ObjectId } from 'mongodb';
 import { config } from '../../config/config.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import { callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
+// Shared design schema (leaf module — importing from design.js here would create
+// a cycle, since design.js imports CUSTOM_TEMPLATES from this file).
+import { DESIGN_DEFAULTS } from '../../config/schema.js';
 
 const router = express.Router();
 
@@ -86,12 +89,6 @@ const COPY_DEFAULTS = {
   process4_title:'Launch & Grow', process4_desc:'We go live, track results, and optimize.',
   contact_sub:"Ready to get started? Tell us about your project and we'll be in touch.",
   contact_location:'', contact_serving:'', contact_services:'',
-};
-
-const DESIGN_DEFAULTS = {
-  vis_hero:'true', vis_services:'true', vis_portfolio:'true',
-  vis_about:'true', vis_process:'true', vis_reviews:'true',
-  vis_contact:'true', vis_blog:'false',
 };
 
 // ── CUSTOM SECTION TEMPLATES ────────────────────────────────────────────────

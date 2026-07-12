@@ -406,15 +406,17 @@
 
 <%# ─── 1. HOMEPAGE SOURCE — top-level switch ─── %>
 <%
-  const _src = design.home_source || 'auto';
+  // Two-value model: 'slab' (template-or-standard-layout) | 'custom' (bespoke EJS).
+  // Legacy stored values (auto/layout/template) normalize for the checked radio.
+  const _rawSrc = design.home_source || 'slab';
+  const _src = (_rawSrc === 'custom' || (_rawSrc === 'auto' && hasCustomEjs)) ? 'custom' : 'slab';
   const _activeTpl = (templates || []).find(t => activeTemplateId && t._id.toString() === activeTemplateId);
-  // Effective renderer — what actually displays at "/", accounting for fallbacks
-  // when the configured source has no resource (e.g. template mode with no active template).
+  // Effective renderer — what actually displays at "/". 'custom' selected but no
+  // EJS file falls back to slab rendering (the only fallback state now).
   let _effective;
-  if (_src === 'layout') _effective = 'layout';
-  else if (_src === 'template') _effective = _activeTpl ? 'template' : 'layout';
-  else if (_src === 'custom')   _effective = hasCustomEjs ? 'custom' : 'layout';
-  else /* auto */               _effective = hasCustomEjs ? 'custom' : (_activeTpl ? 'template' : 'layout');
+  if (_src === 'custom') _effective = hasCustomEjs ? 'custom' : 'layout';
+  else                   _effective = _activeTpl ? 'template' : 'layout';
+  const _isFallback = (_src === 'custom' && !hasCustomEjs);
 %>
 <div class="editor-section open" data-tab="source">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
@@ -422,13 +424,10 @@
   </button>
   <div class="editor-section-body">
     <%
-      const _effLabel = _effective === 'layout' ? 'Standard Layout'
-                      : _effective === 'template' ? ('Slab Template — ' + (_activeTpl ? _activeTpl.name : 'unknown'))
-                      : _effective === 'custom' ? 'Custom EJS' : 'Standard Layout';
-      const _srcLabel = _src === 'auto' ? 'Auto'
-                      : _src === 'layout' ? 'Standard Layout'
-                      : _src === 'template' ? 'Slab Template'
-                      : _src === 'custom' ? 'Custom Layout' : _src;
+      const _effLabel = _effective === 'template' ? ('Slab Template — ' + (_activeTpl ? _activeTpl.name : 'unknown'))
+                      : _effective === 'custom' ? 'Custom EJS'
+                      : 'Slab — Standard Layout';
+      const _srcLabel = _src === 'custom' ? 'Custom' : 'Slab';
     %>
     <div style="margin-bottom:12px;padding:10px 14px;background:rgba(28,43,74,0.05);border-left:3px solid var(--navy);border-radius:2px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
       <div style="font-size:0.82rem;color:var(--on-surface);">
@@ -437,7 +436,7 @@
       </div>
       <div style="font-size:0.7rem;color:var(--slate);text-align:right;">
         Source setting: <strong style="color:var(--on-surface);"><%= _srcLabel %></strong>
-        <% if (_src !== _effective) { %><br><span style="color:#8B1C1C;">(fallback — configured source has no resource)</span><% } %>
+        <% if (_isFallback) { %><br><span style="color:#8B1C1C;">(fallback — no custom EJS, rendering Slab)</span><% } %>
       </div>
     </div>
     <div class="ep-hint" style="margin-bottom:10px;">
@@ -447,32 +446,33 @@
     <div style="display:flex;flex-direction:column;gap:6px;">
       <%
         const _options = [
-          { val: 'auto',     title: 'Auto',            desc: hasCustomEjs ? 'Use custom EJS if present, else active template, else standard layout' : 'Use active template if set, else standard layout' },
-          { val: 'layout',   title: 'Standard Layout', desc: 'Use the landing layout below (Classic, Bold, Minimal&hellip;) driven by the design panel' },
-          { val: 'template', title: 'Slab Template',   desc: _activeTpl ? ('Render the activated template: <strong>' + _activeTpl.name + '</strong>') : 'Render the active template (none activated yet — pick one below)' },
-          { val: 'custom',   title: 'Custom Layout',   desc: hasCustomEjs ? ('Use the bespoke EJS at <code>views/tenants/' + tenantSubdomain + '/home.ejs</code>') : 'Bespoke EJS file (not present for this tenant — falls back to layout)' },
+          { val: 'slab',   title: 'Slab',   desc: _activeTpl
+              ? ('Platform-rendered — currently the activated template <strong>' + _activeTpl.name + '</strong>. Deactivate it below to use the standard layout.')
+              : 'Platform-rendered — the standard landing layout below (Classic, Bold, Minimal&hellip;). Activate a template to override it.' },
+          { val: 'custom', title: 'Custom', desc: hasCustomEjs
+              ? ('The bespoke EJS at <code>views/tenants/' + tenantSubdomain + '/home.ejs</code>')
+              : 'Bespoke EJS file (not present for this tenant — falls back to Slab rendering)' },
         ];
       %>
       <% _options.forEach(o => { const checked = _src === o.val; %>
       <label class="vis-item" style="align-items:flex-start;padding:10px 12px;<%= checked ? 'border-color:var(--gold);box-shadow:0 0 0 1px var(--gold);' : '' %>">
         <input type="radio" name="home_source" value="<%= o.val %>" <%= checked ? 'checked' : '' %> style="margin-top:3px;flex-shrink:0;">
         <span style="display:flex;flex-direction:column;gap:2px;">
-          <span style="font-weight:600;font-size:0.78rem;color:var(--on-surface);"><%= o.title %><% if (o.val === 'auto') { %> <span style="font-size:0.55rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);">DEFAULT</span><% } %></span>
+          <span style="font-weight:600;font-size:0.78rem;color:var(--on-surface);"><%= o.title %><% if (o.val === 'slab') { %> <span style="font-size:0.55rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);">DEFAULT</span><% } %></span>
           <span style="font-size:0.68rem;color:var(--slate);line-height:1.4;font-weight:400;text-transform:none;letter-spacing:0;"><%- o.desc %></span>
         </span>
       </label>
       <% }) %>
     </div>
 
-    <% if (_src !== _effective) { %>
+    <% if (_isFallback) { %>
     <div class="ep-hint" style="margin-top:10px;padding:8px 12px;background:rgba(139,28,28,0.06);border-left:3px solid #8B1C1C;border-radius:2px;color:#7A1818;">
-      <strong>Fallback active:</strong> you selected <strong><%= _src %></strong> but it has no resource, so <strong><%= _effective %></strong> is actually rendering at <code style="font-size:0.7rem;background:rgba(255,255,255,0.6);padding:1px 5px;border-radius:2px;">/</code>.
-      <% if (_src === 'template' && !_activeTpl) { %> Activate a template below to make template mode take effect.<% } %>
-      <% if (_src === 'custom' && !hasCustomEjs) { %> Create <code style="font-size:0.7rem;">views/tenants/<%= tenantSubdomain %>/home.ejs</code> to use a bespoke layout.<% } %>
+      <strong>Fallback active:</strong> you selected <strong>Custom</strong> but no bespoke EJS exists, so <strong>Slab</strong> rendering is showing at <code style="font-size:0.7rem;background:rgba(255,255,255,0.6);padding:1px 5px;border-radius:2px;">/</code>.
+      Create <code style="font-size:0.7rem;">views/tenants/<%= tenantSubdomain %>/home.ejs</code> to use a bespoke layout.
     </div>
     <% } %>
     <div class="ep-hint" style="margin-top:10px;">
-      <strong>Tip:</strong> &ldquo;Custom Layout&rdquo; uses CSS variables from this panel, so colors &amp; fonts you set here still apply to bespoke EJS files.
+      <strong>Tip:</strong> &ldquo;Custom&rdquo; uses CSS variables from this panel, so colors &amp; fonts you set here still apply to bespoke EJS files.
     </div>
   </div>
 </div>
@@ -897,6 +897,7 @@
         { key: 'vis_reviews',   label: 'Reviews' },
         { key: 'vis_contact',   label: 'Contact' },
         { key: 'vis_blog',      label: 'Blog' },
+        { key: 'vis_careers',   label: 'Careers' },
         { key: 'vis_admin_link',label: 'Admin Login Link' },
         { key: 'vis_qr',        label: 'QR Code' },
       ];
@@ -905,7 +906,7 @@
       <% visSections.forEach(s => { %>
       <label class="vis-item">
         <input type="checkbox" name="<%= s.key %>" id="field-<%= s.key %>"
-          <%= (s.key === 'vis_blog' || s.key === 'vis_qr') ? (design[s.key] === 'true' ? 'checked' : '') : (design[s.key] !== 'false' ? 'checked' : '') %>>
+          <%= (s.key === 'vis_blog' || s.key === 'vis_qr' || s.key === 'vis_careers') ? (design[s.key] === 'true' ? 'checked' : '') : (design[s.key] !== 'false' ? 'checked' : '') %>>
         <%= s.label %>
       </label>
       <% }) %>
@@ -1370,6 +1371,12 @@
           </select>
         </div>
       </div>
+      <div class="ep-row-3">
+        <div class="ep-field">
+          <label>Heading Letter-Spacing (em) <span class="ep-hint" style="display:inline;font-style:italic;"><%= d.footer_heading_spacing || '0.12' %></span></label>
+          <input type="range" name="footer_heading_spacing" min="0" max="0.4" step="0.01" value="<%= d.footer_heading_spacing || '0.12' %>" oninput="this.previousElementSibling.querySelector('span').textContent=this.value" onchange="previewReload()">
+        </div>
+      </div>
 
       <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:14px 0 6px;">COPY</div>
       <% const c = (typeof copy !== 'undefined' && copy) ? copy : {}; %>
@@ -1386,6 +1393,10 @@
       <div class="ep-field">
         <label>About Paragraph <span class="ep-hint" style="display:inline;font-style:italic;">(Expanded / Brand layouts)</span></label>
         <textarea name="footer_about" rows="2" placeholder="Short description shown beside link columns" onchange="previewReload()"><%= c.footer_about || '' %></textarea>
+      </div>
+      <div class="ep-field">
+        <label>Legal / Disclaimer <span class="ep-hint" style="display:inline;font-style:italic;">(shown in the bottom bar above Terms / Privacy)</span></label>
+        <textarea name="footer_legal" rows="2" placeholder="e.g. Registered in Delaware. All prices in USD. Licensed &amp; insured." onchange="previewReload()"><%= c.footer_legal || '' %></textarea>
       </div>
 
       <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:14px 0 6px;">LINK COLUMNS</div>
@@ -1424,6 +1435,23 @@
           <label>Button Text</label>
           <input type="text" name="footer_newsletter_button" value="<%= c.footer_newsletter_button || '' %>" placeholder="Subscribe" onchange="previewReload()">
         </div>
+      </div>
+
+      <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:14px 0 6px;">CAREERS CTA</div>
+      <div class="ep-hint" style="margin-bottom:8px;">A &ldquo;we&rsquo;re hiring&rdquo; card linking to <code>/careers</code>. Only renders when the Careers feature is enabled for this tenant.</div>
+      <div class="ep-row">
+        <div class="ep-field">
+          <label>Heading</label>
+          <input type="text" name="footer_careers_heading" value="<%= c.footer_careers_heading || '' %>" placeholder="We're hiring" maxlength="60" onchange="previewReload()">
+        </div>
+        <div class="ep-field">
+          <label>Button Text</label>
+          <input type="text" name="footer_careers_button" value="<%= c.footer_careers_button || '' %>" placeholder="View openings" maxlength="40" onchange="previewReload()">
+        </div>
+      </div>
+      <div class="ep-field">
+        <label>Subtext</label>
+        <input type="text" name="footer_careers_sub" value="<%= c.footer_careers_sub || '' %>" placeholder="Join our team — explore open roles." onchange="previewReload()">
       </div>
 
       <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:14px 0 6px;">SOCIAL</div>
