@@ -389,11 +389,8 @@
   <button type="button" class="dp-tab-nav dp-tab-nav-l" aria-label="Scroll tabs left" tabindex="-1" onclick="dpScrollTabs(-1)">‹</button>
   <div class="dp-tabs" id="dpTabs">
     <button type="button" class="dp-tab" data-tab="design"    onclick="dpSwitch('design')"><span class="ico">◑</span>Design</button>
-    <button type="button" class="dp-tab" data-tab="copy"      onclick="dpSwitch('copy')"><span class="ico">¶</span>Copy</button>
-    <button type="button" class="dp-tab" data-tab="sections"  onclick="dpSwitch('sections')"><span class="ico">▦</span>Sections</button>
-    <button type="button" class="dp-tab" data-tab="templates" onclick="dpSwitch('templates')"><span class="ico">◈</span>Templates</button>
-    <button type="button" class="dp-tab" data-tab="brand"     onclick="dpSwitch('brand')"><span class="ico">⛌</span>Brand</button>
-    <button type="button" class="dp-tab" data-tab="source"    onclick="dpSwitch('source')"><span class="ico">◐</span>Source</button>
+    <button type="button" class="dp-tab" data-tab="copy"      onclick="dpSwitch('copy')"><span class="ico">¶</span>Content</button>
+    <button type="button" class="dp-tab" data-tab="source"    onclick="dpSwitch('source')"><span class="ico">◐</span>Layout</button>
   </div>
   <button type="button" class="dp-tab-nav dp-tab-nav-r" aria-label="Scroll tabs right" tabindex="-1" onclick="dpScrollTabs(1)">›</button>
 </div>
@@ -536,7 +533,7 @@
 </div>
 
 <%# ─── 1b. TEMPLATE LIBRARY ─── %>
-<div class="editor-section<%= _src === 'template' ? ' open' : '' %>" data-tab="templates">
+<div class="editor-section<%= _src === 'template' ? ' open' : '' %>" data-tab="source">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Template Library
     <span class="arrow">&#9654;</span>
@@ -879,7 +876,7 @@
 </script>
 
 <%# ─── 4. SECTION VISIBILITY ─── %>
-<div class="editor-section" data-tab="sections">
+<div class="editor-section" data-tab="copy">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Section Visibility <span class="arrow">&#9654;</span>
   </button>
@@ -996,7 +993,7 @@
 <%# All header & footer settings live here: visibility, logo, CTA, nav colors, custom links. %>
 <%# Link create/edit/delete use HTML5 form-attribute references to standalone forms declared outside designForm. %>
 <% const d = design; %>
-<div class="editor-section" id="links" data-tab="sections">
+<div class="editor-section" id="links" data-tab="copy">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Header &amp; Footer <span class="arrow">&#9654;</span>
   </button>
@@ -1073,7 +1070,7 @@
       </div>
 
       <div style="font-size:0.62rem;font-weight:600;letter-spacing:0.1em;color:var(--slate);margin:14px 0 6px;">LOGO</div>
-      <div class="ep-hint" style="margin-bottom:6px;">Upload or replace logo images on the <a href="#" onclick="dpSwitch('brand');document.getElementById('brand-images')?.scrollIntoView({behavior:'smooth'});return false;" style="color:var(--navy);font-weight:600;">Brand tab →</a></div>
+      <div class="ep-hint" style="margin-bottom:6px;">Upload or replace logo images on the <a href="#" onclick="dpSwitch('design');document.getElementById('brand-images')?.scrollIntoView({behavior:'smooth'});return false;" style="color:var(--navy);font-weight:600;">Brand images →</a></div>
       <div class="ep-row">
         <div class="ep-field">
           <label>Logo Display</label>
@@ -2907,7 +2904,7 @@
 </div>
 
 <!-- ── CUSTOM ELEMENTS ── -->
-<div class="editor-section" data-tab="sections">
+<div class="editor-section" data-tab="copy">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Custom Elements <span class="arrow">&#9654;</span>
   </button>
@@ -3001,7 +2998,7 @@
   </div>
 </div>
 
-<div class="editor-section" data-tab="brand">
+<div class="editor-section" data-tab="design">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Head, Favicon &amp; Tracking <span class="arrow">&#9654;</span>
   </button>
@@ -3043,7 +3040,7 @@
 <% }); %>
 
 <%# ─── 14. LOGOS & BRAND IMAGES ─── %>
-<div class="editor-section open" id="brand-images" data-tab="brand">
+<div class="editor-section open" id="brand-images" data-tab="design">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Logos &amp; Brand Images <span class="arrow">&#9654;</span>
   </button>
@@ -3100,7 +3097,7 @@
 </div>
 
 <%# ─── 15. 3D MODELS (collapsed) ─── %>
-<div class="editor-section" data-tab="brand">
+<div class="editor-section" data-tab="design">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     3D Models <span class="arrow">&#9654;</span>
   </button>
@@ -3136,7 +3133,7 @@
 </div>
 
 <%# ─── 16. THEMES ─── %>
-<div class="editor-section" data-tab="brand">
+<div class="editor-section" data-tab="design">
   <button type="button" class="editor-section-toggle" onclick="toggleSection(this)">
     Themes <span class="arrow">&#9654;</span>
   </button>
@@ -3275,7 +3272,9 @@ function dpUpdateTabScroll() {
 (function() {
   var initial = 'design';
   var m = location.hash.match(/tab=([a-z]+)/);
-  if (m && ['source','design','copy','sections','templates','brand'].indexOf(m[1]) !== -1) initial = m[1];
+  // Legacy tabs were merged: sections→copy, templates→source, brand→design.
+  var _tabAlias = { sections: 'copy', templates: 'source', brand: 'design' };
+  if (m) { var _t = _tabAlias[m[1]] || m[1]; if (['source', 'design', 'copy'].indexOf(_t) !== -1) initial = _t; }
   dpSwitch(initial);
   var tabsEl = document.getElementById('dpTabs');
   if (tabsEl) tabsEl.addEventListener('scroll', dpUpdateTabScroll, { passive: true });
