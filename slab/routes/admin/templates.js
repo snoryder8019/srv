@@ -276,6 +276,30 @@ router.post('/:id/content', async (req, res) => {
   }
 });
 
+// ── Save ONE block field override (granular, for the canvas editor) ───────────
+// The whole-overrides POST above is a redirect-based bulk replace; the canvas
+// editor commits one block field at a time and needs a JSON, non-clobbering
+// upsert. Uses a dot-path $set so sibling overrides are preserved.
+router.post('/:id/content-field', async (req, res) => {
+  try {
+    const blockId = String(req.body.blockId || '');
+    const field = String(req.body.field || '');
+    if (!/^[a-zA-Z0-9]+$/.test(blockId) || !/^[a-zA-Z0-9_]+$/.test(field)) {
+      return res.status(400).json({ error: 'Invalid blockId/field' });
+    }
+    const value = String(req.body.value ?? '').slice(0, 20000);
+    const r = await req.db.collection('active_template').updateOne(
+      { templateId: new ObjectId(req.params.id) },
+      { $set: { ['contentOverrides.' + blockId + '.' + field]: value } },
+    );
+    if (!r.matchedCount) return res.status(404).json({ error: 'No active template' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[templates] content-field:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Deactivate ───────────────────────────────────────────────────────────────
 router.post('/:id/deactivate', async (req, res) => {
   try {

@@ -3199,7 +3199,8 @@
     <button type="button" class="btn btn-ghost" onclick="setViewport('tablet')" id="vpTablet">Tablet</button>
     <button type="button" class="btn btn-ghost" onclick="setViewport('mobile')" id="vpMobile">Mobile</button>
     <button type="button" class="btn btn-ghost" onclick="previewReload()">Refresh</button>
-    <span style="margin-left:auto;font-size:0.65rem;color:var(--slate);">Live Preview</span>
+    <button type="button" class="btn btn-ghost" id="canvasEditToggle" onclick="if(window.SlabCanvas)window.SlabCanvas.toggle()" style="border-color:var(--gold);color:var(--gold);">&#9998; Edit on canvas</button>
+    <span style="margin-left:auto;font-size:0.65rem;color:var(--slate);" id="canvasStatus">Live Preview</span>
     <button type="button" class="agent-btn" id="agentToggle">
       <span style="font-size:0.85rem;">&#9830;</span> Agent
     </button>
@@ -3923,6 +3924,16 @@ var visMap = {
   vis_qr:        '#qr-share-widget',
 };
 
+// Expose the DOM↔data binding to the in-preview canvas editor (public/js/canvasEditor.js).
+// The editor inverts these maps to tag editable nodes inside the same-origin iframe.
+window.SlabPreviewMaps = { copyMap: copyMap, visMap: visMap, dynamicCopySelector: dynamicCopySelector };
+// Active template id (empty on standard-layout tenants) — lets the canvas editor
+// save per-block field overrides for template-rendered pages.
+window.SLAB_ACTIVE_TEMPLATE_ID = '<%= activeTemplateId || "" %>';
+// Section types offered in the canvas "+" insert dropdown — driven by the live
+// CUSTOM_TEMPLATES catalog so new types appear automatically.
+window.SLAB_SECTION_TYPES = <%- JSON.stringify(Object.entries(sectionTemplates || {}).map(function(e){ return [e[0], e[1].label || e[0]]; })) %>;
+
 var _previewReady = false;
 function pushToPreview() {
   var frame = document.getElementById('previewFrame');
@@ -4453,6 +4464,7 @@ function saveTheme() {
 <script src="/js/agentHealth.js"></script>
 <script src="/js/tours/design.js"></script>
 <script src="/js/assetPicker.js?v=<%= Date.now() %>"></script>
+<script src="/js/canvasEditor.js?v=<%= Date.now() %>"></script>
 <script>
 // ── Hero full-bg media picker (image or video from tenant assets) ──
 (function () {

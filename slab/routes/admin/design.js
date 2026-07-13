@@ -247,6 +247,30 @@ router.post('/key', async (req, res) => {
   }
 });
 
+// ── Save single copy key (granular, for the in-preview canvas editor) ──────────
+// Copy otherwise only saves via the bulk POST /admin/design form. The canvas
+// editor commits one field at a time (on blur), so it needs a granular endpoint.
+// Any string key is allowed (copy is free-form per tenant, incl. dynamic repeater
+// keys like service5_title); value is coerced to a string and length-capped.
+router.post('/copy-key', async (req, res) => {
+  try {
+    const key = String(req.body.key || '').trim();
+    if (!key || !/^[a-zA-Z0-9_]+$/.test(key) || key.length > 80) {
+      return res.status(400).json({ error: 'Invalid copy key' });
+    }
+    const value = String(req.body.value ?? '').slice(0, 20000);
+    await req.db.collection('copy').updateOne(
+      { key },
+      { $set: { key, value, updatedAt: new Date() } },
+      { upsert: true },
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Copy key save error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Upload 3D model (header or logo slot) ──
 router.post('/models', modelUpload.single('model'), async (req, res) => {
   try {

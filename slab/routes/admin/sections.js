@@ -177,6 +177,71 @@ export const CUSTOM_TEMPLATES = {
     ],
     images: [],
   },
+  stats: {
+    label: 'Stats', icon: '№',
+    desc: 'Big-number metrics row (up to 4)',
+    fields: [
+      { key: 'heading', label: 'Section Heading', type: 'text' },
+      { key: 'stat1_num', label: 'Stat 1 Number', type: 'text' }, { key: 'stat1_label', label: 'Stat 1 Label', type: 'text' },
+      { key: 'stat2_num', label: 'Stat 2 Number', type: 'text' }, { key: 'stat2_label', label: 'Stat 2 Label', type: 'text' },
+      { key: 'stat3_num', label: 'Stat 3 Number', type: 'text' }, { key: 'stat3_label', label: 'Stat 3 Label', type: 'text' },
+      { key: 'stat4_num', label: 'Stat 4 Number', type: 'text' }, { key: 'stat4_label', label: 'Stat 4 Label', type: 'text' },
+    ],
+    images: [],
+  },
+  testimonials: {
+    label: 'Testimonials', icon: '❝',
+    desc: 'Customer quotes (up to 3)',
+    fields: [
+      { key: 'heading', label: 'Section Heading', type: 'text' },
+      { key: 't1_quote', label: 'Quote 1', type: 'textarea' }, { key: 't1_name', label: 'Name 1', type: 'text' }, { key: 't1_role', label: 'Role 1', type: 'text' },
+      { key: 't2_quote', label: 'Quote 2', type: 'textarea' }, { key: 't2_name', label: 'Name 2', type: 'text' }, { key: 't2_role', label: 'Role 2', type: 'text' },
+      { key: 't3_quote', label: 'Quote 3', type: 'textarea' }, { key: 't3_name', label: 'Name 3', type: 'text' }, { key: 't3_role', label: 'Role 3', type: 'text' },
+    ],
+    images: [],
+  },
+  gallery: {
+    label: 'Gallery', icon: '▦',
+    desc: 'Image grid (up to 6)',
+    fields: [
+      { key: 'heading', label: 'Section Heading', type: 'text' },
+      { key: 'subtext', label: 'Subtext', type: 'textarea' },
+    ],
+    images: [
+      { key: 'img1', label: 'Image 1' }, { key: 'img2', label: 'Image 2' }, { key: 'img3', label: 'Image 3' },
+      { key: 'img4', label: 'Image 4' }, { key: 'img5', label: 'Image 5' }, { key: 'img6', label: 'Image 6' },
+    ],
+  },
+  video: {
+    label: 'Video', icon: '▷',
+    desc: 'Embedded YouTube/Vimeo video with a heading',
+    fields: [
+      { key: 'heading', label: 'Section Heading', type: 'text' },
+      { key: 'subtext', label: 'Subtext', type: 'textarea' },
+      { key: 'embed_url', label: 'Video URL (YouTube/Vimeo)', type: 'text', placeholder: 'https://youtube.com/watch?v=…' },
+    ],
+    images: [],
+  },
+  quote: {
+    label: 'Pull Quote', icon: '“',
+    desc: 'Large centered statement with attribution',
+    fields: [
+      { key: 'quote', label: 'Quote', type: 'textarea' },
+      { key: 'attribution', label: 'Attribution', type: 'text' },
+    ],
+    images: [],
+  },
+  banner: {
+    label: 'Banner', icon: '▭',
+    desc: 'Full-width image banner with headline + button',
+    fields: [
+      { key: 'heading', label: 'Headline', type: 'text' },
+      { key: 'subtext', label: 'Subtext', type: 'textarea' },
+      { key: 'btn_text', label: 'Button Text', type: 'text' },
+      { key: 'btn_link', label: 'Button Link', type: 'text' },
+    ],
+    images: [{ key: 'bg_image', label: 'Background Image' }],
+  },
 };
 
 // ── GET /admin/sections ──────────────────────────────────────────────────────
@@ -289,12 +354,24 @@ router.post('/custom/new', async (req, res) => {
   try {
     const db = req.db;
     const count = await db.collection('custom_sections').countDocuments();
+    // Optional insert-at-index (for the canvas "+" between-sections affordance):
+    // shift everything at order >= atIndex up by one, then drop the new section
+    // into the gap. Absent/invalid → append at the end (legacy behavior).
+    let order = count;
+    const atIndex = parseInt(req.body.atIndex, 10);
+    if (Number.isInteger(atIndex) && atIndex >= 0 && atIndex < count) {
+      await db.collection('custom_sections').updateMany(
+        { order: { $gte: atIndex } },
+        { $inc: { order: 1 }, $set: { updatedAt: new Date() } },
+      );
+      order = atIndex;
+    }
     const result = await db.collection('custom_sections').insertOne({
       type, label: label.trim(), visible: true,
-      order: count, fields: {}, images: {},
+      order, fields: {}, images: {},
       createdAt: new Date(), updatedAt: new Date(),
     });
-    res.json({ ok: true, id: result.insertedId });
+    res.json({ ok: true, id: result.insertedId, order });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
