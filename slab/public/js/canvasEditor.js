@@ -264,7 +264,9 @@
     return list;
   }
   function tagInserts() {
-    topSections().forEach(function (sec) { addInsertBar(sec); });
+    var secs = topSections();
+    // Skip the gap above the very first section (nothing to anchor to).
+    secs.forEach(function (sec, i) { if (i > 0) addInsertBar(sec); });
   }
   function addInsertBar(beforeSec) {
     var bar = S.doc.createElement('div');
@@ -280,15 +282,33 @@
       openInsertDropdown(bar, beforeSec);
     });
   }
-  // Count custom (cs-*) sections that appear before `sec` — that's the order
-  // index the insert endpoint needs.
-  function csIndexBefore(sec) {
-    return safeAll(S.doc, 'section[class^="cs-"]').filter(function (c) {
-      return c !== sec && (c.compareDocumentPosition(sec) & 4); // sec FOLLOWS c
-    }).length;
+  // Hardcoded sections a new section can anchor to (must match the index.ejs
+  // hooks + sections.js ANCHOR_SECTIONS).
+  var KNOWN_ANCHORS = ['hero', 'services', 'portfolio', 'about', 'process', 'reviews', 'blog', 'contact'];
+  // Derive a hardcoded section's anchor id by matching the panel's visMap
+  // selectors (vis_about → '#about' → 'about'). Custom/unknown sections → null.
+  function sectionAnchor(el) {
+    var vm = (S.maps && S.maps.visMap) || {};
+    for (var k in vm) {
+      try {
+        if (el.matches(vm[k])) { var a = k.replace('vis_', ''); if (KNOWN_ANCHORS.indexOf(a) !== -1) return a; }
+      } catch (e) { /* bad selector — skip */ }
+    }
+    return null;
+  }
+  // Anchor for a section dropped before `beforeSec` = nearest hardcoded anchor
+  // section at/above the bar (walking past custom sections). '' → end region.
+  function anchorForInsert(beforeSec) {
+    var secs = topSections();
+    var i = secs.indexOf(beforeSec);
+    for (var j = i - 1; j >= 0; j--) {
+      var a = sectionAnchor(secs[j]);
+      if (a) return a;
+    }
+    return '';
   }
   function openInsertDropdown(bar, beforeSec) {
-    var atIndex = csIndexBefore(beforeSec);
+    var anchor = anchorForInsert(beforeSec);
     bar.classList.add('slab-ce-ins-open');
     bar.innerHTML = '';
     var menu = S.doc.createElement('div');
@@ -300,7 +320,7 @@
       item.textContent = t[1];
       item.addEventListener('click', function (e) {
         e.preventDefault(); e.stopPropagation();
-        insertSection(t[0], atIndex);
+        insertSection(t[0], anchor);
       });
       menu.appendChild(item);
     });
@@ -314,12 +334,12 @@
     setTimeout(function () { S.doc.addEventListener('click', close, true); }, 0);
   }
 
-  function insertSection(type, atIndex) {
+  function insertSection(type, anchor) {
     status('Inserting…', 'save');
     var fd = new FormData();
     fd.append('type', type);
     fd.append('label', friendly(type) + ' Section');
-    fd.append('atIndex', String(atIndex));
+    fd.append('anchor', anchor || '');   // renders right after this hardcoded section
     fetch('/admin/sections/custom/new', { method: 'POST', body: fd })
       .then(function (r) { return r.json(); })
       .then(function (j) {

@@ -347,12 +347,18 @@ router.delete('/:section/image/:imageKey', async (req, res) => {
 });
 
 // ── CUSTOM SECTIONS: create ───────────────────────────────────────────────────
+// Hardcoded sections a custom section can be anchored to render immediately
+// after (canvas "+" between-sections). Anything else / empty → the end region.
+// Must match the anchor hooks in views/index.ejs and KNOWN_ANCHORS in the editor.
+const ANCHOR_SECTIONS = ['hero', 'services', 'portfolio', 'about', 'process', 'reviews', 'blog', 'contact'];
+
 router.post('/custom/new', async (req, res) => {
   const { type, label } = req.body;
   if (!CUSTOM_TEMPLATES[type]) return res.status(400).json({ error: 'Unknown template type' });
   if (!label?.trim()) return res.status(400).json({ error: 'Label required' });
   try {
     const db = req.db;
+    const anchor = ANCHOR_SECTIONS.includes(req.body.anchor) ? req.body.anchor : '';
     const count = await db.collection('custom_sections').countDocuments();
     // Optional insert-at-index (for the canvas "+" between-sections affordance):
     // shift everything at order >= atIndex up by one, then drop the new section
@@ -368,10 +374,10 @@ router.post('/custom/new', async (req, res) => {
     }
     const result = await db.collection('custom_sections').insertOne({
       type, label: label.trim(), visible: true,
-      order, fields: {}, images: {},
+      order, anchor, fields: {}, images: {},
       createdAt: new Date(), updatedAt: new Date(),
     });
-    res.json({ ok: true, id: result.insertedId, order });
+    res.json({ ok: true, id: result.insertedId, order, anchor });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
