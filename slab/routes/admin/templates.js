@@ -11,6 +11,37 @@ function toSlug(str) {
   return str.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
+// ── Backup ensurance for template switches ───────────────────────────────────
+// Activating/deactivating a template changes what renders (blocks vs the copy
+// layout). Copy is never deleted, but the switch LOOKS like data loss. Before
+// every switch we snapshot the full render state (home_source, active_template,
+// copy, design) into `template_switch_backups` so any switch is one-click
+// recoverable. Keeps the most recent 10 snapshots per tenant.
+async function snapshotBeforeSwitch(db, reason) {
+  try {
+    const [src, active, copy, design] = await Promise.all([
+      db.collection('design').findOne({ key: 'home_source' }),
+      db.collection('active_template').findOne({}),
+      db.collection('copy').find({}).toArray(),
+      db.collection('design').find({}).toArray(),
+    ]);
+    await db.collection('template_switch_backups').insertOne({
+      reason: String(reason || 'switch').slice(0, 120),
+      createdAt: new Date(),
+      home_source: src?.value || null,
+      active_template: active || null,
+      copy, design,
+      counts: { copy: copy.length, design: design.length },
+    });
+    // Trim to the last 10.
+    const old = await db.collection('template_switch_backups')
+      .find({}).sort({ createdAt: -1 }).skip(10).toArray();
+    if (old.length) await db.collection('template_switch_backups').deleteMany({ _id: { $in: old.map(o => o._id) } });
+  } catch (e) {
+    console.error('[templates] snapshotBeforeSwitch failed (non-fatal):', e.message);
+  }
+}
+
 /** Build a design snapshot from tenant's current design, capturing only THEME_KEYS */
 async function captureDesignSnapshot(db) {
   const rows = await db.collection('design').find({}).toArray();
@@ -221,6 +252,9 @@ router.post('/:id/activate', async (req, res) => {
     const tpl = await db.collection('templates').findOne({ _id: new ObjectId(req.params.id) });
     if (!tpl) return res.redirect('/admin/templates');
 
+    // Snapshot current state before switching render mode (recoverable).
+    await snapshotBeforeSwitch(db, 'activate: ' + (tpl.name || tpl._id));
+
     await db.collection('active_template').updateOne(
       {},
       { $set: {
@@ -303,11 +337,73 @@ router.post('/:id/content-field', async (req, res) => {
 // ── Deactivate ───────────────────────────────────────────────────────────────
 router.post('/:id/deactivate', async (req, res) => {
   try {
+    await snapshotBeforeSwitch(req.db, 'deactivate');
     await req.db.collection('active_template').deleteMany({});
     res.redirect('/admin/templates?msg=deactivated');
   } catch (err) {
     console.error('[templates]', err);
     res.redirect('/admin/templates?err=1');
+  }
+});
+
+// ── Template-switch backups: list + restore ──────────────────────────────────
+// Recovery path for "my copy vanished after switching templates". Each snapshot
+// holds the pre-switch home_source / active_template / copy / design.
+router.get('/switch-backups', async (req, res) => {
+  try {
+    const rows = await req.db.collection('template_switch_backups')
+      .find({}, { projection: { copy: 0, design: 0 } })
+      .sort({ createdAt: -1 }).limit(10).toArray();
+    res.json({ ok: true, backups: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Restore render mode from a snapshot. By default restores ONLY the render
+// switch (home_source + active_template) — the safe, common fix. Pass
+// restoreContent=1 to also roll copy + design back to the snapshot (rarely
+// needed, since a switch never edits them).
+router.post('/switch-backups/:id/restore', async (req, res) => {
+  try {
+    const db = req.db;
+    const snap = await db.collection('template_switch_backups').findOne({ _id: new ObjectId(req.params.id) });
+    if (!snap) return res.status(404).json({ error: 'Snapshot not found' });
+
+    // Take a snapshot of the CURRENT state first, so restore is itself undoable.
+    await snapshotBeforeSwitch(db, 'pre-restore');
+
+    // Render mode.
+    if (snap.home_source != null) {
+      await db.collection('design').updateOne(
+        { key: 'home_source' },
+        { $set: { key: 'home_source', value: snap.home_source, updatedAt: new Date() } },
+        { upsert: true },
+      );
+    }
+    await db.collection('active_template').deleteMany({});
+    if (snap.active_template) {
+      const { _id, ...at } = snap.active_template;
+      await db.collection('active_template').insertOne(at);
+    }
+
+    // Optional full content roll-back.
+    if (req.body.restoreContent === '1' || req.body.restoreContent === 'true') {
+      if (Array.isArray(snap.copy)) {
+        const ops = snap.copy.map(r => db.collection('copy').updateOne(
+          { key: r.key }, { $set: { key: r.key, value: r.value, updatedAt: new Date() } }, { upsert: true }));
+        await Promise.all(ops);
+      }
+      if (Array.isArray(snap.design)) {
+        const ops = snap.design.map(r => db.collection('design').updateOne(
+          { key: r.key }, { $set: { key: r.key, value: r.value, updatedAt: new Date() } }, { upsert: true }));
+        await Promise.all(ops);
+      }
+    }
+    res.json({ ok: true, restored: { home_source: snap.home_source, activeTemplate: !!snap.active_template, content: req.body.restoreContent === '1' } });
+  } catch (err) {
+    console.error('[templates] restore:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

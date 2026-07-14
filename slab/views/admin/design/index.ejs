@@ -580,7 +580,8 @@
                 <% if (isActive) { %>
                   <button type="submit" form="tpl-deact-<%= tpl._id %>" class="btn btn-ghost" style="font-size:0.6rem;padding:3px 8px;letter-spacing:0.06em;color:var(--gold);">Deactivate</button>
                 <% } else { %>
-                  <button type="submit" form="tpl-act-<%= tpl._id %>" class="btn btn-navy" style="font-size:0.6rem;padding:3px 8px;letter-spacing:0.06em;">Activate</button>
+                  <% const _switchMsg = 'Switch your homepage to the "' + (tpl.name || 'template') + '" layout?\n\n• Your copy & design are SAVED and are automatically backed up.\n• They will NOT show on your live site until you switch back (Deactivate).\n\nContinue?'; %>
+                  <button type="submit" form="tpl-act-<%= tpl._id %>" class="btn btn-navy" style="font-size:0.6rem;padding:3px 8px;letter-spacing:0.06em;" onclick='return confirm(<%- JSON.stringify(_switchMsg).replace(/'/g, "&#39;") %>)'>Activate</button>
                 <% } %>
               </div>
             </div>
@@ -895,6 +896,7 @@
         { key: 'vis_contact',   label: 'Contact' },
         { key: 'vis_blog',      label: 'Blog' },
         { key: 'vis_careers',   label: 'Careers' },
+        { key: 'vis_marketplace', label: 'Marketplace' },
         { key: 'vis_admin_link',label: 'Admin Login Link' },
         { key: 'vis_qr',        label: 'QR Code' },
       ];
@@ -903,10 +905,25 @@
       <% visSections.forEach(s => { %>
       <label class="vis-item">
         <input type="checkbox" name="<%= s.key %>" id="field-<%= s.key %>"
-          <%= (s.key === 'vis_blog' || s.key === 'vis_qr' || s.key === 'vis_careers') ? (design[s.key] === 'true' ? 'checked' : '') : (design[s.key] !== 'false' ? 'checked' : '') %>>
+          <%= (s.key === 'vis_blog' || s.key === 'vis_qr' || s.key === 'vis_careers' || s.key === 'vis_marketplace') ? (design[s.key] === 'true' ? 'checked' : '') : (design[s.key] !== 'false' ? 'checked' : '') %>>
         <%= s.label %>
       </label>
       <% }) %>
+    </div>
+
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+      <div style="font-size:0.62rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--slate);margin-bottom:10px;">Marketplace Options</div>
+      <div class="ep-hint" style="margin-bottom:10px;">Shown when &ldquo;Marketplace&rdquo; is enabled above. Controls the public <code>/marketplace</code> storefront.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;">
+        <label class="vis-item" style="flex-direction:column;align-items:stretch;gap:4px;"><span>Heading</span>
+          <input type="text" name="marketplace_heading" value="<%= design.marketplace_heading || 'Marketplace' %>"></label>
+        <label class="vis-item" style="flex-direction:column;align-items:stretch;gap:4px;"><span>Subheading</span>
+          <input type="text" name="marketplace_sub" value="<%= design.marketplace_sub || '' %>"></label>
+        <label class="vis-item" style="flex-direction:column;align-items:stretch;gap:4px;"><span>Columns</span>
+          <select name="marketplace_columns"><% ['2','3','4'].forEach(function(n){ %><option value="<%= n %>" <%= String(design.marketplace_columns||'3')===n?'selected':'' %>><%= n %> columns</option><% }) %></select></label>
+        <label class="vis-item" style="flex-direction:column;align-items:stretch;gap:4px;"><span>Show prices</span>
+          <select name="marketplace_show_price"><option value="true" <%= String(design.marketplace_show_price||'true')!=='false'?'selected':'' %>>Yes</option><option value="false" <%= String(design.marketplace_show_price)==='false'?'selected':'' %>>No</option></select></label>
+      </div>
     </div>
 
     <% if (_validSections.length) { %>
