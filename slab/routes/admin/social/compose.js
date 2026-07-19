@@ -3,12 +3,14 @@ import QRCode from 'qrcode';
 import { ObjectId } from 'mongodb';
 import { config } from '../../../config/config.js';
 import { callLLM, tryParseAgentResponse, hasCJK, stripCJK } from '../../../plugins/agentMcp.js';
+import { agentLLMOpts } from '../../../plugins/agentRegistry.js';
 import { loadBrandContext } from '../../../plugins/brandContext.js';
 import { logActivity } from '../../../plugins/activityLog.js';
 import {
   PLATFORMS, PLATFORM_LIST, LIVE_PLATFORMS,
   packCredentials, unpackCredentials, maskAccount, isAccountConfigured,
   publishToPlatform, publishPost, verifyPlatform, discoverInstagramFromPage,
+  platformSupportsFormat,
 } from '../../../plugins/socialPublish.js';
 import { refreshAccount, applyRefresh } from '../../../plugins/socialTokens.js';
 import { fetchEngagement, postReply, allEngageCaps, engageCaps } from '../../../plugins/socialEngage.js';
@@ -19,12 +21,12 @@ import { uploadBuffer } from '../../../plugins/s3.js';
 import { getVoice, saveVoice, synthesizeProfile, recordCorrection, buildVoiceBlock, VOICE_QUESTIONS } from '../../../plugins/socialVoice.js';
 import { enqueueJob, getJob, listJobs } from '../../../plugins/socialJobs.js';
 import { recordDesignFeedback, listDesignFeedback, removeDesignFeedback, getDesignPrefs, describePrefs } from '../../../plugins/socialDesign.js';
-import { suggestSlots } from '../../../plugins/socialSchedule.js';
+import { suggestSlots, staggerByPlatform } from '../../../plugins/socialSchedule.js';
 import { fetchAllFollows, followsAction } from '../../../plugins/socialFollows.js';
 import {
   AUTO_TOKEN_PLATFORMS, tryAutoUpgrade, linkInstagramFromFacebook,
   imageUpload, mediaUpload, POST_STATUSES,
-  wantsJson, parsePlatforms, parseMedia, publishPostBackground, loadAccountMap,
+  wantsJson, parsePlatforms, parseFormat, parseMedia, publishPostBackground, loadAccountMap,
 } from './shared.js';
 
 const router = express.Router();
@@ -57,7 +59,7 @@ Rules:
 - Match the brand voice above. No markdown. Escape double quotes as \\".
 The admin's brief: "${(prompt || 'an engaging update about the business').slice(0, 400)}"`;
 
-    const raw = await callLLM([{ role: 'user', content: prompt || 'Write a social post.' }], systemPrompt);
+    const raw = await callLLM([{ role: 'user', content: prompt || 'Write a social post.' }], systemPrompt, 90000, await agentLLMOpts(req.db, req.tenant, 'social'));
     res.json(tryParseAgentResponse(raw));
   } catch (err) {
     console.error('[social] agent error:', err);
@@ -70,11 +72,19 @@ router.post('/posts', async (req, res) => {
   const db = req.db;
   try {
     const { body, link, media, action } = req.body;
-    const platforms = parsePlatforms(req.body.platforms);
-    const mediaUrls = parseMedia(media);
+    const format = parseFormat(req.body.format);
+    const mediaUrls = parseMedia(media, format === 'single' ? 4 : 10);
+    // Carousel/story only go to platforms that support the format — no coercing
+    // the rest into a degraded single post.
+    let platforms = parsePlatforms(req.body.platforms);
+    if (format !== 'single') platforms = platforms.filter(p => platformSupportsFormat(p, format));
 
     if (!body && !mediaUrls.length) return res.redirect('/admin/social?tab=compose&error=Write+something+to+post');
-    if (!platforms.length) return res.redirect('/admin/social?tab=compose&error=Pick+at+least+one+platform');
+    if (format === 'carousel' && mediaUrls.length < 2) return res.redirect('/admin/social?tab=compose&error=A+carousel+needs+at+least+2+images');
+    if (format === 'story' && !mediaUrls.length) return res.redirect('/admin/social?tab=compose&error=A+story+needs+at+least+one+image+or+video');
+    if (!platforms.length) return res.redirect(`/admin/social?tab=compose&error=${encodeURIComponent(format === 'single' ? 'Pick at least one platform' : `No selected platform supports ${format} posts`)}`);
+
+    const editId = (req.body.editId || '').trim();
 
     let scheduledAt = null;
     let status = 'draft';
@@ -84,18 +94,36 @@ router.post('/posts', async (req, res) => {
         return res.redirect('/admin/social?tab=compose&error=Pick+a+future+date+%26+time');
       }
       status = 'scheduled';
+    } else if (action === 'autoslot') {
+      // Auto-slot picks well-spaced calendar times. A brand-new multi-platform
+      // post is STAGGERED — one scheduled post per network, each at its own slot
+      // — so the networks don't all fire at the same single time. Editing an
+      // existing post keeps the single-doc behavior (one slot).
+      const slots = await suggestSlots(db, Math.max(1, platforms.length));
+      if (!slots.length) return res.redirect('/admin/social?tab=compose&error=No+open+calendar+slot+found');
+      if (!editId && platforms.length > 1) {
+        const base = {
+          body: (body || '').trim(), link: (link || '').trim(), mediaUrls, format,
+          publishedAt: null, results: [], suggestion: false,
+          createdBy: req.adminUser?.email || null, createdAt: new Date(), updatedAt: new Date(),
+        };
+        const docs = staggerByPlatform(base, platforms, slots);
+        await db.collection('social_posts').insertMany(docs);
+        return res.redirect(`/admin/social?tab=calendar&success=${encodeURIComponent(`Scheduled ${docs.length} posts, staggered across the calendar`)}`);
+      }
+      scheduledAt = slots[0];
+      status = 'scheduled';
     } else if (action === 'publish') {
       status = 'publishing';
     }
 
     // Edit mode: update the existing post in place instead of inserting a new one.
     let postId, doc;
-    const editId = (req.body.editId || '').trim();
     if (editId) {
       const _id = new ObjectId(editId);
       const set = {
         body: (body || '').trim(), link: (link || '').trim(),
-        mediaUrls, platforms, status, scheduledAt, updatedAt: new Date(),
+        mediaUrls, platforms, format, status, scheduledAt, updatedAt: new Date(),
       };
       // Republishing an edited post clears the old results so stale failures don't linger.
       if (action === 'publish') set.results = [];
@@ -108,6 +136,7 @@ router.post('/posts', async (req, res) => {
         link: (link || '').trim(),
         mediaUrls,
         platforms,
+        format,
         status,
         scheduledAt,
         publishedAt: null,

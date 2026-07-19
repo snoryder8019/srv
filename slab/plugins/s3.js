@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { config } from '../config/config.js';
 
 export const BUCKET = config.LINODE_BUCKET; // 'madladslab'
@@ -27,15 +27,46 @@ function safeName(name) {
   return String(name || 'file').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'file';
 }
 
-// Generic public upload of an arbitrary buffer (images, video, etc.).
+// Generic upload of an arbitrary buffer (images, video, etc.).
 // Returns { key, url }. Caller supplies the tenant s3Prefix, a folder, the
 // original filename (for extension/readability) and the content type.
-export async function uploadBuffer(buffer, { prefix, folder = 'uploads', name, contentType } = {}) {
+//
+// acl defaults to 'public-read' so every existing caller (blog images, social
+// media, assets) is unchanged. Pass acl: 'private' for PII — e.g. applicant
+// résumés — which must never be reachable by guessing the key. Private objects
+// have no meaningful public URL, so `url` is null; serve them through an authed
+// route with getObjectStream(key) instead.
+export async function uploadBuffer(buffer, { prefix, folder = 'uploads', name, contentType, acl = 'public-read' } = {}) {
   const rand = Math.random().toString(36).slice(2, 8);
   const key = `${prefix || 'default'}/${folder}/${Date.now()}-${rand}-${safeName(name)}`;
   await s3Client.send(new PutObjectCommand({
     Bucket: BUCKET, Key: key, Body: buffer,
-    ContentType: contentType || 'application/octet-stream', ACL: 'public-read',
+    ContentType: contentType || 'application/octet-stream', ACL: acl,
   }), { abortSignal: AbortSignal.timeout(180000) });
-  return { key, url: bucketUrl(key) };
+  return { key, url: acl === 'private' ? null : bucketUrl(key) };
+}
+
+// Convenience wrapper for PII uploads (résumés, applicant docs). Stores the
+// object with a private ACL so it is only retrievable via getObjectStream()
+// behind auth. Returns { key, url: null }.
+export function uploadPrivateBuffer(buffer, opts = {}) {
+  return uploadBuffer(buffer, { ...opts, acl: 'private' });
+}
+
+// Fetch a stored object for authed streaming. Returns the GetObject response:
+// { Body (a Node Readable), ContentType, ContentLength, ... }. Callers must
+// gate this behind their own auth — there is no public URL for private keys.
+export async function getObjectStream(key) {
+  return s3Client.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }), {
+    abortSignal: AbortSignal.timeout(180000),
+  });
+}
+
+// Permanently delete a stored object. Best-effort — callers should ignore errors
+// (a missing key is not fatal). Used when purging trashed uploads.
+export async function deleteObject(key) {
+  if (!key) return;
+  return s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }), {
+    abortSignal: AbortSignal.timeout(30000),
+  });
 }

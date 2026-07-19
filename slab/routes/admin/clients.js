@@ -7,7 +7,9 @@ import { sendInvoiceEmail, sendClientEmail, renderCampaignEmail, renderInvoiceEm
 import { config } from '../../config/config.js';
 import { normalizeSubject } from '../../plugins/imapPoller.js';
 import { runTool, callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
+import { agentLLMOpts } from '../../plugins/agentRegistry.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
+import { buildClientNotes } from '../../plugins/clientNotes.js';
 import crypto from 'crypto';
 
 // Propagate a client's edited name/email onto its linked email-marketing contact
@@ -176,15 +178,16 @@ router.get('/:id', async (req, res) => {
   const tab = req.query.tab || 'overview';
 
   // Always fetch counts (cheap) for tab badges
-  const [invoiceCount, fileCount, assetCount, emailCount] = await Promise.all([
+  const [invoiceCount, engagementCount, fileCount, assetCount, emailCount] = await Promise.all([
     db.collection('invoices').countDocuments({ clientId: cid }),
+    db.collection('engagements').countDocuments({ clientId: cid }),
     db.collection('files').countDocuments({ clientId: cid }),
     db.collection('assets').countDocuments({ clientId: cid }),
     db.collection('client_emails').countDocuments({ clientId: cid }),
   ]);
 
   // Only load full data for the active tab
-  let invoices = [], files = [], assets = [], emails = [];
+  let invoices = [], files = [], assets = [], emails = [], engagements = [];
   let threads = [], unthreaded = [], showArchived = false, archivedCount = 0;
   let onboardingForms = [], onboardingResponses = [];
 
@@ -199,6 +202,8 @@ router.get('/:id', async (req, res) => {
     }
   } else if (tab === 'invoices') {
     invoices = await db.collection('invoices').find({ clientId: cid }).sort({ createdAt: -1 }).toArray();
+  } else if (tab === 'engagements') {
+    engagements = await db.collection('engagements').find({ clientId: cid }).sort({ createdAt: -1 }).toArray();
   } else if (tab === 'files') {
     files = await db.collection('files').find({ clientId: cid }).sort({ uploadedAt: -1 }).toArray();
   } else if (tab === 'assets') {
@@ -230,10 +235,16 @@ router.get('/:id', async (req, res) => {
     unthreaded.sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt));
   }
 
+  // Unified notes (embedded pushed notes + engine notes bound to this client).
+  // Cheap enough to build on every load — it powers the tab badge, and the
+  // Overview card's note summary, not just the Notes tab body.
+  const clientNotes = await buildClientNotes(db, client);
+
   res.render('admin/clients/detail', {
     user: req.adminUser, c: client, invoices, files, assets, emails,
-    threads, unthreaded, tab, qs: req.query, showArchived, archivedCount,
-    counts: { invoices: invoiceCount, files: fileCount, assets: assetCount, emails: emailCount },
+    threads, unthreaded, tab, qs: req.query, showArchived, archivedCount, engagements,
+    clientNotes,
+    counts: { invoices: invoiceCount, files: fileCount, assets: assetCount, emails: emailCount, engagements: engagementCount, notes: clientNotes.length },
     tagDefs: CLIENT_TAGS, configStatus: getClientConfig(client), configChecks: CLIENT_CONFIG,
     onboardingForms, onboardingResponses,
   });
@@ -262,7 +273,7 @@ router.post('/:id/agent', express.json(), async (req, res) => {
       email: client.email,
       prompt: req.body.prompt || '',
       brandContext: await loadBrandContext(req.tenant, req.db),
-    });
+    }, { db: req.db, tenant: req.tenant });
 
     // Persist agent report to client record
     await db.collection('clients').updateOne(
@@ -332,9 +343,19 @@ router.post('/:id', async (req, res) => {
   try {
     const db = req.db;
     const { name, email, phone, company, status, notes, website, address } = req.body;
+    const set = {
+      name: name?.trim(), email: email?.trim(), phone: phone?.trim(),
+      company: company?.trim(), website: website?.trim(), address: address?.trim(),
+      status, updatedAt: new Date(),
+    };
+    // The Notes tab owns the notes log, which is an array once anything has been
+    // pushed to this client. Only the plain free-text edit form submits a string
+    // `notes` field — touch it ONLY then, so a routine edit never overwrites the
+    // pushed/array notes with a flattened string.
+    if (typeof notes === 'string') set.notes = notes.trim();
     await db.collection('clients').updateOne(
       { _id: new ObjectId(req.params.id) },
-      { $set: { name: name?.trim(), email: email?.trim(), phone: phone?.trim(), company: company?.trim(), website: website?.trim(), address: address?.trim(), status, notes: notes?.trim(), updatedAt: new Date() } }
+      { $set: set }
     );
 
     // Keep the linked email-marketing contact in sync (email/name are the identity
@@ -385,6 +406,30 @@ router.post('/:id/delete', async (req, res) => {
   const db = req.db;
   await db.collection('clients').deleteOne({ _id: new ObjectId(req.params.id) });
   res.redirect('/admin/clients');
+});
+
+// ── CLIENT NOTES ──
+// New notes are authored straight into the engine (POST /admin/notes with a
+// bound clientId) so they inherit the full pipe and reappear here via
+// buildClientNotes. This route DETACHES an embedded (pushed/legacy) copy from
+// client.notes[] — it never deletes the source engine note (that's done from
+// the Notes tool). Detaching a pushed note pulls by noteId so any duplicate
+// pushes of the same note clear together; legacy string-notes pull by entry id.
+router.post('/:id/notes/remove', express.json(), async (req, res) => {
+  try {
+    const { entryId, noteId } = req.body;
+    let match;
+    if (noteId)       match = { noteId: new ObjectId(noteId) };
+    else if (entryId) match = { id: new ObjectId(entryId) };
+    else return res.status(400).json({ error: 'entryId or noteId required' });
+    await req.db.collection('clients').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $pull: { notes: match }, $set: { updatedAt: new Date() } }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── INVOICES ──
@@ -627,7 +672,7 @@ RULES:
 - Open with "Hi ${firstName},". Keep it concise (≈80-180 words), warm, specific, and grounded in the client context above — reference real onboarding goals, invoice status, or meeting outcomes when relevant. Do not invent facts.
 - Close with a soft call-to-action and sign as the ${req.tenant?.brand?.name || 'team'} (the signature is added automatically — do not add your own sign-off block).`;
 
-    const raw = await callLLM(messages, systemPrompt);
+    const raw = await callLLM(messages, systemPrompt, 90000, await agentLLMOpts(req.db, req.tenant, 'outreach'));
     const parsed = tryParseAgentResponse(raw);
     parsed.fill = parsed.fill || {};
     // The parser maps the <BODY> sentinel to fill.body; subject comes from JSON.

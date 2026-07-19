@@ -7,6 +7,7 @@ import { ObjectId } from 'mongodb';
 import { config } from '../../config/config.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import { callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
+import { agentLLMOpts } from '../../plugins/agentRegistry.js';
 // Shared design schema (leaf module — importing from design.js here would create
 // a cycle, since design.js imports CUSTOM_TEMPLATES from this file).
 import { DESIGN_DEFAULTS } from '../../config/schema.js';
@@ -554,7 +555,7 @@ If chatting only: {"message":"response","fill":{}}
 Fields available for this section: ${fieldList}${copyCtx}`;
 
   try {
-    const raw = await callLLM(messages, systemPrompt);
+    const raw = await callLLM(messages, systemPrompt, 90000, await agentLLMOpts(req.db, req.tenant, 'section'));
     const parsed = tryParseAgentResponse(raw);
     res.json(parsed);
   } catch (err) {

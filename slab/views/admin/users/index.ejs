@@ -57,7 +57,8 @@
 <div class="topbar">
   <div class="topbar-title">Users & Permissions</div>
   <div class="topbar-actions">
-    <span style="font-size:0.75rem;color:var(--slate);"><%= users.length %> user<%= users.length !== 1 ? 's' : '' %></span>
+    <a href="/admin/roles" class="btn btn-ghost btn-sm">Roles &amp; Permissions</a>
+    <span style="font-size:0.75rem;color:var(--slate);"><%= totalUsers %> user<%= totalUsers !== 1 ? 's' : '' %></span>
   </div>
 </div>
 
@@ -68,6 +69,48 @@
   <% if (error) { %>
     <div class="alert alert-error" style="background:#FEE2E2;color:#991B1B;padding:10px 14px;border-radius:4px;font-size:0.85rem;margin-bottom:14px;"><%= error %></div>
   <% } %>
+
+<style>
+  .u-stats{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;}
+  .u-stat{flex:1;min-width:110px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;}
+  .u-stat-n{font-size:1.5rem;font-weight:600;color:var(--navy);line-height:1;}
+  .u-stat-l{font-size:0.62rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);margin-top:4px;}
+  .u-filter{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px;}
+  .u-filter select,.u-search{padding:8px 10px;font-size:0.8rem;font-family:inherit;border:1px solid var(--border);border-radius:4px;background:var(--surface);}
+  .u-search{flex:1;min-width:180px;}
+  .crole-chip{display:inline-block;font-size:0.56rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#fff;padding:2px 7px;border-radius:10px;margin-left:5px;vertical-align:middle;}
+  .crole-chip.custom{background:var(--slate);}
+</style>
+
+  <div class="u-stats">
+    <div class="u-stat"><div class="u-stat-n"><%= stats.total %></div><div class="u-stat-l">Users</div></div>
+    <div class="u-stat"><div class="u-stat-n"><%= stats.admins %></div><div class="u-stat-l">Admins</div></div>
+    <div class="u-stat"><div class="u-stat-n"><%= stats.restricted %></div><div class="u-stat-l">Restricted</div></div>
+    <div class="u-stat"><div class="u-stat-n"><%= stats.clients %></div><div class="u-stat-l">Clients</div></div>
+  </div>
+
+  <form method="GET" action="/admin/users" class="u-filter">
+    <input type="search" name="q" value="<%= filters.q %>" placeholder="Search name or email…" class="u-search">
+    <select name="role" onchange="this.form.submit()">
+      <option value="">All roles</option>
+      <option value="admin" <%= filters.role==='admin'?'selected':'' %>>Admin</option>
+      <option value="collaborator" <%= filters.role==='collaborator'?'selected':'' %>>Collaborator</option>
+      <option value="client" <%= filters.role==='client'?'selected':'' %>>Client</option>
+      <option value="none" <%= filters.role==='none'?'selected':'' %>>No role</option>
+    </select>
+    <select name="crole" onchange="this.form.submit()">
+      <option value="">Any assigned role</option>
+      <% roles.forEach(function(r){ %><option value="<%= r._id %>" <%= filters.crole===String(r._id)?'selected':'' %>><%= r.name %></option><% }) %>
+    </select>
+    <select name="access" onchange="this.form.submit()">
+      <option value="">Any access</option>
+      <option value="full" <%= filters.access==='full'?'selected':'' %>>Full access</option>
+      <option value="restricted" <%= filters.access==='restricted'?'selected':'' %>>Restricted</option>
+    </select>
+    <button type="submit" class="btn btn-navy btn-sm">Filter</button>
+    <% if (filters.q||filters.role||filters.crole||filters.access) { %><a href="/admin/users" class="btn btn-ghost btn-sm">Clear</a><% } %>
+  </form>
+  <% if (users.length !== totalUsers) { %><div class="text-slate" style="font-size:0.72rem;margin:-4px 0 12px;color:var(--slate);">Showing <%= users.length %> of <%= totalUsers %></div><% } %>
 
   <div class="card" style="padding:0;overflow-x:auto;">
     <table class="user-table">
@@ -97,7 +140,10 @@
               </div>
             </div>
           </td>
-          <td><span class="role-badge role-<%= role %>"><%= role %></span></td>
+          <td>
+            <span class="role-badge role-<%= role %>"><%= role %></span>
+            <% if (u.roleId && roleMap[String(u.roleId)]) { %><span class="crole-chip" style="background:<%= roleMap[String(u.roleId)].color || '#1C2B4A' %>;"><%= roleMap[String(u.roleId)].name %></span><% } else if (Array.isArray(u.permissions) && u.permissions.length) { %><span class="crole-chip custom">Custom</span><% } %>
+          </td>
           <td style="font-size:0.78rem;color:var(--slate);text-transform:capitalize;"><%= u.provider || 'google' %></td>
           <td>
             <% if (linkedClient) { %>
@@ -116,7 +162,7 @@
               <!-- Role -->
               <div>
                 <label>Change Role</label>
-                <form method="POST" action="/admin/users/<%= u._id %>/role" style="display:flex;gap:6px;">
+                <form data-guard method="POST" action="/admin/users/<%= u._id %>/role" style="display:flex;gap:6px;">
                   <select name="role">
                     <option value="admin" <%= role === 'admin' ? 'selected' : '' %>>Admin</option>
                     <option value="client" <%= role === 'client' ? 'selected' : '' %>>Client</option>
@@ -126,10 +172,23 @@
                 </form>
               </div>
 
+              <!-- Assign a custom role bundle -->
+              <div>
+                <label>Assign Role</label>
+                <form data-guard method="POST" action="/admin/users/<%= u._id %>/apply-role" style="display:flex;gap:6px;">
+                  <select name="roleId">
+                    <option value="">— Custom / none —</option>
+                    <% roles.forEach(function(r){ %><option value="<%= r._id %>" <%= String(u.roleId||'')===String(r._id)?'selected':'' %>><%= r.name %></option><% }) %>
+                  </select>
+                  <button type="submit" class="btn btn-navy btn-xs">Apply</button>
+                </form>
+                <% if (!roles.length) { %><a href="/admin/roles" style="font-size:0.66rem;color:var(--gold);">Build roles →</a><% } %>
+              </div>
+
               <!-- Link Client -->
               <div>
                 <label>Link to Client</label>
-                <form method="POST" action="/admin/users/<%= u._id %>/link-client" style="display:flex;gap:6px;">
+                <form data-guard method="POST" action="/admin/users/<%= u._id %>/link-client" style="display:flex;gap:6px;">
                   <select name="clientId">
                     <option value="">— None —</option>
                     <% clients.forEach(c => { %>
@@ -147,7 +206,7 @@
                   Leave everything unchecked for <strong>full access</strong>. Check specific features to
                   <strong>restrict</strong> this admin to only those. (The workspace owner always has full access.)
                 </p>
-                <form method="POST" action="/admin/users/<%= u._id %>/permissions">
+                <form data-guard method="POST" action="/admin/users/<%= u._id %>/permissions">
                   <%
                     const userPerms = Array.isArray(u.permissions) ? u.permissions : [];
                     const catalog = (typeof permCatalog !== 'undefined' ? permCatalog : []);
@@ -173,7 +232,7 @@
               <!-- Delete -->
               <% if (!isSelf) { %>
               <div style="grid-column:span 2;padding-top:8px;border-top:1px solid var(--border);">
-                <form method="POST" action="/admin/users/<%= u._id %>/delete" onsubmit="return confirm('Delete this user? This cannot be undone.');">
+                <form data-guard="button" method="POST" action="/admin/users/<%= u._id %>/delete" onsubmit="return confirm('Delete this user? This cannot be undone.');">
                   <button type="submit" class="btn btn-xs" style="background:var(--danger);color:#fff;">Delete User</button>
                 </form>
               </div>

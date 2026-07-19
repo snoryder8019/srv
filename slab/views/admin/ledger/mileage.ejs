@@ -1,0 +1,111 @@
+<%- include('../partials/head', { title: 'Mileage Log' }) %>
+<%- include('../partials/sidebar', { page: 'ledger-mileage', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Mileage Log</div>
+  <div class="topbar-actions">
+    <a href="/admin/ledger" class="btn btn-ghost btn-sm">P&amp;L</a>
+  </div>
+</div>
+
+<div class="content" data-agent-scope="bookkeeping" data-agent-kind="agent" data-agent-title="Mileage" data-agent-suggest="What&#39;s my mileage deduction this month?|Log a round trip to a client|Total my deductible miles this quarter|Is my mileage rate up to date?">
+  <%- include('_tabs', { active: 'mileage' }) %>
+  <% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <!-- Month nav + totals -->
+  <div class="card" style="margin-bottom:20px;padding:16px 20px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;">
+    <form method="GET" action="/admin/ledger/mileage" style="display:flex;gap:8px;align-items:center;margin:0;">
+      <a href="/admin/ledger/mileage?month=<%= prevMonth %>" class="btn btn-ghost btn-sm" style="padding:6px 12px;">&larr;</a>
+      <input type="month" name="month" value="<%= month %>" onchange="this.form.submit()" style="padding:6px 10px;font-size:0.85rem;">
+      <a href="/admin/ledger/mileage?month=<%= nextMonth %>" class="btn btn-ghost btn-sm" style="padding:6px 12px;">&rarr;</a>
+    </form>
+    <div style="display:flex;gap:28px;align-items:center;">
+      <div style="text-align:right;"><div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);">Miles</div><div style="font-weight:600;"><%= totals.miles.toLocaleString('en-US',{maximumFractionDigits:1}) %></div></div>
+      <div style="text-align:right;"><div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);">Deductible</div><div style="font-weight:600;color:var(--success);"><%= money(totals.amount) %></div></div>
+    </div>
+  </div>
+
+  <!-- Trips -->
+  <% if (!trips.length) { %>
+    <div class="empty"><div class="empty-icon">&#128663;</div><p>No trips logged for <%= monthLabel %>.</p></div>
+  <% } else { %>
+  <div class="table-wrap" style="margin-bottom:24px;">
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Purpose</th><th>Route</th><th style="text-align:right;">Miles</th><th style="text-align:right;">Rate</th><th style="text-align:right;">Amount</th><th>Category</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% for (const t of trips) { const c = catMap[String(t.categoryId)]; %>
+        <tr>
+          <td style="white-space:nowrap;font-size:0.82rem;"><%= new Date(t.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) %></td>
+          <td style="font-size:0.82rem;font-weight:500;"><%= t.purpose || '—' %></td>
+          <td style="font-size:0.78rem;color:var(--slate);"><%= [t.fromLoc, t.toLoc].filter(Boolean).join(' → ') || '—' %></td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums;"><%= (t.miles||0).toLocaleString('en-US',{maximumFractionDigits:1}) %></td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--slate);">$<%= (t.rate||0).toFixed(2) %></td>
+          <td style="text-align:right;font-weight:600;font-variant-numeric:tabular-nums;"><%= money(t.amount) %></td>
+          <td style="font-size:0.78rem;color:var(--slate);"><%= c ? c.name : '—' %></td>
+          <td>
+            <form data-guard="button" method="POST" action="/admin/ledger/mileage/<%= t._id %>/delete" onsubmit="return confirm('Delete this trip?')" style="margin:0;">
+              <input type="hidden" name="month" value="<%= month %>">
+              <button class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;color:var(--danger);">Delete</button>
+            </form>
+          </td>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+
+  <!-- Add trip -->
+  <div class="card">
+    <div class="card-title">Log a Trip</div>
+    <form data-guard method="POST" action="/admin/ledger/mileage">
+      <input type="hidden" name="month" value="<%= month %>">
+      <div class="form-grid cols-3">
+        <div class="form-field"><label>Date</label><input type="date" name="date" value="<%= todayInput %>" required></div>
+        <div class="form-field span-2"><label>Purpose</label><input type="text" name="purpose" placeholder="e.g. Client site visit"></div>
+        <div class="form-field"><label>From</label><input type="text" name="fromLoc" placeholder="Origin"></div>
+        <div class="form-field"><label>To</label><input type="text" name="toLoc" placeholder="Destination"></div>
+        <div class="form-field"><label>Vehicle</label><input type="text" name="vehicle" placeholder="Optional"></div>
+        <div class="form-field">
+          <label>Miles</label>
+          <input type="number" name="miles" id="milesInput" step="0.1" min="0.1" required oninput="calcAmt()">
+        </div>
+        <div class="form-field">
+          <label>Rate ($/mi)</label>
+          <input type="number" name="rate" id="rateInput" step="0.001" min="0" value="<%= defaultRate.toFixed(3) %>" oninput="calcAmt()">
+        </div>
+        <div class="form-field">
+          <label>Deductible</label>
+          <input type="text" id="amtPreview" value="$0.00" readonly style="background:var(--ivory);font-weight:600;">
+        </div>
+        <div class="form-field span-2">
+          <label>Category</label>
+          <select name="categoryId" required>
+            <option value="">Select expense category…</option>
+            <% for (const c of categories) { %><option value="<%= c._id %>" <%= /mileage|vehicle/i.test(c.name) ? 'selected' : '' %>><%= c.name %></option><% } %>
+          </select>
+        </div>
+        <div class="form-field"><label>Note</label><input type="text" name="note" placeholder="Optional"></div>
+      </div>
+      <div style="margin-top:16px;text-align:right;">
+        <button type="submit" class="btn btn-navy">Log Trip</button>
+      </div>
+    </form>
+  </div>
+
+  <p class="text-slate" style="margin-top:16px;font-size:0.78rem;">Default rate is the IRS business standard mileage rate. Override per trip above.</p>
+</div>
+
+<script>
+function calcAmt() {
+  const m = parseFloat(document.getElementById('milesInput').value) || 0;
+  const r = parseFloat(document.getElementById('rateInput').value) || 0;
+  document.getElementById('amtPreview').value = '$' + (m * r).toFixed(2);
+}
+calcAmt();
+</script>
+
+</div></div></body></html>

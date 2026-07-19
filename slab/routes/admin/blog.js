@@ -4,6 +4,7 @@ import { getDb } from '../../plugins/mongo.js';
 import { ObjectId } from 'mongodb';
 import { config } from '../../config/config.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
+import { agentLLMOpts } from '../../plugins/agentRegistry.js';
 import {
   webSearch,
   callLLM,
@@ -263,8 +264,9 @@ ${postCtx}${researchCtx}`;
         })
       : Promise.resolve(null);
 
+    const llmOpts = await agentLLMOpts(req.db, req.tenant, 'blog');
     const [raw, image] = await Promise.all([
-      callLLM(messages, systemPrompt),
+      callLLM(messages, systemPrompt, 90000, llmOpts),
       imagePromise,
     ]);
 

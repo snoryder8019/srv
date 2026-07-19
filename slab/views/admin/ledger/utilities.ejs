@@ -1,0 +1,119 @@
+<%- include('../partials/head', { title: 'Utilities Log' }) %>
+<%- include('../partials/sidebar', { page: 'ledger-utilities', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Utilities Log</div>
+  <div class="topbar-actions">
+    <a href="/admin/ledger" class="btn btn-ghost btn-sm">P&amp;L</a>
+  </div>
+</div>
+
+<div class="content" data-agent-scope="bookkeeping" data-agent-kind="agent" data-agent-title="Utilities" data-agent-suggest="Log this month&#39;s utility bills|Which utility rose the most?|Estimate next month from the trend|Total utilities for the quarter">
+  <%- include('_tabs', { active: 'utilities' }) %>
+  <% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <!-- Month nav + total -->
+  <div class="card" style="margin-bottom:20px;padding:16px 20px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;">
+    <form method="GET" action="/admin/ledger/utilities" style="display:flex;gap:8px;align-items:center;margin:0;">
+      <a href="/admin/ledger/utilities?month=<%= prevMonth %>" class="btn btn-ghost btn-sm" style="padding:6px 12px;">&larr;</a>
+      <input type="month" name="month" value="<%= month %>" onchange="this.form.submit()" style="padding:6px 10px;font-size:0.85rem;">
+      <a href="/admin/ledger/utilities?month=<%= nextMonth %>" class="btn btn-ghost btn-sm" style="padding:6px 12px;">&rarr;</a>
+    </form>
+    <div style="text-align:right;"><div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);">Total — <%= monthLabel %></div><div style="font-weight:600;color:var(--danger);font-size:1.1rem;"><%= money(totals.amount) %></div></div>
+  </div>
+
+  <!-- Bills -->
+  <% if (!bills.length) { %>
+    <div class="empty"><div class="empty-icon">&#9096;</div><p>No utility bills logged for <%= monthLabel %>.</p></div>
+  <% } else { %>
+  <div class="table-wrap" style="margin-bottom:24px;">
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Type</th><th>Provider</th><th>Period</th><th style="text-align:right;">Amount</th><th>Category</th><th></th><th></th></tr>
+      </thead>
+      <tbody>
+        <% for (const b of bills) { const c = catMap[String(b.categoryId)];
+             const period = (b.periodStart && b.periodEnd)
+               ? new Date(b.periodStart).toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' – ' + new Date(b.periodEnd).toLocaleDateString('en-US',{month:'short',day:'numeric'})
+               : '—'; %>
+        <tr>
+          <td style="white-space:nowrap;font-size:0.82rem;"><%= new Date(b.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) %></td>
+          <td><span class="badge badge-draft" style="font-size:0.62rem;"><%= b.utilityType %></span></td>
+          <td style="font-size:0.82rem;font-weight:500;"><%= b.provider || '—' %></td>
+          <td style="font-size:0.76rem;color:var(--slate);white-space:nowrap;"><%= period %></td>
+          <td style="text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">
+            <%= money(b.amount) %>
+            <% if (b.sharePct) { %><br><span style="font-size:0.66rem;font-weight:400;color:var(--slate);"><%= b.sharePct %>% of <%= money(b.billTotal) %></span><% } %>
+          </td>
+          <td style="font-size:0.78rem;color:var(--slate);"><%= c ? c.name : '—' %></td>
+          <td><% if (b.receiptKey) { %><a href="/admin/ledger/utilities/<%= b._id %>/receipt" target="_blank" class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;">Bill</a><% } %></td>
+          <td>
+            <form data-guard="button" method="POST" action="/admin/ledger/utilities/<%= b._id %>/delete" onsubmit="return confirm('Delete this bill?')" style="margin:0;">
+              <input type="hidden" name="month" value="<%= month %>">
+              <button class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;color:var(--danger);">Delete</button>
+            </form>
+          </td>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+
+  <!-- Add bill -->
+  <div class="card">
+    <div class="card-title">Log a Utility Bill</div>
+    <form data-guard method="POST" action="/admin/ledger/utilities" enctype="multipart/form-data">
+      <input type="hidden" name="month" value="<%= month %>">
+      <div class="form-grid cols-3">
+        <div class="form-field"><label>Date</label><input type="date" name="date" value="<%= todayInput %>" required></div>
+        <div class="form-field">
+          <label>Type</label>
+          <select name="utilityType"><% for (const u of utilityTypes) { %><option value="<%= u %>"><%= u %></option><% } %></select>
+        </div>
+        <div class="form-field"><label>Provider</label><input type="text" name="provider" placeholder="e.g. ComEd"></div>
+        <div class="form-field"><label>Bill total ($)</label><input type="number" name="amount" id="uAmount" step="0.01" min="0.01" required></div>
+        <div class="form-field">
+          <label>My share % <span style="font-weight:400;color:var(--slate);font-size:0.7rem;">— blank = I pay all</span></label>
+          <input type="number" name="sharePct" id="uShare" step="0.01" min="0" max="100" placeholder="e.g. 50">
+          <div id="uShareHint" style="font-size:0.7rem;color:var(--slate);margin-top:3px;"></div>
+        </div>
+        <div class="form-field"><label>Period Start</label><input type="date" name="periodStart"></div>
+        <div class="form-field"><label>Period End</label><input type="date" name="periodEnd"></div>
+        <div class="form-field span-2">
+          <label>Category</label>
+          <select name="categoryId" required>
+            <option value="">Select expense category…</option>
+            <% for (const c of categories) { %><option value="<%= c._id %>" <%= /utilit/i.test(c.name) ? 'selected' : '' %>><%= c.name %></option><% } %>
+          </select>
+        </div>
+        <div class="form-field"><label>Bill / Receipt</label><input type="file" name="receipt" accept="application/pdf,image/*" style="font-size:0.8rem;"></div>
+        <div class="form-field span-3"><label>Note</label><input type="text" name="note" placeholder="Optional"></div>
+      </div>
+      <div style="margin-top:16px;text-align:right;">
+        <button type="submit" class="btn btn-navy">Log Bill</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function(){
+  var amt = document.getElementById('uAmount');
+  var share = document.getElementById('uShare');
+  var hint = document.getElementById('uShareHint');
+  if (!amt || !share || !hint) return;
+  function fmt(n){ return '$' + (Math.round(n*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function upd(){
+    var a = parseFloat(amt.value) || 0;
+    var p = parseFloat(share.value);
+    if (a > 0 && p > 0 && p < 100){ hint.textContent = 'You record ' + fmt(a*p/100) + ' of ' + fmt(a) + '.'; }
+    else { hint.textContent = ''; }
+  }
+  amt.addEventListener('input', upd);
+  share.addEventListener('input', upd);
+})();
+</script>
+
+</div></div></body></html>

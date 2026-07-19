@@ -6,6 +6,7 @@
 
 import { config } from '../config/config.js';
 import { getSlabDb } from './mongo.js';
+import { callAnthropic, resolveEngine, engineALS, currentEngineScope, recordTokenUsage } from './agentEngine.js';
 
 const OLLAMA_URL = config.OLLAMA_URL;
 const OLLAMA_BASE = OLLAMA_URL.replace(/\/v1\/chat\/completions$/, '');
@@ -112,7 +113,33 @@ async function fetchOkWithRetry(url, makeInit, { tries = 2, backoffMs = 800, lab
   throw lastErr;
 }
 
-export async function callLLM(messages, systemPrompt, timeoutMs = 90000) {
+export async function callLLM(messages, systemPrompt, timeoutMs = 90000, opts = {}) {
+  // ── Engine seam (BYO Claude) ──
+  // A tenant that brought an Anthropic key (or the platform key) runs on Claude;
+  // everyone else stays on the house model below. The tenant is taken from an
+  // explicit opts.tenant or the ambient engine scope set by the interactive entry
+  // points (runTool / chat dispatch / dashboard). A failed Claude call degrades
+  // to house rather than surfacing an error — a flaky key never breaks a surface.
+  const scope = currentEngineScope();
+  const tenant = opts.tenant ?? scope.tenant;
+  const chosen = resolveEngine({ tenant, engine: opts.engine ?? scope.engine, model: opts.model ?? scope.model });
+  // Optional sampling knobs, honored by both engines. Callers that want a warmer,
+  // more creative voice (e.g. the support concierge) pass temperature/maxTokens;
+  // omitted → each backend's own default.
+  const temperature = (typeof opts.temperature === 'number') ? opts.temperature : undefined;
+  const maxTokens = (typeof opts.maxTokens === 'number') ? opts.maxTokens : undefined;
+  if (chosen.engine === 'anthropic') {
+    try {
+      return await callAnthropic(messages, systemPrompt, {
+        apiKey: chosen.apiKey, model: chosen.model, timeoutMs, temperature, maxTokens,
+        onUsage: (u) => { recordTokenUsage({ tenant, model: u.model, engine: 'anthropic', usage: u.usage }); },
+      });
+    } catch (e) {
+      console.error('[engine] Anthropic call failed — falling back to house:', e?.message || e);
+    }
+  }
+
+  // ── House engine (Ollama) ──
   const res = await fetchOkWithRetry(OLLAMA_URL, () => ({
     method: 'POST',
     headers: {
@@ -123,10 +150,15 @@ export async function callLLM(messages, systemPrompt, timeoutMs = 90000) {
       model: MODEL,
       messages: [{ role: 'system', content: systemPrompt }, ...messages],
       stream: false,
+      ...(temperature !== undefined ? { temperature } : {}),
+      ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
     }),
     signal: AbortSignal.timeout(timeoutMs),
   }), { label: 'LLM' });
   const data = await res.json();
+  // Capture house token usage when the OpenAI-compatible backend reports it
+  // (Ollama includes a `usage` block on many builds); silently skipped if absent.
+  if (data.usage) recordTokenUsage({ tenant, model: MODEL, engine: 'house', usage: data.usage });
   // Always strip the model's <think> reasoning block — no caller wants it.
   return stripThink(data.choices?.[0]?.message?.content || '');
 }
@@ -541,12 +573,48 @@ export const MCP_TOOLS = [
     },
   },
   {
-    name: 'update_design',
-    description: 'Update the website design settings — colors, fonts, layouts, section visibility, and branding.',
+    name: 'update_theme',
+    description: 'Update the website color palette — primary shades, accent, and background colors.',
     inputSchema: {
       type: 'object',
       properties: {
-        task: { type: 'string', description: 'What design changes to make' },
+        task: { type: 'string', description: 'What color/palette change to make' },
+        context: { type: 'string', description: 'Extra context, current settings, or research notes' },
+      },
+      required: ['task'],
+    },
+  },
+  {
+    name: 'update_typography',
+    description: 'Set the website heading and body fonts from the approved font list.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'What font/typography change to make' },
+        context: { type: 'string', description: 'Extra context or research notes' },
+      },
+      required: ['task'],
+    },
+  },
+  {
+    name: 'set_section_visibility',
+    description: 'Show or hide individual homepage sections (hero, services, portfolio, about, process, reviews, contact, blog).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'Which sections to show or hide' },
+        context: { type: 'string', description: 'Extra context' },
+      },
+      required: ['task'],
+    },
+  },
+  {
+    name: 'update_design',
+    description: 'Set website layout options — portfolio/blog layout style and logo display (text/image/both).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'What layout or logo-display change to make' },
         context: { type: 'string', description: 'Extra context, current settings, or research notes' },
       },
       required: ['task'],
@@ -668,6 +736,77 @@ export const MCP_TOOLS = [
       },
       required: ['task'],
     },
+  },
+  // ── Social package (stateful — tenant-scoped) ──────────────────────────────
+  {
+    name: 'generate_social_batch',
+    description: 'Generate a batch of on-brand social posts (copy + platform-sized image) for the connected accounts. Review-first by default; set mode=publish to post live. Creates review drafts in Agent Studio.',
+    inputSchema: { type: 'object', properties: {
+      topic: { type: 'string', description: 'What the batch should be about (optional — steers the copy)' },
+      count: { type: 'number', description: 'How many posts (1-10, default 3)' },
+      mode: { type: 'string', description: "'suggest' (review-first, default) or 'publish' (live)" },
+      platforms: { type: 'string', description: 'Comma-separated platform keys — optional, blank = all connected' },
+    }, required: [] },
+  },
+  {
+    name: 'build_seamless_carousel',
+    description: 'Build a seamless (panorama) Instagram/Threads carousel about a topic — a wide background sliced into N tiles, each with an AI headline. Creates a review draft.',
+    inputSchema: { type: 'object', properties: {
+      topic: { type: 'string', description: 'What the carousel is about' },
+      count: { type: 'number', description: 'Slides (2-10, default 4)' },
+    }, required: ['topic'] },
+  },
+  {
+    name: 'build_story_sequence',
+    description: 'Build a vertical Instagram story sequence (hook → body → CTA) about a topic. Creates a review draft.',
+    inputSchema: { type: 'object', properties: {
+      topic: { type: 'string', description: 'What the story is about' },
+      count: { type: 'number', description: 'Frames (2-8, default 4)' },
+    }, required: ['topic'] },
+  },
+  {
+    name: 'generate_spotlight_post',
+    description: 'Draft a spotlight/quote social post (owner, mission, or customer quote). Creates a review draft.',
+    inputSchema: { type: 'object', properties: {
+      subject: { type: 'string', description: 'Who/what is spotlighted' },
+      kind: { type: 'string', description: 'owner | mission | customer (optional)' },
+      role: { type: 'string', description: "The subject's role (optional)" },
+      quote: { type: 'string', description: 'A quote to feature (optional)' },
+    }, required: ['subject'] },
+  },
+  {
+    name: 'score_live_posts',
+    description: 'Fetch real engagement for recently-published posts and score them, building the decision-reliability dataset. Returns how many were scored and the current reliability %.',
+    inputSchema: { type: 'object', properties: {
+      minAgeDays: { type: 'number', description: 'Only score posts older than this many days (default 2)' },
+    }, required: [] },
+  },
+  {
+    name: 'get_social_reliability',
+    description: 'Get the current statistical reliability % (from scored live posts) and which design signals are winning (font/align/aspect/style with lift vs. average).',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'get_social_insights',
+    description: 'Get live social analytics from connected accounts (followers, reach, impressions, engagements) for the given window.',
+    inputSchema: { type: 'object', properties: {
+      days: { type: 'number', description: 'Window in days (default 30)' },
+    }, required: [] },
+  },
+  {
+    name: 'get_autopilot_config',
+    description: "Read the tenant's Autopilot configuration (enabled, cadence, mode, channels, standing direction, asset tags).",
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'set_autopilot_config',
+    description: 'Update Autopilot settings. Only the fields you pass change. Review-first unless autoPublish is set.',
+    inputSchema: { type: 'object', properties: {
+      enabled: { type: 'boolean' }, cadence: { type: 'string', description: 'off | daily | 3x_week | weekly' },
+      count: { type: 'number' }, autoPublish: { type: 'boolean' }, autoSlot: { type: 'boolean' },
+      standingPrompt: { type: 'string' }, channels: { type: 'string', description: 'comma-separated platform keys' },
+      assetTags: { type: 'string', description: 'comma-separated asset tags for backgrounds' },
+    }, required: [] },
   },
 ];
 
@@ -909,30 +1048,78 @@ ${contextNote}${researchCtx}`;
   return tryParseAgentResponse(raw);
 }
 
-async function handleUpdateDesign({ task, context, brandContext }) {
-  const searchResults = await webSearch(`${task} website color palette design`.slice(0, 200));
+// ── Design tools (split from the old catch-all update_design) ────────────────
+// The old single tool fanned FOUR unrelated concerns (palette, fonts, layout,
+// section visibility) through one prompt, so a small model routinely emitted
+// fields the user never asked to change — and the committer blind-upserts every
+// non-empty field, silently mutating branding. Splitting into focused tools whose
+// prompts ONLY know their own field group makes cross-group leakage impossible.
+// All four still write to the same `design` collection (see executeDepartment).
+
+async function handleUpdateTheme({ task, context, brandContext }) {
+  const searchResults = await webSearch(`${task} website color palette`.slice(0, 200));
   const researchCtx = searchResults && !searchResults.startsWith('Search')
     ? `\n\n--- DESIGN RESEARCH ---\n${searchResults}\n--- END RESEARCH ---` : '';
   const contextNote = context ? `\n\nAdditional context: ${context}` : '';
   const brand = brandContext ? `\n${brandContext}\n` : '';
 
-  const systemPrompt = `You are a design and branding assistant for the business.
+  const systemPrompt = `You are a brand color specialist for the business.
 ${brand}
 Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
 {
-  "message": "one sentence describing your design changes",
+  "message": "one sentence describing the palette",
   "fill": {
     "color_primary": "#hex",
     "color_primary_deep": "#hex",
     "color_primary_mid": "#hex",
     "color_accent": "#hex",
     "color_accent_light": "#hex",
-    "color_bg": "#hex",
+    "color_bg": "#hex"
+  }
+}
+
+Only include color fields relevant to the task — omit unchanged ones.
+Keep the palette cohesive: primary/deep/mid are shades of the same hue; accent contrasts; bg is light and neutral.
+Do NOT output fonts, layouts, or section visibility — this tool ONLY sets colors.${contextNote}${researchCtx}`;
+
+  const raw = await callLLM([{ role: 'user', content: task }], systemPrompt);
+  return tryParseAgentResponse(raw);
+}
+
+async function handleUpdateTypography({ task, context, brandContext }) {
+  const contextNote = context ? `\n\nAdditional context: ${context}` : '';
+  const brand = brandContext ? `\n${brandContext}\n` : '';
+
+  const systemPrompt = `You are a typography specialist for the business.
+${brand}
+Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
+{
+  "message": "one sentence describing the font choices",
+  "fill": {
     "font_heading": "font name",
-    "font_body": "font name",
-    "portfolio_layout": "grid|masonry|carousel|list",
-    "blog_layout": "grid|list|masonry|featured",
-    "nav_logo_display": "text|image|both",
+    "font_body": "font name"
+  }
+}
+
+Font options for headings: Cormorant Garamond, Playfair Display, Lora, Merriweather, Libre Baskerville.
+Font options for body: Jost, Inter, Poppins, Raleway, Nunito, DM Sans.
+Pick fonts that match the brand voice. Only include a field you are actually changing.
+Do NOT output colors, layouts, or section visibility — this tool ONLY sets fonts.${contextNote}`;
+
+  const raw = await callLLM([{ role: 'user', content: task }], systemPrompt);
+  return tryParseAgentResponse(raw);
+}
+
+async function handleSetSectionVisibility({ task, context, brandContext }) {
+  const contextNote = context ? `\n\nAdditional context: ${context}` : '';
+  const brand = brandContext ? `\n${brandContext}\n` : '';
+
+  const systemPrompt = `You control which homepage sections are shown or hidden for the business.
+${brand}
+Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
+{
+  "message": "one sentence describing what you toggled",
+  "fill": {
     "vis_hero": "true|false",
     "vis_services": "true|false",
     "vis_portfolio": "true|false",
@@ -944,10 +1131,32 @@ Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
   }
 }
 
-Only include fields that are relevant to the task — omit unchanged ones.
-Font options for headings: Cormorant Garamond, Playfair Display, Lora, Merriweather, Libre Baskerville.
-Font options for body: Jost, Inter, Poppins, Raleway, Nunito, DM Sans.
-Keep palettes cohesive. Primary/deep/mid should be shades of same hue. Accent should contrast.${contextNote}${researchCtx}`;
+Include ONLY the sections the task asks to change — omit every section the user did not mention.
+Use the string "true" to show a section and "false" to hide it.
+Do NOT output colors, fonts, or layouts — this tool ONLY toggles section visibility.${contextNote}`;
+
+  const raw = await callLLM([{ role: 'user', content: task }], systemPrompt);
+  return tryParseAgentResponse(raw);
+}
+
+async function handleUpdateDesign({ task, context, brandContext }) {
+  const contextNote = context ? `\n\nAdditional context: ${context}` : '';
+  const brand = brandContext ? `\n${brandContext}\n` : '';
+
+  const systemPrompt = `You set layout and logo-display options for the business website.
+${brand}
+Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
+{
+  "message": "one sentence describing the layout changes",
+  "fill": {
+    "portfolio_layout": "grid|masonry|carousel|list",
+    "blog_layout": "grid|list|masonry|featured",
+    "nav_logo_display": "text|image|both"
+  }
+}
+
+Only include fields relevant to the task — omit unchanged ones.
+Do NOT output colors, fonts, or section visibility — those each have their own dedicated tool.${contextNote}`;
 
   const raw = await callLLM([{ role: 'user', content: task }], systemPrompt);
   return tryParseAgentResponse(raw);
@@ -1265,13 +1474,120 @@ Rules:
   return tryParseAgentResponse(raw);
 }
 
+// ── Stateful social-package tools (need tenant + db via ctx) ─────────────────
+// Thin wrappers over the existing social engine. Dynamic-imported to avoid the
+// autoSocial ↔ agentMcp circular import at load time.
+function _needTenant(ctx) {
+  if (!ctx || !ctx.db || !ctx.tenant) throw new Error('This tool needs a tenant context — call it from the dashboard agent, not an unscoped MCP client.');
+}
+async function handleGenerateSocialBatch({ topic, count, mode, platforms }, ctx) {
+  _needTenant(ctx);
+  const { generateForTenant } = await import('./autoSocial.js');
+  const out = await generateForTenant(ctx.tenant, ctx.db, {
+    count: Math.max(1, Math.min(10, Number(count) || 3)),
+    mode: mode === 'publish' ? 'publish' : 'suggest',
+    direction: (topic || '').toString().slice(0, 400),
+    platforms: platforms ? String(platforms).split(',').map(s => s.trim()).filter(Boolean) : null,
+    createdBy: 'dashboard-agent',
+  });
+  return { message: `Generated ${out.created} post(s)${out.published ? `, published ${out.published}` : ' (review-first — check Agent Studio)'}.`, fill: { created: out.created, published: out.published || 0, mode: mode === 'publish' ? 'publish' : 'suggest' } };
+}
+async function handleBuildSeamlessCarousel({ topic, count }, ctx) {
+  _needTenant(ctx);
+  const auto = await import('./autoSocial.js');
+  const sp = await import('./socialPublish.js');
+  const capable = (await ctx.db.collection('social_accounts').find({}).toArray())
+    .filter(a => a.enabled !== false && sp.isAccountConfigured(a) && sp.platformSupportsFormat(a.platform, 'carousel')).map(a => a.platform);
+  if (!capable.length) return { message: 'No Instagram/Threads account connected — carousels need one.', fill: {} };
+  const out = await auto.generateSeamlessCarousel(ctx.tenant, ctx.db, { count: Math.max(2, Math.min(10, Number(count) || 4)), direction: topic || '' });
+  const slides = out.slides || [];
+  const doc = { body: slides[0]?.headline || 'Carousel', link: '', mediaUrls: [out.previewUrl], platforms: capable, format: 'carousel', status: 'draft', suggestion: true, source: 'dashboard-agent', kind: 'carousel', seamless: true, noText: false, slides, bgUrl: out.bgUrl || null, previewUrl: out.previewUrl, dims: `${slides.length} × 1080×1350 pano`, scheduledAt: null, publishedAt: null, results: [], createdBy: 'dashboard-agent', createdAt: new Date(), updatedAt: new Date() };
+  const ins = await ctx.db.collection('social_posts').insertOne(doc);
+  return { message: `Built a ${slides.length}-slide seamless carousel draft — review it in Agent Studio.`, fill: { postId: String(ins.insertedId), previewUrl: out.previewUrl, slides: slides.length } };
+}
+async function handleBuildStorySequence({ topic, count }, ctx) {
+  _needTenant(ctx);
+  const auto = await import('./autoSocial.js');
+  const sp = await import('./socialPublish.js');
+  const ig = await ctx.db.collection('social_accounts').findOne({ platform: 'instagram' });
+  if (!ig || ig.enabled === false || !sp.isAccountConfigured(ig)) return { message: 'Connect an Instagram account — stories are IG-only.', fill: {} };
+  const out = await auto.generateStoryFrames(ctx.tenant, ctx.db, { count: Math.max(2, Math.min(8, Number(count) || 4)), direction: topic || '' });
+  const frames = out.frames || [];
+  if (!frames.length) return { message: 'No frames were generated.', fill: {} };
+  const doc = { body: frames[0].headline || 'Story', link: '', mediaUrls: frames.map(f => f.url), platforms: ['instagram'], format: 'story', status: 'draft', suggestion: true, source: 'dashboard-agent', kind: 'story', headline: frames[0].headline || '', subtitle: frames[0].subtitle || '', dims: `${frames.length} frames`, scheduledAt: null, publishedAt: null, results: [], createdBy: 'dashboard-agent', createdAt: new Date(), updatedAt: new Date() };
+  const ins = await ctx.db.collection('social_posts').insertOne(doc);
+  return { message: `Built a ${frames.length}-frame Instagram story draft — review it in Agent Studio.`, fill: { postId: String(ins.insertedId), frames: frames.length } };
+}
+async function handleGenerateSpotlightPost({ subject, kind, role, quote }, ctx) {
+  _needTenant(ctx);
+  const { generateSpotlight } = await import('./autoSocial.js');
+  const out = await generateSpotlight(ctx.tenant, ctx.db, { subject, kind, role, quote, createdBy: 'dashboard-agent' });
+  if (out.error) return { message: out.error, fill: {} };
+  return { message: 'Spotlight draft created — review it in Agent Studio.', fill: out };
+}
+async function handleScoreLivePosts({ minAgeDays }, ctx) {
+  _needTenant(ctx);
+  const { scoreLivePosts, getReliability } = await import('./socialScore.js');
+  const r = await scoreLivePosts(ctx.db, ctx.tenant, { minAgeDays: Number(minAgeDays) || 2 });
+  const rel = await getReliability(ctx.db);
+  return { message: `Scored ${r.scored} live post(s). Decision reliability now ${rel.reliability}% (${rel.scored} scored).`, fill: { scored: r.scored, reliability: rel.reliability, signals: rel.signals } };
+}
+async function handleGetSocialReliability(_args, ctx) {
+  _needTenant(ctx);
+  const { getReliability } = await import('./socialScore.js');
+  const rel = await getReliability(ctx.db);
+  const top = (rel.signals || []).slice(0, 5).map(s => `${s.key} ${s.lift >= 0 ? '+' : ''}${s.lift}%`).join(', ');
+  return { message: `Reliability ${rel.reliability}% from ${rel.scored} scored posts.${top ? ' Winning: ' + top : ''}`, fill: rel };
+}
+async function handleGetSocialInsights({ days }, ctx) {
+  _needTenant(ctx);
+  const { buildSocialInsights } = await import('./socialInsights.js');
+  const ins = await buildSocialInsights(ctx.db, { days: Number(days) || 30 });
+  const t = ins.totals || {};
+  return { message: `Followers ${t.followers || 0}, reach ${t.reach || 0}, impressions ${t.impressions || 0}, engagements ${t.engagements || 0} (last ${ins.days}d).`, fill: { totals: ins.totals, connected: ins.connected } };
+}
+async function handleGetAutopilotConfig(_args, ctx) {
+  _needTenant(ctx);
+  const a = ctx.tenant.autoSocial || {};
+  return { message: a.enabled ? `Autopilot is ON (${a.cadence || 'off'}, ${a.count || 3}/run, ${a.autoPublish ? 'auto-publish' : a.autoSlot ? 'auto-slot' : 'review'}).` : 'Autopilot is OFF.', fill: { enabled: !!a.enabled, cadence: a.cadence || 'off', count: a.count || 3, channels: a.channels || [], standingPrompt: a.standingPrompt || '', autoPublish: !!a.autoPublish, autoSlot: !!a.autoSlot, assetTags: a.assetTags || [], promote: a.promote || [], leadGen: !!a.leadGen } };
+}
+async function handleSetAutopilotConfig(args, ctx) {
+  _needTenant(ctx);
+  const { getSlabDb } = await import('./mongo.js');
+  const set = {};
+  if (args.enabled !== undefined) set['autoSocial.enabled'] = !!args.enabled;
+  if (args.autoPublish !== undefined) set['autoSocial.autoPublish'] = !!args.autoPublish;
+  if (args.autoSlot !== undefined) set['autoSocial.autoSlot'] = !!args.autoSlot;
+  if (args.count !== undefined) set['autoSocial.count'] = Math.max(1, Math.min(10, Number(args.count) || 3));
+  if (args.cadence !== undefined && ['off', 'daily', '3x_week', 'weekly'].includes(args.cadence)) set['autoSocial.cadence'] = args.cadence;
+  if (args.standingPrompt !== undefined) set['autoSocial.standingPrompt'] = String(args.standingPrompt).slice(0, 600);
+  if (args.channels !== undefined) set['autoSocial.channels'] = Array.isArray(args.channels) ? args.channels.map(String) : String(args.channels || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (args.assetTags !== undefined) set['autoSocial.assetTags'] = Array.isArray(args.assetTags) ? args.assetTags : String(args.assetTags || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!Object.keys(set).length) return { message: 'No config changes provided.', fill: {} };
+  set['autoSocial.updatedAt'] = new Date();
+  await getSlabDb().collection('tenants').updateOne({ _id: ctx.tenant._id }, { $set: set });
+  return { message: 'Autopilot config updated.', fill: { updated: Object.keys(set).filter(k => k !== 'autoSocial.updatedAt') } };
+}
+
 const TOOL_HANDLERS = {
   web_search:               ({ query }) => webSearch(query).then(r => ({ result: r })),
+  generate_social_batch:    handleGenerateSocialBatch,
+  build_seamless_carousel:  handleBuildSeamlessCarousel,
+  build_story_sequence:     handleBuildStorySequence,
+  generate_spotlight_post:  handleGenerateSpotlightPost,
+  score_live_posts:         handleScoreLivePosts,
+  get_social_reliability:   handleGetSocialReliability,
+  get_social_insights:      handleGetSocialInsights,
+  get_autopilot_config:     handleGetAutopilotConfig,
+  set_autopilot_config:     handleSetAutopilotConfig,
   fill_site_copy:           handleFillSiteCopy,
   write_blog_post:          handleWriteBlogPost,
   fill_section:             handleFillSection,
   write_page:               handleWritePage,
   generate_social_image:    handleGenerateSocialImage,
+  update_theme:             handleUpdateTheme,
+  update_typography:        handleUpdateTypography,
+  set_section_visibility:   handleSetSectionVisibility,
   update_design:            handleUpdateDesign,
   manage_assets:            handleManageAssets,
   write_campaign:           handleWriteCampaign,
@@ -1284,10 +1600,124 @@ const TOOL_HANDLERS = {
   analyze_metrics:          handleAnalyzeMetrics,
 };
 
-export async function runTool(name, args) {
+// ── Tool-usage telemetry ──────────────────────────────────────────────────────
+// Every tool invocation funnels through runTool(), so ONE recorder here captures
+// 100% of agent tool usage across all call paths (the dashboard /run-task + /
+// routes, agentRouter.runDepartment, and the MCP JSON-RPC endpoint). Aggregated
+// per (tool, tenant) into the slab master DB — the same platform-wide pool as
+// training_candidates — so we can see, globally AND per-tenant, which tools users
+// actually lean on. This is the substrate for right-sizing decisions and the
+// per-agent success-rate scoring that builds on it.
+// Telemetry MUST NEVER break a real tool call: every path here swallows errors.
+let _usageIndexReady = false;
+async function ensureUsageIndex(coll) {
+  if (_usageIndexReady) return;
+  try {
+    await coll.createIndex({ tool: 1, tenantKey: 1 }, { unique: true });
+    await coll.createIndex({ tool: 1 });
+    _usageIndexReady = true;
+  } catch { /* leave unready — retry on the next call */ }
+}
+
+// Stable per-tenant key: the tenant's DB name (human-readable, never changes).
+// Falls back to s3Prefix / _id, or 'external' for unscoped MCP clients.
+function _tenantKeyOf(tenant) {
+  return tenant?.db || tenant?.s3Prefix || (tenant?._id ? String(tenant._id) : 'external');
+}
+
+// Fire-and-forget: never awaited in the hot path, never throws.
+function recordToolUsage(tool, ctx, { ok, ms, errMsg }) {
+  (async () => {
+    try {
+      const coll = getSlabDb().collection('mcp_tool_usage');
+      await ensureUsageIndex(coll);
+      const tenant = ctx?.tenant || null;
+      const now = new Date();
+      const set = {
+        lastAt: now,
+        tenantId: tenant?._id ? String(tenant._id) : null,
+        tenantName: tenant?.brand?.name || null,
+      };
+      if (!ok) { set.lastError = errMsg ? String(errMsg).slice(0, 300) : 'error'; set.lastErrorAt = now; }
+      const dur = Math.max(0, ms | 0);
+      await coll.updateOne(
+        { tool, tenantKey: _tenantKeyOf(tenant) },
+        {
+          $inc: { calls: 1, ok: ok ? 1 : 0, err: ok ? 0 : 1, totalMs: dur },
+          $max: { maxMs: dur },
+          $set: set,
+          $setOnInsert: { firstAt: now },
+        },
+        { upsert: true },
+      );
+    } catch { /* best-effort — a metrics write must never surface to the user */ }
+  })();
+}
+
+// Read the tool-usage scoreboard. Emits ONE row per tool in MCP_TOOLS (so a
+// never-used tool shows as zero calls — that gap is itself a signal), enriched
+// with counters. Pass tenantKey to scope to one tenant; omit for the global
+// cross-tenant roll-up. Sorted most-used first.
+export async function readToolUsage({ tenantKey = null } = {}) {
+  const coll = getSlabDb().collection('mcp_tool_usage');
+  const match = tenantKey ? { tenantKey } : {};
+  let rows = [];
+  try {
+    rows = await coll.aggregate([
+      { $match: match },
+      { $group: {
+        _id: '$tool',
+        calls:   { $sum: '$calls' },
+        ok:      { $sum: '$ok' },
+        err:     { $sum: '$err' },
+        totalMs: { $sum: '$totalMs' },
+        maxMs:   { $max: '$maxMs' },
+        lastAt:  { $max: '$lastAt' },
+        tenants: { $addToSet: '$tenantKey' },
+      } },
+    ]).toArray();
+  } catch { rows = []; }
+  const byTool = new Map(rows.map(r => [r._id, r]));
+  const out = MCP_TOOLS.map(t => {
+    const r = byTool.get(t.name) || {};
+    const calls = r.calls || 0;
+    return {
+      tool: t.name,
+      description: t.description,
+      calls,
+      ok: r.ok || 0,
+      err: r.err || 0,
+      successPct: calls ? Math.round(((r.ok || 0) / calls) * 100) : null,
+      avgMs: calls ? Math.round((r.totalMs || 0) / calls) : null,
+      maxMs: r.maxMs || 0,
+      tenantCount: tenantKey ? undefined : (r.tenants ? r.tenants.length : 0),
+      lastAt: r.lastAt || null,
+    };
+  });
+  out.sort((a, b) => b.calls - a.calls);
+  return out;
+}
+
+// `ctx` = { db, tenant, brandContext } — carries tenant scope for stateful tools
+// and injects brandContext for the stateless drafters when the caller (e.g. an
+// external MCP client) didn't pass it, so MCP output is on-brand like the
+// in-process path. Stateless handlers ignore the 2nd arg; stateful ones use it.
+export async function runTool(name, args = {}, ctx = {}) {
   const handler = TOOL_HANDLERS[name];
   if (!handler) throw new Error(`Unknown MCP tool: ${name}`);
-  return handler(args);
+  if (ctx.brandContext && args.brandContext == null) args = { ...args, brandContext: ctx.brandContext };
+  const startedAt = Date.now();
+  let ok = true, errMsg = null;
+  try {
+    // Run the handler inside an engine scope so any callLLM it makes routes by
+    // this tenant's key (Claude) or the house model — no per-handler plumbing.
+    return await engineALS.run({ tenant: ctx.tenant, engine: ctx.engine, model: ctx.model }, () => handler(args, ctx));
+  } catch (e) {
+    ok = false; errMsg = e?.message || String(e);
+    throw e;
+  } finally {
+    recordToolUsage(name, ctx, { ok, ms: Date.now() - startedAt, errMsg });
+  }
 }
 
 // ── MCP JSON-RPC Handler (MCP HTTP transport) ─────────────────────────────────
@@ -1301,7 +1731,7 @@ const MCP_CAPABILITIES = {
   tools: {},
 };
 
-export async function handleMcpRequest(body) {
+export async function handleMcpRequest(body, ctx = {}) {
   const { jsonrpc, id, method, params } = body;
   if (jsonrpc !== '2.0') return mcpError(id, -32600, 'Invalid JSON-RPC version');
 
@@ -1327,7 +1757,7 @@ export async function handleMcpRequest(body) {
     const { name, arguments: args } = params || {};
     if (!name) return mcpError(id, -32602, 'Missing tool name');
     try {
-      const result = await runTool(name, args || {});
+      const result = await runTool(name, args || {}, ctx);
       return {
         jsonrpc: '2.0', id,
         result: {

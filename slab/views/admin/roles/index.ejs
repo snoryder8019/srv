@@ -1,0 +1,172 @@
+<%- include('../partials/head', { title: 'Roles & Permissions' }) %>
+<%- include('../partials/sidebar', { page: 'roles', user: user }) %>
+
+<% const isEdit = !!editing; const ePerms = (editing && editing.permissions) || []; const eColor = (editing && editing.color) || colors[0]; %>
+
+<div class="topbar">
+  <div class="topbar-title">Roles &amp; Permissions</div>
+  <div class="topbar-actions">
+    <a href="/admin/users" class="btn btn-ghost btn-sm">Users</a>
+    <% if (!roles.length) { %>
+    <form data-guard="button" method="POST" action="/admin/roles/seed" style="display:inline;">
+      <button class="btn btn-navy btn-sm">Add starter roles</button>
+    </form>
+    <% } %>
+  </div>
+</div>
+
+<div class="content">
+  <% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <div class="roles-layout">
+    <!-- ── Existing roles ─────────────────────────────────────────── -->
+    <aside class="roles-list">
+      <div class="flex-between" style="margin-bottom:10px;">
+        <h3 class="rb-h">Roles <span class="pill"><%= roles.length %></span></h3>
+        <% if (roles.length) { %>
+        <form data-guard="button" method="POST" action="/admin/roles/seed"><button class="linklike" title="Add any missing starter roles">+ starters</button></form>
+        <% } %>
+      </div>
+      <% if (!roles.length) { %>
+        <div class="empty" style="padding:26px 18px;"><div class="empty-icon">&#9672;</div><p>No roles yet. Build one on the right, or add a set of starter roles.</p></div>
+      <% } else { %>
+        <% roles.forEach(function(r){ %>
+        <div class="role-card <%= isEdit && String(editing._id) === String(r._id) ? 'active' : '' %>">
+          <span class="role-dot" style="background:<%= r.color || '#1C2B4A' %>;"></span>
+          <div class="role-card-body">
+            <div class="role-card-name"><%= r.name %></div>
+            <div class="role-card-meta">
+              <%= (r.permissions || []).length %> permission<%= (r.permissions||[]).length===1?'':'s' %>
+              · <%= r.memberCount %> member<%= r.memberCount===1?'':'s' %>
+            </div>
+            <% if (r.description) { %><div class="role-card-desc"><%= r.description %></div><% } %>
+          </div>
+          <div class="role-card-actions">
+            <a href="/admin/roles?edit=<%= r._id %>" class="btn btn-ghost btn-sm" style="font-size:0.64rem;padding:4px 9px;">Edit</a>
+            <form data-guard="button" method="POST" action="/admin/roles/<%= r._id %>/delete" onsubmit="return confirm('Delete “<%= r.name %>”? Members keep their current permissions.')">
+              <button class="btn btn-ghost btn-sm" style="font-size:0.64rem;padding:4px 9px;color:var(--danger);">Delete</button>
+            </form>
+          </div>
+        </div>
+        <% }) %>
+      <% } %>
+    </aside>
+
+    <!-- ── Builder ────────────────────────────────────────────────── -->
+    <section class="roles-builder card">
+      <div class="flex-between" style="margin-bottom:14px;">
+        <h3 class="rb-h"><%= isEdit ? 'Edit role' : 'Build a role' %></h3>
+        <% if (isEdit) { %><a href="/admin/roles" class="linklike">+ new role</a><% } %>
+      </div>
+
+      <form data-guard method="POST" action="<%= isEdit ? '/admin/roles/' + editing._id : '/admin/roles' %>" id="roleForm">
+        <div class="form-grid cols-2">
+          <div class="form-field">
+            <label>Role name</label>
+            <input type="text" name="name" value="<%= isEdit ? editing.name : '' %>" placeholder="e.g. Content Editor" required>
+          </div>
+          <div class="form-field">
+            <label>Accent color</label>
+            <div class="swatches">
+              <% colors.forEach(function(c, i){ %>
+                <label class="swatch" style="background:<%= c %>;">
+                  <input type="radio" name="color" value="<%= c %>" <%= (isEdit ? eColor === c : i === 0) ? 'checked' : '' %>>
+                  <span class="swatch-check">&#10003;</span>
+                </label>
+              <% }) %>
+            </div>
+          </div>
+          <div class="form-field span-2">
+            <label>Description <span class="text-slate" style="text-transform:none;letter-spacing:0;">(optional)</span></label>
+            <input type="text" name="description" value="<%= isEdit ? (editing.description || '') : '' %>" placeholder="What this role can do">
+          </div>
+        </div>
+
+        <div class="flex-between" style="margin:18px 0 8px;">
+          <label style="font-size:0.7rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--slate);">Permissions</label>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <span class="text-slate" style="font-size:0.72rem;"><span id="permCount">0</span> / <%= totalPerms %> selected</span>
+            <button type="button" class="linklike" onclick="allPerms(true)">All</button>
+            <button type="button" class="linklike" onclick="allPerms(false)">None</button>
+          </div>
+        </div>
+        <p class="text-slate" style="font-size:0.72rem;margin:0 0 12px;">A member assigned this role can access exactly the checked features. Leave <em>everything</em> unchecked only if you want a full-access role.</p>
+
+        <div class="perm-matrix">
+          <% groups.forEach(function(g){ %>
+            <div class="perm-group">
+              <div class="perm-group-head">
+                <span><%= g.section %></span>
+                <button type="button" class="linklike sm" onclick="groupToggle(this)">toggle</button>
+              </div>
+              <% g.items.forEach(function(p){ %>
+                <label class="perm-opt">
+                  <input type="checkbox" name="permissions" value="<%= p.key %>" <%= ePerms.includes(p.key) ? 'checked' : '' %> onchange="refreshCount()">
+                  <span><%= p.label %><% if (p.experimental) { %> <span class="beta">beta</span><% } %></span>
+                </label>
+              <% }) %>
+            </div>
+          <% }) %>
+        </div>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+          <% if (isEdit) { %><a href="/admin/roles" class="btn btn-ghost">Cancel</a><% } %>
+          <button type="submit" class="btn btn-navy"><%= isEdit ? 'Save role' : 'Create role' %></button>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>
+
+<style>
+  .rb-h{font-size:0.95rem;font-weight:600;color:var(--navy);margin:0;display:flex;align-items:center;gap:8px;}
+  .pill{display:inline-block;font-size:0.64rem;font-weight:700;background:var(--navy);color:#fff;border-radius:20px;padding:1px 8px;}
+  .linklike{background:none;border:0;color:var(--gold);font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit;padding:0;}
+  .linklike.sm{font-size:0.64rem;}
+  .roles-layout{display:grid;grid-template-columns:320px 1fr;gap:20px;align-items:start;}
+  @media(max-width:860px){.roles-layout{grid-template-columns:1fr;}}
+  .roles-list{display:flex;flex-direction:column;gap:10px;}
+  .role-card{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 12px;transition:border-color .15s,box-shadow .15s;}
+  .role-card.active{border-color:var(--gold);box-shadow:0 0 0 2px rgba(201,168,72,0.14);}
+  .role-dot{width:12px;height:12px;border-radius:50%;flex:0 0 auto;margin-top:3px;}
+  .role-card-body{flex:1;min-width:0;}
+  .role-card-name{font-weight:600;color:var(--navy);font-size:0.9rem;}
+  .role-card-meta{font-size:0.68rem;color:var(--slate);margin-top:1px;}
+  .role-card-desc{font-size:0.72rem;color:var(--slate);margin-top:5px;line-height:1.4;}
+  .role-card-actions{display:flex;flex-direction:column;gap:4px;align-items:flex-end;}
+  .role-card-actions form{margin:0;}
+  .swatches{display:flex;flex-wrap:wrap;gap:6px;}
+  .swatch{position:relative;width:26px;height:26px;border-radius:50%;cursor:pointer;border:2px solid transparent;display:inline-flex;align-items:center;justify-content:center;}
+  .swatch input{position:absolute;opacity:0;inset:0;cursor:pointer;}
+  .swatch-check{color:#fff;font-size:0.72rem;opacity:0;}
+  .swatch input:checked ~ .swatch-check{opacity:1;}
+  .swatch:has(input:checked){border-color:var(--navy);box-shadow:0 0 0 2px #fff inset;}
+  .perm-matrix{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;}
+  .perm-group{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--surface);}
+  .perm-group-head{display:flex;align-items:center;justify-content:space-between;font-size:0.62rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--slate);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+  .perm-opt{display:flex;align-items:center;gap:7px;font-size:0.82rem;color:var(--on-surface);padding:3px 0;cursor:pointer;}
+  .perm-opt input{accent-color:var(--gold);width:15px;height:15px;}
+  .beta{font-size:0.58rem;color:var(--gold);font-weight:700;letter-spacing:0.05em;}
+</style>
+
+<script>
+  function refreshCount(){
+    var n = document.querySelectorAll('#roleForm input[name="permissions"]:checked').length;
+    document.getElementById('permCount').textContent = n;
+  }
+  function allPerms(on){
+    document.querySelectorAll('#roleForm input[name="permissions"]').forEach(function(c){ c.checked = on; });
+    refreshCount();
+  }
+  function groupToggle(btn){
+    var group = btn.closest('.perm-group');
+    var boxes = group.querySelectorAll('input[type="checkbox"]');
+    var anyOff = Array.prototype.some.call(boxes, function(b){ return !b.checked; });
+    boxes.forEach(function(b){ b.checked = anyOff; });
+    refreshCount();
+  }
+  refreshCount();
+</script>
+
+</div></div></body></html>

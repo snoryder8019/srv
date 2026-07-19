@@ -52,22 +52,13 @@
   </style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="topbar-left">
-      <div class="logo"><span>s</span>Lab</div>
-      <span class="badge">Superadmin</span>
-    </div>
-    <div class="topbar-right">
-      <span><%= user.email %></span>
-      <a href="/superadmin">Dashboard</a>
-      <a href="/superadmin/promos">Promos</a>
-      <a href="/delegates/admin">Delegates</a>
-      <a href="/delegates/admin/reports/state-tax">State Tax</a>
-      <a href="/superadmin/logout">Logout</a>
-    </div>
-  </div>
+  <%- include('../superadmin/partials/nav', { active: 'delegates', user: user, subtitle: 'Delegates' }) %>
 
   <div class="container">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
+      <h1 style="font-size:20px;font-weight:600;color:#fff;">Sales Delegates</h1>
+      <a href="/delegates/admin/reports/state-tax" class="btn-sm">📊 State Tax Report</a>
+    </div>
     <div class="stats">
       <div class="stat">
         <div class="stat-label">Total Delegates</div>
@@ -100,12 +91,27 @@
       <button class="btn-qr" onclick="showQR()">Show QR</button>
     </div>
 
+    <% if (typeof msg !== 'undefined' && msg) { %>
+    <div style="background:#14532d;border:1px solid #166534;color:#86efac;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;"><%= msg %></div>
+    <% } %>
+    <% if (typeof error !== 'undefined' && error) { %>
+    <div style="background:#451a1a;border:1px solid #602020;color:#fca5a5;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px;"><%= error %></div>
+    <% } %>
+
     <div class="section">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap;">
         <h2>All Delegates</h2>
-        <form method="POST" action="/delegates/admin/calculate-commissions" style="display:inline;">
-          <button type="submit" class="btn-sm" onclick="return confirm('Calculate commissions for all active delegates this month?')">Calculate Commissions</button>
-        </form>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <form data-guard="button" method="POST" action="/delegates/admin/calculate-commissions" style="display:inline;">
+            <button type="submit" class="btn-sm" onclick="return confirm('Calculate commissions for all active delegates this month?')">Calculate Commissions</button>
+          </form>
+          <% if (typeof payoutsLive !== 'undefined' && payoutsLive && eligibleCount > 0) { %>
+          <form data-guard="button" method="POST" action="/delegates/admin/payout-all" style="display:inline;">
+            <input type="hidden" name="idemKey" value="<%= payoutIdem %>">
+            <button type="submit" class="btn-sm" style="border-color:#c9a848;color:#c9a848;" onclick="return confirm('Send LIVE PayPal payouts now to <%= eligibleCount %> delegate(s) totaling $<%= eligibleTotal.toFixed(2) %>? This moves real money and cannot be undone.')">💸 Pay <%= eligibleCount %> · $<%= eligibleTotal.toFixed(2) %></button>
+          </form>
+          <% } %>
+        </div>
       </div>
       <% if (delegates.length) { %>
       <table>
@@ -135,13 +141,13 @@
   <div id="qrModal">
     <div class="modal-content">
       <h3>Delegate Signup QR Code</h3>
-      <canvas id="qrCanvas"></canvas>
+      <img id="qrImg" alt="Delegate signup QR code" width="256" height="256" style="background:#0a0a0a;border-radius:8px;display:block;margin:0 auto;">
       <br>
+      <a id="qrDownload" href="/delegates/admin/signup-qr.png" download="delegate-signup-qr.png" style="display:inline-block;margin-right:8px;padding:8px 20px;background:#c9a848;color:#0a0a0a;border-radius:4px;text-decoration:none;font-size:12px;font-weight:600;">Download</a>
       <button class="close-btn" onclick="closeQR()">Close</button>
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <script>
     function copyUrl() {
       var url = document.getElementById('signupUrl').textContent;
@@ -152,9 +158,8 @@
       });
     }
     function showQR() {
-      var url = document.getElementById('signupUrl').textContent;
-      var canvas = document.getElementById('qrCanvas');
-      QRCode.toCanvas(canvas, url, { width: 256, margin: 2, color: { dark: '#c9a848', light: '#141414' } });
+      // Server-rendered PNG — no external CDN needed.
+      document.getElementById('qrImg').src = '/delegates/admin/signup-qr.png?t=' + Date.now();
       document.getElementById('qrModal').classList.add('open');
     }
     function closeQR() {
@@ -164,5 +169,6 @@
       if (e.target === this) closeQR();
     });
   </script>
+<script src="/js/loadingWheel.js" defer></script>
 </body>
 </html>

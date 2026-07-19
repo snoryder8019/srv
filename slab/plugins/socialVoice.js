@@ -84,13 +84,50 @@ function fewShotBlock(fewShot = []) {
 }
 
 // Prompt-ready voice block for injection. Empty string when unconfigured.
+// Few-shot correction examples are appended UNLESS the admin has switched them
+// off (fewShotEnabled === false) — the edits are still remembered, just not fed
+// to the model, so a run of noisy one-off edits can't quietly skew every post.
 export async function loadVoiceBlock(db) {
   let v;
   try { v = await getVoice(db); } catch { return ''; }
   if (!v) return '';
+  const fs = v.fewShotEnabled === false ? '' : fewShotBlock(v.fewShot);
   const block = (v.voiceBlock && v.voiceBlock.trim()) ? v.voiceBlock.trim() : buildVoiceBlock(v);
-  if (!block || !block.includes('VOICE')) return fewShotBlock(v.fewShot); // nothing meaningful yet
-  return block + fewShotBlock(v.fewShot);
+  if (!block || !block.includes('VOICE')) return fs; // nothing meaningful yet
+  return block + fs;
+}
+
+// ── Correction management — let the admin prune / disable learned few-shot pairs ─
+// Corrections are harvested automatically from draft edits (recordCorrection); a
+// bad or one-off edit otherwise becomes a permanent teaching example. These give
+// the admin explicit control back.
+
+// Remove a single correction, matched on its exact `after` text (recordCorrection
+// dedupes on `after`, so it's a stable key).
+export async function deleteCorrection(db, after) {
+  after = String(after || '');
+  if (!after) return false;
+  const v = await getVoice(db);
+  if (!v || !Array.isArray(v.fewShot)) return false;
+  const list = v.fewShot.filter(p => p && p.after !== after);
+  await db.collection('social_voice').updateOne({ _id: 'voice' }, { $set: { fewShot: list, updatedAt: new Date() } });
+  return true;
+}
+
+// Forget every learned correction.
+export async function clearCorrections(db) {
+  await db.collection('social_voice').updateOne({ _id: 'voice' }, { $set: { fewShot: [], updatedAt: new Date() } });
+  return true;
+}
+
+// Toggle whether corrections are injected into prompts (without deleting them).
+export async function setCorrectionsEnabled(db, enabled) {
+  await db.collection('social_voice').updateOne(
+    { _id: 'voice' },
+    { $set: { fewShotEnabled: !!enabled, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
+    { upsert: true },
+  );
+  return true;
 }
 
 // Turn guided-Q&A answers into a structured profile + cached voiceBlock via LLM.

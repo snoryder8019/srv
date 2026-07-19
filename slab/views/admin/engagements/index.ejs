@@ -1,0 +1,291 @@
+<%- include('../partials/head', { title: 'Engagements' }) %>
+<%- include('../partials/sidebar', { page: 'engagements', user }) %>
+
+<style>
+.eng-wrap { padding:20px 24px; max-width:1100px; }
+.eng-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
+@media(max-width:900px){ .eng-grid{grid-template-columns:1fr;} }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:18px 20px; margin-bottom:20px; }
+.card h2 { font-size:13px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:0 0 14px; }
+.svc-row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); cursor:pointer; }
+.svc-row:last-child { border-bottom:none; }
+.svc-name { font-size:14px; font-weight:600; color:var(--text); }
+.svc-sub { font-size:11px; color:var(--slate); margin-top:1px; }
+.svc-price { font-size:13px; font-weight:700; color:var(--gold); white-space:nowrap; }
+.svc-cat { font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:2px 7px; border-radius:9px; background:rgba(201,168,72,.1); color:var(--gold); }
+.eng-row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); }
+.eng-row:last-child { border-bottom:none; }
+.st { font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:2px 8px; border-radius:9px; }
+.st-draft { background:rgba(107,115,128,.12); color:var(--slate); }
+.st-sent, .st-viewed { background:rgba(14,165,233,.1); color:#0ea5e9; }
+.st-revision_requested { background:rgba(249,115,22,.12); color:#f97316; }
+.st-signed { background:rgba(234,179,8,.14); color:#ca8a04; }
+.st-acknowledged { background:rgba(16,185,129,.12); color:#10b981; }
+.st-declined, .st-void { background:rgba(239,68,68,.1); color:#ef4444; }
+.st-expired { background:rgba(245,158,11,.14); color:#b45309; }
+.svc-form { display:none; margin-top:14px; border-top:1px solid var(--border); padding-top:14px; }
+.svc-form.open { display:block; }
+label { display:block; font-size:11px; color:var(--slate); margin:9px 0 3px; }
+input, select, textarea { width:100%; padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; font-family:inherit; box-sizing:border-box; }
+textarea { min-height:64px; resize:vertical; }
+.f-row { display:flex; gap:10px; }
+.f-row > div { flex:1; }
+.f-actions { display:flex; gap:8px; margin-top:12px; }
+.flash { padding:9px 14px; border-radius:6px; font-size:12px; font-weight:600; margin-bottom:14px; }
+.flash-ok { background:rgba(16,185,129,.1); color:#10b981; border:1px solid rgba(16,185,129,.3); }
+.flash-err { background:rgba(239,68,68,.08); color:#ef4444; border:1px solid rgba(239,68,68,.3); }
+/* Template builder */
+.tpl-row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); cursor:pointer; }
+.tpl-row:last-child { border-bottom:none; }
+.opt-block { border-left:3px solid var(--gold); padding:10px 12px; margin:8px 0; background:var(--bg); border-radius:0 6px 6px 0; }
+.opt-head { display:flex; gap:8px; align-items:center; margin-bottom:6px; }
+.svc-check { display:flex; gap:8px; align-items:center; font-size:12px; color:var(--text); padding:3px 0; }
+.svc-check input { width:auto; }
+.rec-lbl { display:flex; gap:4px; align-items:center; font-size:10px; white-space:nowrap; margin:0; color:var(--text); }
+.rec-lbl input { width:auto; }
+.c-del { background:none; border:none; color:#e74c3c; cursor:pointer; font-size:14px; padding:0 4px; flex-shrink:0; }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">✍️ Engagements</div>
+  <div class="topbar-actions">
+    <button class="btn btn-ghost" onclick="openTplForm(null)">+ New Package</button>
+    <button class="btn btn-gold" onclick="openServiceForm(null)">+ New Service</button>
+  </div>
+</div>
+
+<div class="eng-wrap">
+  <% if (qs.success) { %><div class="flash flash-ok"><%= qs.success %></div><% } %>
+  <% if (qs.error) { %><div class="flash flash-err"><%= qs.error %></div><% } %>
+
+  <div class="eng-grid">
+
+    <div>
+      <!-- Services builder -->
+      <div class="card">
+        <h2>Services Builder</h2>
+        <% if (!services.length) { %><div style="font-size:13px;color:var(--slate);">No services yet. Add your offerings once — packages and letters are assembled from them.</div><% } %>
+        <% services.forEach(s => { %>
+        <div class="svc-row" onclick='openServiceForm(<%- JSON.stringify(JSON.stringify({ _id:String(s._id), name:s.name, blurb:s.blurb, description:s.description, category:s.category, pricing:s.pricing, timeframe:s.timeframe, deliverables:s.deliverables, sortOrder:s.sortOrder })) %>)'>
+          <div>
+            <div class="svc-name"><%= s.name %> <span class="svc-cat"><%= s.category %></span></div>
+            <div class="svc-sub"><%= s.blurb %><%= s.timeframe && timeframeLabel(s.timeframe) ? ' · ' + timeframeLabel(s.timeframe) : '' %></div>
+          </div>
+          <div class="svc-price"><%= priceLabel(s.pricing) %></div>
+        </div>
+        <% }) %>
+
+        <div class="svc-form" id="svcForm">
+          <form method="POST" id="svcFormEl" action="/admin/engagements/services">
+            <div class="f-row">
+              <div><label>Name</label><input name="name" id="f_name" required></div>
+              <div><label>Category</label>
+                <select name="category" id="f_category">
+                  <option value="build">Build</option><option value="subscription">Subscription</option>
+                  <option value="retainer">Retainer</option><option value="hourly">Hourly</option><option value="addon">Add-on</option>
+                </select>
+              </div>
+            </div>
+            <label>Blurb (one line on the letter)</label><input name="blurb" id="f_blurb">
+            <div class="f-row">
+              <div><label>Pricing model</label>
+                <select name="pricingModel" id="f_pricingModel">
+                  <option value="one-time">One-time</option><option value="monthly">Monthly</option>
+                  <option value="annual">Annual</option><option value="hourly">Hourly</option><option value="quote">Quoted at scoping</option>
+                </select>
+              </div>
+              <div><label>Amount ($)</label><input name="amount" id="f_amount" type="number" step="0.01" min="0"></div>
+            </div>
+            <div class="f-row">
+              <div><label>Timeframe value</label><input name="tfValue" id="f_tfValue" type="number" min="0" placeholder="14"></div>
+              <div><label>Unit</label>
+                <select name="tfUnit" id="f_tfUnit">
+                  <option value="days">Days</option><option value="weeks">Weeks</option><option value="months">Months</option><option value="ongoing">Ongoing</option>
+                </select>
+              </div>
+              <div><label>Clock starts</label>
+                <select name="tfStartsFrom" id="f_tfStartsFrom">
+                  <option value="requirements">Receipt of requirements</option>
+                  <option value="signature">Signature</option>
+                  <option value="golive">Go-live</option>
+                </select>
+              </div>
+            </div>
+            <label>Timeframe label (e.g. "Live landing")</label><input name="tfLabel" id="f_tfLabel">
+            <label>Deliverables (one per line)</label><textarea name="deliverables" id="f_deliverables"></textarea>
+            <div class="f-actions">
+              <button type="submit" class="btn btn-gold">Save Service</button>
+              <button type="button" class="btn btn-ghost" onclick="document.getElementById('svcForm').classList.remove('open')">Cancel</button>
+              <button type="button" class="btn btn-ghost" id="f_archive" style="margin-left:auto;color:#e74c3c;display:none;" onclick="archiveService()">Archive</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Package builder -->
+      <div class="card">
+        <h2>Package Builder</h2>
+        <div style="font-size:11px;color:var(--slate);margin-bottom:10px;">Build packages once from your services. Letters call on them — then adjust names or pricing per letter without touching these.</div>
+        <% if (!templates.length) { %><div style="font-size:13px;color:var(--slate);">No packages yet.</div><% } %>
+        <% templates.forEach(t => { %>
+        <div class="tpl-row" onclick='openTplForm(<%- JSON.stringify(JSON.stringify({ _id:String(t._id), name:t.name, label:t.label, selectMode:t.selectMode, options:t.options })) %>)'>
+          <div>
+            <div class="svc-name"><%= t.name %></div>
+            <div class="svc-sub"><%= t.options.length %> option<%= t.options.length === 1 ? '' : 's' %> · <%= t.selectMode === 'many' ? 'pick any' : 'pick one' %></div>
+          </div>
+          <div style="font-size:11px;color:var(--slate);"><%= t.options.map(o => o.name).join(' / ') %></div>
+        </div>
+        <% }) %>
+
+        <div class="svc-form" id="tplForm">
+          <form method="POST" id="tplFormEl" action="/admin/engagements/templates">
+            <input type="hidden" name="templateId" id="t_id">
+            <input type="hidden" name="optionsJson" id="t_optionsJson">
+            <div class="f-row">
+              <div><label>Package name (internal)</label><input name="name" id="t_name" required placeholder="e.g. Website Build"></div>
+              <div><label>Label on the letter</label><input name="label" id="t_label" placeholder="e.g. Build & Deployment"></div>
+            </div>
+            <label>Selection mode</label>
+            <select name="selectMode" id="t_selectMode">
+              <option value="one">Client picks one option</option>
+              <option value="many">Client picks any that apply</option>
+              <option value="required">Required (must pick one)</option>
+            </select>
+            <div id="tplOpts" style="margin-top:10px;"></div>
+            <button type="button" class="btn btn-ghost" style="font-size:11px;margin-top:6px;" onclick="TPL_OPTS.push({key:'',name:'',recommended:false,recommendedNote:'',serviceIds:[]});renderTplOpts()">+ Option</button>
+            <div class="f-actions">
+              <button type="submit" class="btn btn-gold" onclick="serializeTpl()">Save Package</button>
+              <button type="button" class="btn btn-ghost" onclick="document.getElementById('tplForm').classList.remove('open')">Cancel</button>
+              <button type="button" class="btn btn-ghost" id="t_delete" style="margin-left:auto;color:#e74c3c;display:none;" onclick="deleteTpl()">Delete</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent letters -->
+    <div class="card">
+      <h2>Recent Letters</h2>
+      <% const attention = engagements.filter(e => ['signed','revision_requested'].includes(e.status)); %>
+      <% if (attention.length) { %>
+        <div style="font-size:11px;font-weight:700;color:#f97316;margin-bottom:8px;">⚠ <%= attention.length %> waiting on you — signed letters need acknowledgment, revision requests need answers.</div>
+      <% } %>
+      <% if (!engagements.length) { %><div style="font-size:13px;color:var(--slate);">No letters yet. Create one from a client's Engagements tab.</div><% } %>
+      <% engagements.forEach(e => { %>
+      <div class="eng-row">
+        <div>
+          <a href="/admin/clients/<%= e.clientId %>/engagements/<%= e._id %>" style="font-size:13px;font-weight:600;color:var(--text);text-decoration:none;"><%= e.engagementNumber %> · <%= clientMap[e.clientId] || 'Client' %></a>
+          <div style="font-size:11px;color:var(--slate);"><%= e.title %></div>
+        </div>
+        <span class="st st-<%= e.status %>"><%= e.status.replace('_',' ') %></span>
+      </div>
+      <% }) %>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const SERVICES = <%- JSON.stringify(services.map(s => ({ id:String(s._id), name:s.name, price:priceLabel(s.pricing) }))) %>;
+function esc(s){ const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML.replace(/"/g,'&quot;'); }
+
+// ── Service form ──
+function openServiceForm(json) {
+  const f = document.getElementById('svcForm');
+  const form = document.getElementById('svcFormEl');
+  f.classList.add('open');
+  const arch = document.getElementById('f_archive');
+  if (!json) {
+    form.action = '/admin/engagements/services';
+    form.reset(); arch.style.display = 'none';
+    f.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    return;
+  }
+  const s = JSON.parse(json);
+  form.action = '/admin/engagements/services/' + s._id;
+  arch.style.display = ''; arch.dataset.sid = s._id;
+  document.getElementById('f_name').value = s.name || '';
+  document.getElementById('f_blurb').value = s.blurb || '';
+  document.getElementById('f_category').value = s.category || 'build';
+  document.getElementById('f_pricingModel').value = s.pricing?.model || 'one-time';
+  document.getElementById('f_amount').value = s.pricing?.amount ?? '';
+  document.getElementById('f_tfValue').value = s.timeframe?.value ?? '';
+  document.getElementById('f_tfUnit').value = s.timeframe?.unit || 'days';
+  document.getElementById('f_tfStartsFrom').value = s.timeframe?.startsFrom || 'requirements';
+  document.getElementById('f_tfLabel').value = s.timeframe?.label || '';
+  document.getElementById('f_deliverables').value = (s.deliverables || []).join('\n');
+  f.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+function archiveService() {
+  const sid = document.getElementById('f_archive').dataset.sid;
+  if (!sid || !confirm('Archive this service? Existing letters keep their frozen copy.')) return;
+  const f = document.createElement('form');
+  f.method = 'POST'; f.action = '/admin/engagements/services/' + sid + '/delete';
+  document.body.appendChild(f); f.submit();
+}
+
+// ── Package template form ──
+let TPL_OPTS = [];
+function openTplForm(json) {
+  const f = document.getElementById('tplForm');
+  f.classList.add('open');
+  const del = document.getElementById('t_delete');
+  if (!json) {
+    document.getElementById('tplFormEl').reset();
+    document.getElementById('t_id').value = '';
+    del.style.display = 'none';
+    TPL_OPTS = [{ key:'', name:'', recommended:false, recommendedNote:'', serviceIds:[] }];
+    renderTplOpts();
+    f.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    return;
+  }
+  const t = JSON.parse(json);
+  document.getElementById('t_id').value = t._id;
+  document.getElementById('t_name').value = t.name || '';
+  document.getElementById('t_label').value = t.label || '';
+  document.getElementById('t_selectMode').value = t.selectMode || 'one';
+  del.style.display = ''; del.dataset.tid = t._id;
+  TPL_OPTS = (t.options || []).map(o => ({ key:o.key, name:o.name, recommended:!!o.recommended, recommendedNote:o.recommendedNote||'', serviceIds:(o.serviceIds||[]).map(String) }));
+  renderTplOpts();
+  f.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+function renderTplOpts() {
+  const host = document.getElementById('tplOpts');
+  host.innerHTML = '';
+  TPL_OPTS.forEach((opt, oi) => {
+    const od = document.createElement('div');
+    od.className = 'opt-block';
+    od.innerHTML = `
+      <div class="opt-head">
+        <input value="${esc(opt.name)}" placeholder="Option name (e.g. Option B — Build + Insights)" oninput="TPL_OPTS[${oi}].name=this.value">
+        <label class="rec-lbl"><input type="checkbox" ${opt.recommended?'checked':''} onchange="TPL_OPTS[${oi}].recommended=this.checked"> ★ rec</label>
+        <button type="button" class="c-del" onclick="TPL_OPTS.splice(${oi},1);renderTplOpts()">✕</button>
+      </div>
+      <input value="${esc(opt.recommendedNote)}" placeholder="Why recommended (shown to client)" style="margin-bottom:6px;font-size:11px;" oninput="TPL_OPTS[${oi}].recommendedNote=this.value">
+      ${SERVICES.map(s => `
+        <label class="svc-check"><input type="checkbox" ${opt.serviceIds.includes(s.id) ? 'checked' : ''}
+          onchange="tplToggleSvc(${oi},'${s.id}',this.checked)"> ${esc(s.name)} <span style="color:var(--slate);">· ${esc(s.price)}</span></label>
+      `).join('')}
+    `;
+    host.appendChild(od);
+  });
+}
+function tplToggleSvc(oi, sid, on) {
+  const arr = TPL_OPTS[oi].serviceIds;
+  const idx = arr.indexOf(sid);
+  if (on && idx === -1) arr.push(sid);
+  if (!on && idx !== -1) arr.splice(idx, 1);
+}
+function serializeTpl() {
+  const slug = s => (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  TPL_OPTS.forEach(o => { o.key = o.key || slug(o.name); });
+  document.getElementById('t_optionsJson').value = JSON.stringify(TPL_OPTS);
+}
+function deleteTpl() {
+  const tid = document.getElementById('t_delete').dataset.tid;
+  if (!tid || !confirm('Delete this package? Letters that already used it keep their own copies.')) return;
+  const f = document.createElement('form');
+  f.method = 'POST'; f.action = '/admin/engagements/templates/' + tid + '/delete';
+  document.body.appendChild(f); f.submit();
+}
+</script>

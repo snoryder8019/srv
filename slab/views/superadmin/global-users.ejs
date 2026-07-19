@@ -112,13 +112,30 @@
       </div>
     </div>
 
+    <% if (typeof failedTenants !== 'undefined' && failedTenants.length) { %>
+      <div style="background:#3d1414;border:1px solid #7f1d1d;color:#fca5a5;padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:13px;line-height:1.5;">
+        ⚠ <strong><%= failedTenants.length %> tenant<%= failedTenants.length===1?'':'s' %> could not be loaded</strong> — the user list below is <strong>incomplete</strong>.
+        Usually the self-hosted (gpu) DB tunnel is down. Affected:
+        <%= failedTenants.map(f => f.name).join(', ') %>.
+        <a href="/superadmin/users" style="color:#fca5a5;text-decoration:underline;">retry</a>
+      </div>
+    <% } %>
+
     <div class="stats">
       <div class="stat"><div class="stat-label">Total Users</div><div class="stat-value gold"><%= stats.total %></div></div>
+      <div class="stat"><div class="stat-label">Paying</div><div class="stat-value" style="color:#c9a848"><%= stats.premium || 0 %></div></div>
+      <div class="stat"><div class="stat-label">Free</div><div class="stat-value" style="color:#94a3b8"><%= stats.free || 0 %></div></div>
       <div class="stat"><div class="stat-label">Superadmin</div><div class="stat-value red"><%= stats.superadmins %></div></div>
       <div class="stat"><div class="stat-label">Admins</div><div class="stat-value green"><%= stats.admins %></div></div>
       <div class="stat"><div class="stat-label">Owners</div><div class="stat-value"><%= stats.owners %></div></div>
       <div class="stat"><div class="stat-label">Clients</div><div class="stat-value blue"><%= stats.clients %></div></div>
       <div class="stat"><div class="stat-label">TV Subscribers</div><div class="stat-value" style="color:#f5c400"><%= stats.gftvSubs || 0 %></div></div>
+      <% if (stats.system) { %>
+        <a class="stat" href="/superadmin/users?system=<%= showSystem ? '0' : '1' %><%= filters.role ? '&role='+filters.role : '' %><%= filters.account ? '&account='+filters.account : '' %><%= filters.product ? '&product='+filters.product : '' %><%= filters.q ? '&q='+encodeURIComponent(filters.q) : '' %>" style="text-decoration:none;" title="Bot / test / scanner accounts — <%= showSystem ? 'click to hide' : 'muted; click to show' %>">
+          <div class="stat-label">System <%= showSystem ? '(shown)' : '(muted)' %></div>
+          <div class="stat-value" style="color:#64748b"><%= stats.system %></div>
+        </a>
+      <% } %>
     </div>
 
     <div class="toolbar">
@@ -137,6 +154,12 @@
       <a class="filter-btn <%= filters.role === 'admin' ? 'active' : '' %>" href="/superadmin/users?role=admin<%= filters.product ? '&product='+filters.product : '' %><%= filters.q ? '&q='+encodeURIComponent(filters.q) : '' %>">Admins</a>
       <a class="filter-btn <%= filters.role === 'owner' ? 'active' : '' %>" href="/superadmin/users?role=owner<%= filters.product ? '&product='+filters.product : '' %><%= filters.q ? '&q='+encodeURIComponent(filters.q) : '' %>">Owners</a>
       <a class="filter-btn <%= filters.role === 'client' ? 'active' : '' %>" href="/superadmin/users?role=client<%= filters.product ? '&product='+filters.product : '' %><%= filters.q ? '&q='+encodeURIComponent(filters.q) : '' %>">Clients</a>
+
+      <span style="color:#333;">|</span>
+
+      <!-- Account filter (paying = recurring plan + processor payment; free = everything else incl. comped lifetime & stale 'pro') -->
+      <a class="filter-btn <%= filters.account === 'premium' ? 'active' : '' %>" href="/superadmin/users?account=premium<%= filters.role ? '&role='+filters.role : '' %><%= filters.product ? '&product='+filters.product : '' %><%= filters.q ? '&q='+encodeURIComponent(filters.q) : '' %>">💰 Paying</a>
+      <a class="filter-btn <%= filters.account === 'free' ? 'active' : '' %>" href="/superadmin/users?account=free<%= filters.role ? '&role='+filters.role : '' %><%= filters.product ? '&product='+filters.product : '' %><%= filters.q ? '&q='+encodeURIComponent(filters.q) : '' %>">Free</a>
 
       <span style="color:#333;">|</span>
 
@@ -178,8 +201,11 @@
         <tbody>
           <% users.forEach(u => { %>
           <%   const prod = products[u._product] || { label: u._product, color: '#737373', bg: '#1a1a1a', border: '#333' }; %>
-          <tr<%= u._isSuperAdmin ? ' style="background:#1a1510;"' : '' %>>
-            <td><strong><%= u.displayName || '\u2014' %></strong></td>
+          <tr<%= u._system ? ' style="opacity:0.5;"' : (u._isSuperAdmin ? ' style="background:#1a1510;"' : '') %>>
+            <td>
+              <strong><%= u.displayName || '\u2014' %></strong>
+              <% if (u._system) { %><span title="System / test account \u2014 not a real user" style="margin-left:5px;font-size:9px;color:#64748b;background:rgba(100,116,139,0.12);border:1px solid rgba(100,116,139,0.3);padding:1px 5px;border-radius:3px;">\u2699 system</span><% } %>
+            </td>
             <td style="font-size:12px;"><%= u.email || '\u2014' %></td>
             <td>
               <span class="product-tag" style="color:<%= prod.color %>; background:<%= prod.bg %>; border:1px solid <%= prod.border %>;"><%= prod.label %></span>
@@ -189,6 +215,12 @@
                 <% if (u._subCount !== null) { %><span style="margin-left:4px;font-size:9px;color:#525252;"><%= u._subCount %> subs</span><% } %>
               <% } else if (u._product === 'slab') { %>
                 <span class="tenant-tag" style="margin-left:4px;"><%= u._tenantName %></span>
+                <% if (u._premium) { %>
+                  <span title="Paying subscriber — <%= u._tenantPlan %> plan with a processor payment on file" style="margin-left:4px;font-size:9px;color:#c9a848;background:rgba(201,168,72,0.1);border:1px solid rgba(201,168,72,0.3);padding:1px 5px;border-radius:3px;">💰 paying · <%= u._tenantPlan %></span>
+                <% } else { %>
+                  <span title="Non-paying (free/trial, comped lifetime, or legacy plan)" style="margin-left:4px;font-size:9px;color:#94a3b8;background:rgba(148,163,184,0.08);border:1px solid rgba(148,163,184,0.2);padding:1px 5px;border-radius:3px;">non-paying</span>
+                <% } %>
+                <% if (u._isOwnerAccount) { %><span title="Tenant owner (from billing record)" style="margin-left:4px;font-size:9px;color:#86efac;">◆ owner</span><% } %>
               <% } %>
             </td>
             <td>

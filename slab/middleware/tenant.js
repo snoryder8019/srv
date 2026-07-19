@@ -39,6 +39,20 @@ function decryptSecrets(secrets) {
   return out;
 }
 
+// Tenant-defined API keys (the custom vault, managed at /admin/settings/keys).
+// Each stored entry is { id, name, note, value(encrypted), createdAt }. We
+// decrypt `value` once here — same decrypt-on-load-cached model as `secrets` —
+// so connectors can read req.tenant.customKeys without touching crypto. A key
+// with a bad/rotated blob decrypts to null rather than throwing.
+function decryptCustomKeys(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map((k) => {
+    let value = null;
+    try { value = k.value ? decrypt(k.value) : ''; } catch { value = null; }
+    return { id: k.id, name: k.name, note: k.note || '', value, createdAt: k.createdAt || null, updatedAt: k.updatedAt || null };
+  });
+}
+
 // Routes that work without a tenant (platform-level pages)
 const TENANT_OPTIONAL_PATHS = ['/start', '/start/'];
 
@@ -134,6 +148,7 @@ async function lookupTenant(domain) {
     s3Prefix: doc.s3Prefix || doc.db,
     public: doc.public || {},
     secrets: decryptSecrets(doc.secrets),
+    customKeys: decryptCustomKeys(doc.customKeys),
     meta: doc.meta || {},
     oauth: {
       ...(doc.public?.oauth || {}),
@@ -146,6 +161,10 @@ function applyTenant(req, res, tenant) {
   req.tenant = tenant;
   req.db = getTenantDb(tenant.db, tenant.dbHost);
   res.locals.brand = tenant.brand;
+  // sLab Network member? Drives the "Part of the sLab Network" footer backlink.
+  res.locals.networkMember = tenant.public?.networkOptIn === 'true';
+  // Public support bubble toggle — the widget loader in seo-head reads this.
+  res.locals.chatbotEnabled = String(tenant.public?.chatbotEnabled ?? 'false') === 'true';
   res.locals.tenant = {
     domain: tenant.domain,
     s3Prefix: tenant.s3Prefix,

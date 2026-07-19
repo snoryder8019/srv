@@ -1,0 +1,135 @@
+<%- include('../partials/head', { title: (listing ? 'Edit' : 'New') + ' Listing' }) %>
+<%- include('../partials/sidebar', { page: 'marketplace', user: user }) %>
+
+<% const isEdit = !!listing; %>
+
+<div class="topbar">
+  <div class="topbar-title"><%= isEdit ? 'Edit Listing' : 'New Listing' %></div>
+  <div class="topbar-actions">
+    <a href="/admin/marketplace" class="btn btn-ghost btn-sm">Back</a>
+  </div>
+</div>
+
+<div class="content">
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <form method="POST" action="<%= isEdit ? '/admin/marketplace/' + listing._id : '/admin/marketplace' %>" enctype="multipart/form-data" data-guard data-guard-label="Saving">
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">Details</div>
+      <div class="form-grid cols-3">
+        <div class="form-field span-2">
+          <label>Title</label>
+          <input type="text" name="title" value="<%= listing?.title || '' %>" required placeholder="e.g. Handmade Oak Dining Table">
+        </div>
+        <div class="form-field">
+          <label>Type</label>
+          <select name="kind">
+            <% for (const k of MARKET_KINDS) { %>
+            <option value="<%= k %>" <%= (listing?.kind || 'product') === k ? 'selected' : '' %>><%= k.charAt(0).toUpperCase() + k.slice(1) %></option>
+            <% } %>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Category</label>
+          <input type="text" name="category" value="<%= listing?.category || '' %>" placeholder="e.g. Furniture">
+        </div>
+        <div class="form-field">
+          <label>Price ($)</label>
+          <input type="number" name="price" step="0.01" min="0" value="<%= (listing && listing.price != null) ? listing.price : '' %>" placeholder="Leave blank for 'Contact'">
+        </div>
+        <div class="form-field">
+          <label>Price Unit</label>
+          <input type="text" name="priceUnit" list="unitList" value="<%= listing?.priceUnit || '' %>" placeholder="each / hour / month">
+          <datalist id="unitList">
+            <% for (const u of PRICE_UNITS) { if (u) { %><option value="<%= u %>"></option><% } } %>
+          </datalist>
+        </div>
+        <div class="form-field span-3">
+          <label>Summary <span class="text-slate" style="text-transform:none;letter-spacing:0;">(shown on cards)</span></label>
+          <input type="text" name="summary" value="<%= listing?.summary || '' %>" maxlength="300" placeholder="One-line pitch">
+        </div>
+        <div class="form-field span-3">
+          <label>Description</label>
+          <textarea name="description" rows="6" placeholder="Full details buyers should know."><%= listing?.description || '' %></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">Image</div>
+      <% if (listing?.imageUrl) { %>
+      <div style="display:flex;gap:16px;align-items:center;margin-bottom:12px;">
+        <img src="<%= listing.imageUrl %>" alt="" style="width:120px;height:120px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">
+        <label class="form-check" style="margin:0;">
+          <input type="checkbox" name="removeImage" value="1"> <span>Remove current image</span>
+        </label>
+      </div>
+      <% } %>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Upload Image</label>
+          <input type="file" name="image" accept="image/*" style="font-size:0.85rem;">
+        </div>
+        <div class="form-field">
+          <label>…or Image URL</label>
+          <input type="text" name="imageUrlManual" value="<%= (listing && !listing.bucketKey) ? (listing.imageUrl || '') : '' %>" placeholder="https://…">
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">Contact &amp; Meta</div>
+      <div class="form-grid cols-3">
+        <div class="form-field span-2">
+          <label>Contact / Buy Link</label>
+          <input type="text" name="contactUrl" value="<%= listing?.contactUrl || '' %>" placeholder="email, phone, or URL">
+        </div>
+        <div class="form-field">
+          <label>Button Label</label>
+          <input type="text" name="contactLabel" value="<%= listing?.contactLabel || '' %>" placeholder="e.g. Inquire, Buy Now">
+        </div>
+        <div class="form-field">
+          <label>Location</label>
+          <input type="text" name="location" value="<%= listing?.location || '' %>" placeholder="Optional">
+        </div>
+        <div class="form-field span-2">
+          <label>Tags <span class="text-slate" style="text-transform:none;letter-spacing:0;">(comma-separated)</span></label>
+          <input type="text" name="tags" value="<%= (listing?.tags || []).join(', ') %>" placeholder="oak, handmade, local">
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">Publishing</div>
+      <div class="form-grid cols-3">
+        <div class="form-field">
+          <label>Status</label>
+          <select name="status">
+            <% for (const s of MARKET_STATUSES) { %>
+            <option value="<%= s %>" <%= (listing?.status || 'draft') === s ? 'selected' : '' %>><%= MARKET_STATUS_LABELS[s] %></option>
+            <% } %>
+          </select>
+        </div>
+        <div class="form-field" style="justify-content:flex-end;">
+          <label class="form-check" style="margin:0;">
+            <input type="checkbox" name="featured" <%= listing?.featured ? 'checked' : '' %>> <span>Featured</span>
+          </label>
+        </div>
+        <div class="form-field" style="justify-content:flex-end;">
+          <label class="form-check" style="margin:0;">
+            <input type="checkbox" name="networkShare" value="on" <%= (listing?.networkShare === false) ? '' : 'checked' %>>
+            <span>Share to sLab Network</span>
+          </label>
+        </div>
+      </div>
+      <p class="text-slate" style="font-size:0.75rem;margin-top:10px;">Only <strong>Active</strong> listings appear on your public page. Network syndication also requires the master switch under Settings → sLab Network.</p>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <a href="/admin/marketplace" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-navy"><%= isEdit ? 'Save Changes' : 'Create Listing' %></button>
+    </div>
+  </form>
+</div>
+
+</div></div></body></html>

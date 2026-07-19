@@ -38,6 +38,8 @@ const TYPE_META = {
   grv:      { emoji: '🌐', label: 'GreeAlityTV',      color: '#14b8a6' },
   ps:       { emoji: '⚔️',  label: 'Stringborn Signup',color: '#a78bfa' },
   private:  { emoji: '🔐', label: 'Private Server',   color: '#4caf50' },
+  signup_failed:   { emoji: '🚨', label: 'Signup Error',    color: '#ef4444' },
+  signup_rejected: { emoji: '⚠️',  label: 'Signup Rejected', color: '#f59e0b' },
 };
 
 // ── Mailer (lazy singleton) ──────────────────────────────────────────────

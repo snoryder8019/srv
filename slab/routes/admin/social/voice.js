@@ -16,7 +16,7 @@ import { encrypt, decrypt } from '../../../plugins/crypto.js';
 import { getSlabDb } from '../../../plugins/mongo.js';
 import { generateForTenant, generateSpotlight, publishWithRetry, renderLayersToPng, uploadPng } from '../../../plugins/autoSocial.js';
 import { uploadBuffer } from '../../../plugins/s3.js';
-import { getVoice, saveVoice, synthesizeProfile, recordCorrection, buildVoiceBlock, VOICE_QUESTIONS } from '../../../plugins/socialVoice.js';
+import { getVoice, saveVoice, synthesizeProfile, recordCorrection, buildVoiceBlock, VOICE_QUESTIONS, deleteCorrection, clearCorrections, setCorrectionsEnabled } from '../../../plugins/socialVoice.js';
 import { enqueueJob, getJob, listJobs } from '../../../plugins/socialJobs.js';
 import { recordDesignFeedback, listDesignFeedback, removeDesignFeedback, getDesignPrefs, describePrefs } from '../../../plugins/socialDesign.js';
 import { suggestSlots } from '../../../plugins/socialSchedule.js';
@@ -70,6 +70,25 @@ router.post('/voice', express.json({ limit: '1mb' }), async (req, res) => {
     const saved = await saveVoice(db, patch);
     res.json({ ok: true, voice: saved });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── Learned corrections (few-shot) management ─────────────────────────────────
+// View lives in the Voice Profile card; these edit it in/out of the agent prompts.
+router.post('/voice/corrections/delete', express.json(), async (req, res) => {
+  try {
+    const ok = await deleteCorrection(req.db, req.body?.after);
+    res.json({ ok });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+router.post('/voice/corrections/clear', async (req, res) => {
+  try { await clearCorrections(req.db); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+router.post('/voice/corrections/toggle', express.json(), async (req, res) => {
+  try { await setCorrectionsEnabled(req.db, !!req.body?.enabled); res.json({ ok: true, enabled: !!req.body?.enabled }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 

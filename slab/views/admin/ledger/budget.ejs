@@ -1,0 +1,172 @@
+<%- include('../partials/head', { title: 'Budget Editor' }) %>
+<%- include('../partials/sidebar', { page: 'ledger-budget', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Budget Editor</div>
+  <div class="topbar-actions">
+    <a href="/admin/ledger?year=<%= year %>" class="btn btn-ghost btn-sm">P&amp;L</a>
+    <% if (canExport) { %><a href="/admin/ledger/budget/export?year=<%= year %>" class="btn btn-navy btn-sm">Export / Print</a><% } %>
+  </div>
+</div>
+
+<div class="content" data-agent-scope="bookkeeping" data-agent-kind="agent" data-agent-title="Budget Planner" data-agent-suggest="Suggest a realistic budget from recent months|Which category needs a bigger allocation?|Rebalance percentages to hit a target profit|Flag categories with no budget set">
+  <%- include('_tabs', { active: 'budget' }) %>
+  <% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <p class="text-slate" style="margin-bottom:20px;font-size:0.88rem;">
+    A budget is a <strong>separate plan</strong> from your actuals. Set a projected revenue for the year, then a percentage of revenue for each category. The P&amp;L uses these to show variance without ever touching your real numbers.
+    Use <strong>Balance to 100%</strong> on the <em>Income</em> section to split your projected revenue across your income streams so the mix totals exactly 100%.
+  </p>
+
+  <form data-guard method="POST" action="/admin/ledger/budget">
+    <input type="hidden" name="year" value="<%= year %>">
+
+    <!-- Plan header -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="form-grid cols-3">
+        <div class="form-field"><label>Plan Name</label><input type="text" name="name" value="<%= planName %>"></div>
+        <div class="form-field"><label>Year</label><input type="number" name="year" value="<%= year %>" onchange="location.href='/admin/ledger/budget?year='+this.value"></div>
+        <div class="form-field">
+          <label>Projected Annual Revenue ($)</label>
+          <input type="number" name="projectedRevenue" id="annualRev" step="0.01" min="0" value="<%= projectedRevenue %>" oninput="recalc()">
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <label style="display:block;margin-bottom:8px;">Quarterly Revenue Override (optional — leave at 0 to split annual evenly)</label>
+        <div class="form-grid" style="grid-template-columns:repeat(4,1fr);">
+          <% for (let i = 0; i < 4; i++) { %>
+          <div class="form-field"><label>Q<%= i+1 %></label><input type="number" name="q<%= i+1 %>" step="0.01" min="0" value="<%= quarters[i] || 0 %>"></div>
+          <% } %>
+        </div>
+      </div>
+    </div>
+
+    <!-- Category budgets -->
+    <% const FIXED = (typeof FIXED_BUDGET_TYPES !== 'undefined' ? FIXED_BUDGET_TYPES : ['labor','fixed']); %>
+    <% for (const t of (typeof GL_TYPES !== 'undefined' ? GL_TYPES : ['income','cogs','labor','fixed','expense'])) { const rows = byType[t] || []; if (!rows.length) continue; const isFixed = FIXED.includes(t); %>
+    <div class="flex-between" style="margin-bottom:10px;">
+      <h3 style="font-family:var(--font-heading);font-weight:400;font-size:1.15rem;"><%= GL_TYPE_LABELS[t] %></h3>
+      <% if (t === 'income') { %>
+      <span style="display:inline-flex;align-items:center;gap:10px;font-size:0.78rem;">
+        <span class="text-slate">Revenue mix: <span class="secTotal" data-type="income">0%</span> / 100%</span>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="balanceSection('income')" title="Split projected revenue across your income streams so the mix totals exactly 100% (splits evenly if none are set)">Balance to 100%</button>
+      </span>
+      <% } else if (isFixed) { %>
+      <span class="text-slate" style="font-size:0.78rem;">Fixed annual cost — total <span class="secTotal" data-type="<%= t %>">$0.00</span></span>
+      <% } else { %>
+      <span class="text-slate" style="font-size:0.78rem;"><%= GL_TYPE_LABELS[t] %> as % of revenue: <span class="secTotal" data-type="<%= t %>">0%</span></span>
+      <% } %>
+    </div>
+    <div class="table-wrap" style="margin-bottom:24px;">
+      <table>
+        <thead><tr><th>Category</th><th>Group</th><th style="width:150px;text-align:right;"><%= isFixed ? 'Fixed annual $' : '% of Revenue' %></th><th style="width:160px;text-align:right;"><%= isFixed ? 'Per month' : 'Annual $' %></th></tr></thead>
+        <tbody>
+          <% for (const c of rows) { %>
+          <% if (isFixed) { const amt = amtByCat[c._id.toString()] || ''; %>
+          <tr>
+            <td style="font-weight:500;"><%= c.name %></td>
+            <td style="font-size:0.8rem;color:var(--slate);"><%= c.group || '—' %></td>
+            <td style="text-align:right;">
+              <input type="number" name="amt_<%= c._id %>" class="amtInput" data-type="<%= t %>" step="0.01" min="0" value="<%= amt %>" placeholder="0.00" style="width:120px;text-align:right;padding:6px 8px;" oninput="recalc()">
+            </td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--slate);"><span class="monthCell" data-cat="<%= c._id %>">$0.00</span>/mo</td>
+          </tr>
+          <% } else { const pct = pctByCat[c._id.toString()] || ''; %>
+          <tr>
+            <td style="font-weight:500;"><%= c.name %></td>
+            <td style="font-size:0.8rem;color:var(--slate);"><%= c.group || '—' %></td>
+            <td style="text-align:right;">
+              <input type="number" name="pct_<%= c._id %>" class="pctInput" data-type="<%= t %>" step="0.1" min="0" max="1000" value="<%= pct %>" placeholder="0" style="width:90px;text-align:right;padding:6px 8px;" oninput="recalc()">
+            </td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--slate);"><span class="dollarCell" data-cat="<%= c._id %>">$0.00</span></td>
+          </tr>
+          <% } %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+
+    <!-- Projected net preview -->
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;background:var(--ivory);">
+      <span style="font-family:var(--font-heading);font-size:1.2rem;">Projected Net (Budget)</span>
+      <span id="netPreview" style="font-family:var(--font-heading);font-size:1.5rem;color:var(--success);">$0.00</span>
+    </div>
+
+    <div style="text-align:right;">
+      <button type="submit" class="btn btn-navy">Save Budget</button>
+    </div>
+  </form>
+</div>
+
+<script>
+function fmt(n){ return '$' + (Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+var FIXED_TYPES = ['labor','fixed'];
+function recalc(){
+  const rev = parseFloat(document.getElementById('annualRev').value) || 0;
+  const sums = { income:0, cogs:0, labor:0, fixed:0, expense:0 };
+  const pctSums = { income:0, cogs:0, expense:0 };
+  // Variable categories: % of revenue → annual $.
+  document.querySelectorAll('.pctInput').forEach(function(inp){
+    const pct = parseFloat(inp.value) || 0;
+    const type = inp.dataset.type;
+    const amt = rev * pct / 100;
+    if (pctSums[type] != null) pctSums[type] += pct;
+    sums[type] += amt;
+    const cell = document.querySelector('.dollarCell[data-cat="'+inp.name.replace('pct_','')+'"]');
+    if (cell) cell.textContent = fmt(amt);
+  });
+  // Fixed categories: a flat annual $ (shown per-month too).
+  document.querySelectorAll('.amtInput').forEach(function(inp){
+    const amt = parseFloat(inp.value) || 0;
+    sums[inp.dataset.type] += amt;
+    const cell = document.querySelector('.monthCell[data-cat="'+inp.name.replace('amt_','')+'"]');
+    if (cell) cell.textContent = fmt(amt/12);
+  });
+  document.querySelectorAll('.secTotal').forEach(function(el){
+    const type = el.dataset.type;
+    if (FIXED_TYPES.indexOf(type) !== -1) { el.textContent = fmt(sums[type] || 0); return; }
+    const tot = pctSums[type] || 0;
+    el.textContent = tot.toFixed(1) + '%';
+    // Only the income section targets 100% (the revenue mix); cogs/expense are
+    // informational totals of "% of revenue", so they stay neutral.
+    if (type === 'income') {
+      const balanced = Math.abs(tot - 100) < 0.05;
+      el.style.color = balanced ? 'var(--success)' : (tot > 100 ? 'var(--danger)' : 'var(--slate)');
+      el.style.fontWeight = balanced ? '700' : '500';
+    }
+  });
+  const net = sums.income - sums.cogs - sums.labor - sums.fixed - sums.expense;
+  const np = document.getElementById('netPreview');
+  np.textContent = fmt(net);
+  np.style.color = net >= 0 ? 'var(--success)' : 'var(--danger)';
+}
+
+// Scale a section's percentages so they total exactly 100% of revenue.
+// Empty section → split evenly; otherwise normalise the entered values in place.
+function balanceSection(type){
+  const inputs = Array.prototype.slice.call(document.querySelectorAll('.pctInput[data-type="'+type+'"]'));
+  if (!inputs.length) return;
+  let vals = inputs.map(function(i){ return parseFloat(i.value) || 0; });
+  const sum = vals.reduce(function(a,b){ return a+b; }, 0);
+  if (sum <= 0) {
+    const each = Math.round((100 / inputs.length) * 10) / 10;
+    vals = inputs.map(function(){ return each; });
+  } else {
+    vals = vals.map(function(v){ return Math.round((v / sum * 100) * 10) / 10; });
+  }
+  // Push any rounding drift onto the largest line so the section totals exactly 100.0%.
+  const drift = Math.round((100 - vals.reduce(function(a,b){ return a+b; }, 0)) * 10) / 10;
+  if (drift !== 0) {
+    let idx = 0;
+    for (let i = 1; i < vals.length; i++) if (vals[i] > vals[idx]) idx = i;
+    vals[idx] = Math.round((vals[idx] + drift) * 10) / 10;
+  }
+  inputs.forEach(function(inp, i){ inp.value = vals[i]; });
+  recalc();
+}
+recalc();
+</script>
+
+</div></div></body></html>

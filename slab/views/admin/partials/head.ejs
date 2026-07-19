@@ -325,6 +325,17 @@
       .card { padding: 16px; }
     }
 
+    /* ── Agent consolidation (2026-07-15) ──────────────────────────────────────
+       The ✦ universal launcher (#saFab / #saOverlay, agentLauncher.js) is now the
+       single responsive agent modal across the admin portal. The legacy per-page
+       right-bar drawers (#agentPanel / #agentDrawer + #agentOverlay backdrop) and
+       their launch buttons (.agent-btn / #agentToggle) are BACKSEATED — hidden
+       here, not deleted, so the rollout is reversible while the drawer code is
+       deprecated page-by-page. display:none also neutralises .open (which only
+       set `right`), so a stray toggle can't reveal a hidden drawer. */
+    #agentPanel, #agentDrawer, #agentOverlay,
+    .agent-btn, #agentToggle { display: none !important; }
+
     /* Agent panel — shrinks to fit viewport on tablets, full-width on phones */
     @media (max-width: 820px) {
       #agentPanel {
@@ -399,15 +410,21 @@
   <% } %>
   <!-- Loading wheels for long-running actions (agent, upload, cutout, canvas) -->
   <script src="/js/loadingWheel.js" defer></script>
+  <!-- In-panel admin alerts: flash on new visitor chats + captured leads -->
+  <script src="/js/adminAlerts.js?v=<%= Date.now() %>" defer></script>
   <!-- Universal ✦ agent launcher (Phase 2) — floating launcher + chat modal on every admin page -->
-  <script src="/js/agentLauncher.js" defer></script>
+  <script src="/js/agentLauncher.js?v=<%= Date.now() %>" defer></script>
+  <!-- Bottom-right dock — collapses agent/bell/bug/help into one expandable cluster -->
+  <script src="/js/dockController.js?v=<%= Date.now() %>" defer></script>
+  <!-- Front-end error reporter — ships uncaught JS errors to /superadmin/errors -->
+  <script src="/js/errorReporter.js"></script>
 </head>
 <body>
 <% if (_bd.el_maintenance_banner !== 'false') { %>
 <%- include('../../partials/maintenance-banner') %>
 <% } %>
 <% if (typeof isSuperAdmin !== 'undefined' && isSuperAdmin) { %>
-<div style="position:fixed;bottom:8px;right:8px;z-index:9999;background:linear-gradient(135deg,#C9A848,#E8D08A);color:#1C2B4A;font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;padding:4px 10px;border-radius:2px;box-shadow:0 2px 8px rgba(201,168,72,0.3);pointer-events:none;">Superadmin</div>
+<div style="position:fixed;bottom:8px;left:8px;z-index:9999;background:linear-gradient(135deg,#C9A848,#E8D08A);color:#1C2B4A;font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;padding:4px 10px;border-radius:2px;box-shadow:0 2px 8px rgba(201,168,72,0.3);pointer-events:none;">Superadmin</div>
 <% } else { %>
 <div style="position:fixed;top:8px;right:8px;z-index:9999;background:linear-gradient(135deg,#C9A848,#E8D08A);color:#1C2B4A;font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;padding:4px 10px;border-radius:2px;box-shadow:0 2px 8px rgba(201,168,72,0.3);pointer-events:none;">Admin</div>
 <% } %>

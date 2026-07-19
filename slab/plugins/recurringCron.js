@@ -1,6 +1,6 @@
-import cron from 'node-cron';
 import { ObjectId } from 'mongodb';
 import { getSlabDb, getTenantDb } from './mongo.js';
+import { scheduleDailyJob } from './cronSafe.js';
 import { generateInvoiceNumber, generatePaymentToken, getNextGenerateDate, getRecurringDueDate } from './invoiceHelpers.js';
 import { sendInvoiceEmail } from './mailer.js';
 import { config } from '../config/config.js';
@@ -113,10 +113,7 @@ export async function runRecurringInvoices() {
 }
 
 export function startRecurringInvoiceCron() {
-  // Run daily at 6:00 AM
-  cron.schedule('0 6 * * *', () => {
-    runRecurringInvoices().catch(err => console.error('[Cron] Recurring invoice job failed:', err));
-  });
-
-  console.log('[Cron] Recurring invoice job scheduled (daily 6:00 AM)');
+  // Daily at 6:00 AM. WSL-skip-tolerant + claims before running so billing NEVER
+  // double-invoices and never silently skips a day (node-cron dropped the tick).
+  scheduleDailyJob('recurring-invoices', 6, runRecurringInvoices, { label: 'Recurring invoice job' });
 }

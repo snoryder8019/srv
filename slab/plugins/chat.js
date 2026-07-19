@@ -33,6 +33,39 @@ import { canSeeFeature, featureByKey } from './featureRegistry.js';
 // (module + refId) is what an embedded thread inherits its permission from.
 export const THREAD_KINDS = ['internal', 'support', 'design', 'client', 'agent'];
 
+// Human-readable definition of each thread kind, for the Agent Control panel so
+// it's clear WHAT you're configuring: who talks to it, where it appears, and
+// whether it's a PUBLIC surface (outside world — guardrail hard) or PRIVATE
+// (staff/admin only). 'scope' drives the public/private badge; the two never
+// intertwine — a public support bot must never carry an admin agent's tools.
+export const KIND_META = {
+  support: {
+    label: 'Support', scope: 'public', who: 'Site visitors & customers',
+    where: 'Public site chat bubble (the outward-facing support bot)',
+    desc: 'PUBLIC-facing. Answers visitor questions and captures leads. Keep its tool scope minimal — it talks to the outside world.',
+  },
+  internal: {
+    label: 'Internal', scope: 'private', who: 'Your team / staff',
+    where: 'Internal staff threads (team coordination)',
+    desc: 'PRIVATE staff-to-staff coordination. Never customer-facing.',
+  },
+  design: {
+    label: 'Design', scope: 'private', who: 'You & staff (admin)',
+    where: '/admin/design · /admin/copy · /admin/sections',
+    desc: 'Admin design assistant — colors, fonts, layout tokens, section copy.',
+  },
+  client: {
+    label: 'Client', scope: 'private', who: 'You & staff (admin)',
+    where: '/admin/clients · /admin/inquiries',
+    desc: 'Admin assistant for clients & leads — research, outreach drafts, follow-ups.',
+  },
+  agent: {
+    label: 'Agent (general)', scope: 'private', who: 'You & staff (admin)',
+    where: 'Dashboard, blog, social, email — any admin page without a more specific agent',
+    desc: 'The catch-all admin agent. Every admin surface that isn’t Design or Client lands here.',
+  },
+};
+
 // Hard fallback agent config, lowest priority. The per-tenant chatflow matrix
 // (chat_flow collection) overrides per kind; a thread's own agentConfig overrides
 // that. Engine/tools are the seams for the BYO-engine + MCP-design work later.
@@ -40,6 +73,7 @@ export const DEFAULT_AGENT_CONFIG = {
   enabled: false,       // agent stays silent unless a thread/kind turns it on
   agentKey: 'assistant',
   engine: 'house',      // 'house' (Ollama) | 'anthropic' (BYO key) | 'claude-code' (BYO sub)
+  model: '',            // Claude model when engine=anthropic; '' → platform default (Opus 4.8)
   mode: 'chat',         // 'chat' converses; 'router' routes to a department and proposes changes
   tools: [],            // MCP tool names from agentMcp.js the agent may call
   captureContact: false, // when true, first user message triggers an inline Name/Phone/Email form
@@ -56,6 +90,14 @@ export async function ensureChatIndexes(db) {
     db.collection('chat_threads').createIndex({ 'members.userId': 1, lastMessageAt: -1 }),
     db.collection('chat_threads').createIndex({ 'context.module': 1, 'context.refId': 1 }),
     db.collection('chat_threads').createIndex({ status: 1, lastMessageAt: -1 }),
+    // One active thread per {kind, module, refId} — makes /agent-chat/resolve's
+    // find-or-create race-safe (the launcher fires it from every page). Partial
+    // so archived/locked dups don't count. Builds only once existing dups are
+    // merged (scripts/dedup-chat-threads.mjs); silently skipped until then.
+    db.collection('chat_threads').createIndex(
+      { kind: 1, 'context.module': 1, 'context.refId': 1 },
+      { unique: true, partialFilterExpression: { status: 'active' }, name: 'uniq_active_scope' },
+    ),
   ]).catch(() => {});
   _indexed = true;
 }
@@ -271,24 +313,27 @@ export async function maybeRequestContact(db, thread, agent) {
 
 const EMAIL_RE = /^[^\s@]{1,80}@[^\s@]{1,80}\.[^\s@]{2,24}$/;
 
-export async function saveContactSubmission(db, { thread, values = {}, formMessageId = null, tenantDomain = '' } = {}) {
+export async function saveContactSubmission(db, { thread, values = {}, notes = '', formMessageId = null, tenantDomain = '' } = {}) {
   const name  = String(values.name  || '').trim().slice(0, 120);
   const phone = String(values.phone || '').trim().slice(0, 40);
   const email = String(values.email || '').trim().toLowerCase().slice(0, 160);
   if (!name) throw new Error('Name is required.');
   if (!EMAIL_RE.test(email)) throw new Error('A valid email is required.');
   const now = new Date();
+  // The visitor's notes / stated needs, saved alongside the contact so the lead
+  // carries substance (not just an email). Falls back to a thread pointer.
+  const noteText = String(notes || '').trim().slice(0, 4000);
 
   await db.collection('inquiries').insertOne({
     name, email, company: '', service: '',
-    message: 'Captured via chat thread "' + (thread.title || String(thread._id)) + '"',
+    message: noteText || ('Captured via chat thread "' + (thread.title || String(thread._id)) + '"'),
     customFields: phone ? { phone } : {},
     tenantDomain, source: 'chat', threadId: thread._id,
     createdAt: now,
   });
   await db.collection('chat_threads').updateOne(
     { _id: thread._id },
-    { $set: { contact: { name, phone, email, capturedAt: now }, updatedAt: now } },
+    { $set: { contact: { name, phone, email, capturedAt: now }, ...(noteText ? { notes: noteText } : {}), updatedAt: now } },
   );
   if (formMessageId) {
     try {
@@ -321,13 +366,19 @@ export async function dispatchAgent(db, { thread, tenant, history, onReply } = {
   // falls through to the operator conversation below.
   const lastUser = [...(history || [])].reverse().find((m) => m.authorType === 'user');
   if ((agent.mode || 'chat') === 'router') {
-    const { routeMessage, runDepartment } = await import('./agentRouter.js');
+    const { routeMessage, runDepartment, departmentsForTools } = await import('./agentRouter.js');
     const route = await routeMessage(lastUser?.body || '', {
       contextModule: thread?.context?.module || null,
       kind: thread?.kind || null,
     });
-    if (route.department && route.department !== 'assist') {
-      const out = await runDepartment(db, tenant, { ...route, audience: 'admin' });
+    // MCP scope: an agent may only run departments within its configured tool
+    // scope (null scope = unrestricted). Out-of-scope routes fall through to the
+    // conversational reply below rather than executing a tool the agent isn't
+    // scoped for — public/private scopes never intertwine.
+    const scope = departmentsForTools(agent.tools);
+    const inScope = !scope || scope.has(route.department);
+    if (route.department && route.department !== 'assist' && inScope) {
+      const out = await runDepartment(db, tenant, { ...route, audience: 'admin', engine: agent.engine, model: agent.model });
       const saved = await postMessage(db, {
         threadId: thread._id, authorType: 'agent',
         authorName: agent.agentKey || 'Assistant', role: 'assistant',
@@ -377,9 +428,10 @@ ${agent.greeting ? 'Persona note: ' + agent.greeting : ''}`.trim();
     content: m.authorType === 'user' ? `${m.authorName}: ${m.body}` : m.body,
   }));
 
-  // TODO(engine): switch on agent.engine → anthropic (BYO key) / claude-code (BYO sub).
+  // Engine seam: a tenant with an Anthropic key runs this conversation on Claude;
+  // agent.engine can force 'house'. Falls back to house on any Claude error.
   // TODO(tools): if agent.tools includes an MCP tool, run the tool-call loop here.
-  const reply = await callLLM(msgs, systemPrompt);
+  const reply = await callLLM(msgs, systemPrompt, 90000, { tenant, engine: agent.engine, model: agent.model });
   if (!reply) return null;
 
   const saved = await postMessage(db, {

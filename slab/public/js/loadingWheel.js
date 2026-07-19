@@ -98,5 +98,202 @@
     finally { button(btn, false); }
   }
 
-  window.SlabLoader = { button, overlay, wrap, spinnerHTML };
+  // ────────────────────────────────────────────────────────────────────────
+  // SlabFlash — obvious success/failure toast messaging (matches the signup
+  // confirmation vibe). The house style for "your post went out" / "that
+  // failed" feedback across every admin action.
+  // ────────────────────────────────────────────────────────────────────────
+  function injectFlashCss() {
+    if (document.getElementById('slabFlashCss')) return;
+    const s = document.createElement('style');
+    s.id = 'slabFlashCss';
+    s.textContent = `
+      @keyframes slabFlashIn  { from { opacity:0; transform:translateY(-14px) scale(0.98); } to { opacity:1; transform:none; } }
+      @keyframes slabFlashOut { from { opacity:1; transform:none; } to { opacity:0; transform:translateY(-10px) scale(0.98); } }
+      .slab-flash-wrap {
+        position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+        z-index: 100000; display: flex; flex-direction: column; gap: 10px;
+        width: min(440px, calc(100vw - 28px)); pointer-events: none;
+      }
+      /* Branded by the tenant's palette: the card wears the brand surface, text,
+         border, radius and font; only a semantic accent bar + icon carry the
+         success/error/warn/info meaning. Every value falls back to a sane
+         default so it still renders on public pages that lack the brand vars. */
+      .slab-flash {
+        pointer-events: auto; display: flex; align-items: flex-start; gap: 11px;
+        padding: 13px 15px; font-size: 0.86rem; line-height: 1.4;
+        font-family: var(--font-body, system-ui, sans-serif); font-weight: 500;
+        background: var(--surface, #FDFCFA); color: var(--on-surface, #0F1B30);
+        border: 1px solid var(--border, #CBD5E1);
+        border-left: 4px solid var(--slab-flash-accent, var(--navy, #1C2B4A));
+        border-radius: calc(var(--card-radius, 4px) + 2px);
+        box-shadow: 0 10px 34px rgba(15,27,48,0.22);
+        animation: slabFlashIn 0.22s cubic-bezier(0.2,0.8,0.3,1) both;
+      }
+      .slab-flash.leaving { animation: slabFlashOut 0.2s ease forwards; }
+      .slab-flash-ic { flex-shrink: 0; font-size: 1.05rem; line-height: 1.25; color: var(--slab-flash-accent, var(--navy, #1C2B4A)); }
+      .slab-flash-msg { flex: 1; min-width: 0; word-break: break-word; }
+      .slab-flash-x { flex-shrink: 0; background: none; border: none; cursor: pointer;
+        font-size: 1rem; line-height: 1; opacity: 0.5; padding: 2px; color: inherit; }
+      .slab-flash-x:hover { opacity: 1; }
+      .slab-flash.success { --slab-flash-accent: var(--success, #15803D); }
+      .slab-flash.error   { --slab-flash-accent: var(--danger,  #B91C1C); }
+      .slab-flash.warn    { --slab-flash-accent: var(--warn,    #B45309); }
+      .slab-flash.info    { --slab-flash-accent: var(--gold,    #C9A848); }
+    `;
+    (document.head || document.documentElement).appendChild(s);
+  }
+
+  function flashWrap() {
+    let w = document.getElementById('slabFlashWrap');
+    if (!w) {
+      injectFlashCss();
+      w = document.createElement('div');
+      w.id = 'slabFlashWrap';
+      w.className = 'slab-flash-wrap';
+      (document.body || document.documentElement).appendChild(w);
+    }
+    return w;
+  }
+
+  const FLASH_ICONS = { success: '✓', error: '✕', warn: '⚠', info: 'ℹ' };
+
+  // flash(message, type='info', opts) — opts: { timeout (ms), sticky (bool) }
+  function flash(message, type, opts) {
+    if (!message) return { dismiss() {} };
+    type = type || 'info';
+    opts = opts || {};
+    const el = document.createElement('div');
+    el.className = 'slab-flash ' + type;
+    el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    const ic = document.createElement('span');
+    ic.className = 'slab-flash-ic'; ic.textContent = FLASH_ICONS[type] || FLASH_ICONS.info;
+    const msg = document.createElement('span');
+    msg.className = 'slab-flash-msg'; msg.textContent = String(message);
+    const x = document.createElement('button');
+    x.className = 'slab-flash-x'; x.type = 'button'; x.setAttribute('aria-label', 'Dismiss'); x.textContent = '×';
+    el.appendChild(ic); el.appendChild(msg); el.appendChild(x);
+    flashWrap().appendChild(el);
+    let timer = null;
+    function dismiss() {
+      if (el._gone) return; el._gone = true;
+      if (timer) clearTimeout(timer);
+      el.classList.add('leaving');
+      el.addEventListener('animationend', () => el.remove(), { once: true });
+      setTimeout(() => el.remove(), 300);
+    }
+    x.addEventListener('click', dismiss);
+    if (!opts.sticky) {
+      const ms = opts.timeout || (type === 'error' ? 7000 : 4500);
+      timer = setTimeout(dismiss, ms);
+    }
+    return { dismiss, el };
+  }
+
+  // Surface a redirect's ?success= / ?error= / ?flash= as a toast, then strip
+  // it from the address bar so a refresh doesn't re-fire it. Call once per page
+  // (pages that render their own inline .alert should NOT also call this).
+  function flashFromUrl() {
+    let params;
+    try { params = new URLSearchParams(location.search); } catch (_) { return; }
+    const s = params.get('success'), e = params.get('error'), w = params.get('warn');
+    let shown = false;
+    if (s) { flash(s, 'success'); shown = true; }
+    if (e) { flash(e, 'error'); shown = true; }
+    if (w) { flash(w, 'warn'); shown = true; }
+    if (shown) {
+      params.delete('success'); params.delete('error'); params.delete('warn');
+      const q = params.toString();
+      try { history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash); } catch (_) {}
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
+  // guardForm — one-shot submit guard for classic (navigating) POST forms.
+  // On the first submit: blocks re-entry, disables every submit control,
+  // spins the clicked button, and drops a grey overlay on the form. No unlock
+  // is needed because the redirect reloads the page. Opt in with
+  // <form data-guard> (auto-wired below) or call SlabLoader.guardForm(form).
+  // ────────────────────────────────────────────────────────────────────────
+  function guardForm(form, submitter) {
+    if (!form || form._slabSubmitting) return false;
+    form._slabSubmitting = true;
+    const controls = form.querySelectorAll('button[type=submit], input[type=submit], button:not([type])');
+    const btn = submitter || form.querySelector('button[type=submit]');
+    controls.forEach(c => { if (c !== btn) c.disabled = true; });
+    if (btn) button(btn, true, btn.dataset.loadingLabel || null);
+    // data-guard="button" → spin the button only (for tiny inline forms);
+    // otherwise drop a grey overlay over the whole form.
+    if (form.dataset.guard !== 'button') overlay(form, form.dataset.guardLabel || null);
+    return true;
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
+  // post — AJAX submit protocol: guard → disable+spinner → (optional) overlay →
+  // fetch → flash success/error from the JSON response → UNLOCK the button.
+  // This is the "disable on click, wait for a response code, then re-enable"
+  // pattern for fetch-based actions.
+  //
+  //   SlabLoader.post(btn, url, {
+  //     body, method='POST', overlayTarget, loadingLabel,
+  //     successMessage, errorMessage,
+  //     onSuccess(data), onError(data|err),
+  //   })
+  // Treats HTTP 2xx AND JSON { ok:true } as success. Returns the parsed body
+  // (or null on failure). The button is always re-enabled in a finally.
+  // ────────────────────────────────────────────────────────────────────────
+  async function post(btn, url, opts) {
+    opts = opts || {};
+    if (btn && btn._slabBusy) return null;              // impatient re-click guard
+    const ov = opts.overlayTarget ? overlay(opts.overlayTarget, opts.overlayLabel) : null;
+    button(btn, true, opts.loadingLabel || null);
+    try {
+      const init = { method: opts.method || 'POST', headers: { 'Accept': 'application/json' } };
+      if (opts.body !== undefined && opts.body !== null) {
+        init.headers['Content-Type'] = 'application/json';
+        init.body = typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body);
+      }
+      if (opts.headers) Object.assign(init.headers, opts.headers);
+      const res = await fetch(url, init);
+      let data = null;
+      try { data = await res.json(); } catch (_) { data = null; }
+      const ok = res.ok && (!data || data.ok !== false);
+      if (ok) {
+        const m = opts.successMessage || (data && data.message);
+        if (m) flash(m, 'success');
+        if (opts.onSuccess) opts.onSuccess(data, res);
+        return data;
+      }
+      const em = opts.errorMessage || (data && (data.error || data.message)) ||
+                 ('Request failed (' + res.status + ')');
+      flash(em, 'error');
+      if (opts.onError) opts.onError(data, res);
+      return null;
+    } catch (err) {
+      flash(opts.errorMessage || 'Network error — please try again.', 'error');
+      if (opts.onError) opts.onError(err);
+      return null;
+    } finally {
+      button(btn, false);
+      if (ov) ov.done();
+    }
+  }
+
+  // Auto-wire: any <form data-guard> gets the classic-submit guard for free.
+  // Bubble phase at the document so this runs AFTER any form-level handler
+  // (captcha, AJAX) — e.defaultPrevented then reflects their decision: if they
+  // preventDefault (own the submit / cancelled a confirm) we stay out of the way;
+  // only a real navigating submit gets guarded.
+  document.addEventListener('submit', function (e) {
+    const form = e.target;
+    if (!form || form.nodeName !== 'FORM') return;
+    if (!form.hasAttribute('data-guard')) return;
+    if (e.defaultPrevented) return;                     // handler owns / cancelled it
+    if (!guardForm(form, e.submitter)) { e.preventDefault(); return; }  // already sent
+  }, false);
+
+  window.SlabLoader = { button, overlay, wrap, spinnerHTML, flash, flashFromUrl, guardForm, post };
+  window.SlabFlash = { show: flash, fromUrl: flashFromUrl,
+    success: (m, o) => flash(m, 'success', o), error: (m, o) => flash(m, 'error', o),
+    warn: (m, o) => flash(m, 'warn', o), info: (m, o) => flash(m, 'info', o) };
 })();

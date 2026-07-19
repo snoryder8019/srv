@@ -3,6 +3,7 @@ import { MongoClient, ObjectId } from 'mongodb';
 import { getSlabDb, getTenantDb } from '../../plugins/mongo.js';
 import { requireSuperAdmin, isSuperAdminEmail } from '../../middleware/superadmin.js';
 import { bustTenantCache } from '../../middleware/tenant.js';
+import { setOwnerEmail } from '../../plugins/ownerEmail.js';
 import { createLoginToken } from '../../middleware/jwtAuth.js';
 import { config } from '../../config/config.js';
 import nodemailer from 'nodemailer';
@@ -53,7 +54,27 @@ router.get('/tenants/:id', async (req, res) => {
     dbStats: { blogCount, clientCount, pageCount, invoiceCount },
     tagDefs: TENANT_TAGS,
     activityLogs,
+    msg: req.query.msg || null,
+    error: req.query.error || null,
   });
+});
+
+// ── Owner (billing + contact) email — hydrates globally via meta.ownerEmail ──
+router.post('/tenants/:id/owner-email', async (req, res) => {
+  const slab = getSlabDb();
+  let tenant;
+  try {
+    tenant = await slab.collection('tenants').findOne({ _id: new ObjectId(req.params.id) });
+  } catch { return res.redirect('/superadmin'); }
+  if (!tenant) return res.redirect('/superadmin');
+
+  const result = await setOwnerEmail(tenant, req.body.ownerEmail, {
+    actor: { email: req.superAdmin?.email, role: 'superadmin' },
+  });
+  const back = `/superadmin/tenants/${req.params.id}`;
+  if (!result.ok) return res.redirect(`${back}?error=${encodeURIComponent(result.error)}`);
+  const note = result.unchanged ? 'Owner email unchanged.' : `Owner email updated to ${result.newEmail} — hydrated everywhere.`;
+  res.redirect(`${back}?msg=${encodeURIComponent(note)}`);
 });
 
 // ── Tenant actions ──────────────────────────────────────────────────────────
@@ -66,7 +87,9 @@ router.post('/tenants/:id/activate', async (req, res) => {
   let expiresAt = null;
   const now = new Date();
   if (plan === 'monthly') expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  else if (plan === 'trial') expiresAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
   else if (plan === '30day') expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  else if (plan === 'quarterly') expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
   else if (plan === '120day') expiresAt = new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000);
   else if (plan === 'annual') expiresAt = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
   // lifetime = null (no expiry)
@@ -103,7 +126,9 @@ router.post('/tenants/:id/change-plan', async (req, res) => {
   let expiresAt = null;
   const now = new Date();
   if (plan === 'monthly') expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  else if (plan === 'trial') expiresAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
   else if (plan === '30day') expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  else if (plan === 'quarterly') expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
   else if (plan === '120day') expiresAt = new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000);
   else if (plan === 'annual') expiresAt = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
   // lifetime = null (no expiry), free = null + deactivate

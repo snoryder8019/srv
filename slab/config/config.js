@@ -36,10 +36,23 @@ export const config = {
   S3_FORCE_PATH_STYLE: String(process.env.S3_FORCE_PATH_STYLE || '').toLowerCase() === 'true',
   CDN_BASE: process.env.CDN_BASE || '',
 
-  // Ollama LLM — shared AI infra
+  // Ollama LLM — shared "house" AI infra (the default engine)
   OLLAMA_URL: process.env.OLLAMA_URL || 'https://ollama.madladslab.com/v1/chat/completions',
   OLLAMA_KEY: process.env.OLLAMA_KEY || '',
   OLLAMA_MODEL: process.env.OLLAMA_MODEL || 'qwen2.5:7b',
+
+  // Anthropic (Claude) — BYO engine seam. Tenants bring their own key via the
+  // custom-key vault (/admin/settings/keys → name "anthropic_api_key"); when a
+  // tenant has one, their MCP/dash agents run on Claude instead of the house
+  // model. ANTHROPIC_API_KEY here is the OPTIONAL platform-level fallback used by
+  // unscoped/superadmin paths (e.g. tickets). Unset ⇒ those paths stay on house.
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+  ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || 'claude-opus-4-8',
+  // The multi-tool agentic loop's ORCHESTRATOR model (the coordinator turn that
+  // decides which tools to call). Defaults to Sonnet — smart enough to
+  // orchestrate, far cheaper than Opus — so Opus doesn't run on every agentic
+  // turn. Overridable per tenant via the 'coordinator' agent in Agent Control.
+  ANTHROPIC_COORDINATOR_MODEL: process.env.ANTHROPIC_COORDINATOR_MODEL || 'claude-sonnet-5',
 
   // Brave Search — shared across tenants
   SEARCH_API_KEY: process.env.SEARCH_API_KEY,
@@ -71,11 +84,12 @@ export const config = {
   LINODE_DOMAIN_ID: process.env.LINODE_DOMAIN_ID,   // madladslab.com domain ID
   LINODE_IP: process.env.LINODE_IP || '104.237.138.28',
 
-  // Slab platform Stripe (for subscription billing, not tenant payments)
-  SLAB_STRIPE_SECRET: process.env.SLAB_STRIPE_SECRET,
-  SLAB_STRIPE_PUBLISHABLE: process.env.SLAB_STRIPE_PUBLISHABLE,
+  // Slab platform Stripe (MadLadsLab account — go-live card payments).
+  // Falls back to STRIPE_SEC/STRIPE_PUB, the names the platform keys already use in .env.
+  SLAB_STRIPE_SECRET: process.env.SLAB_STRIPE_SECRET || process.env.STRIPE_SEC,
+  SLAB_STRIPE_PUBLISHABLE: process.env.SLAB_STRIPE_PUBLISHABLE || process.env.STRIPE_PUB,
   SLAB_STRIPE_WEBHOOK_SECRET: process.env.SLAB_STRIPE_WEBHOOK_SECRET,
-  SLAB_STRIPE_PRICE_ID: process.env.SLAB_STRIPE_PRICE_ID,  // $50/mo price ID
+  SLAB_STRIPE_PRICE_ID: process.env.SLAB_STRIPE_PRICE_ID,  // optional — go-live uses ad-hoc price_data, not a fixed price ID
 
   // Slab platform PayPal (for go-live activation payments)
   PAYPAL_CID: process.env.PAYPAL_CID,

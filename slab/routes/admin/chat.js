@@ -14,12 +14,15 @@
 
 import express from 'express';
 import {
-  THREAD_KINDS, DEFAULT_AGENT_CONFIG,
+  THREAD_KINDS, KIND_META, DEFAULT_AGENT_CONFIG,
   listThreads, getThread, createThread, setThreadStatus,
   addMember, removeMember, listMessages,
   getChatFlowMatrix, setChatFlow,
 } from '../../plugins/chat.js';
 import { MCP_TOOLS } from '../../plugins/agentMcp.js';
+import { ANTHROPIC_MODELS } from '../../plugins/agentEngine.js';
+import { agentsByCategory, getAgentConfigMap, setAgentConfig, getTenantDefault, setTenantDefault } from '../../plugins/agentRegistry.js';
+const MODEL_KEYS = new Set(ANTHROPIC_MODELS.map((m) => m.key));
 
 const router = express.Router();
 
@@ -27,8 +30,9 @@ const router = express.Router();
 // BYO seams and render as "coming soon" until their provider layer lands.
 const ENGINES = [
   { key: 'house',       label: 'House (Ollama)',            ready: true },
-  { key: 'anthropic',   label: 'BYO Anthropic API key',     ready: false },
-  { key: 'claude-code', label: 'BYO Claude Code (Pro/Max)', ready: false },
+  { key: 'anthropic',   label: 'BYO Anthropic API key',     ready: true },
+  // 'claude-code' (BYO Pro/Max via the Agent SDK) removed 2026-07-15 — different
+  // surface than the API-key path, and superseded by the scope-builder rethink.
 ];
 
 function viewerCtx(req) {
@@ -46,13 +50,16 @@ router.get('/', async (req, res) => {
   try {
     const db = req.db;
     const status = ['active', 'locked', 'archived'].includes(req.query.status) ? req.query.status : 'active';
-    const [threads, matrix] = await Promise.all([
+    const [threads, matrix, agentConfig, tenantDefault] = await Promise.all([
       listThreads(db, { userId: req.adminUser?.id, ctx: { ...viewerCtx(req), isOwner: true }, status, limit: 100 }),
       getChatFlowMatrix(db),
+      getAgentConfigMap(db),
+      getTenantDefault(db),
     ]);
     res.render('admin/chat/index', {
       user: req.adminUser, page: 'chat', title: 'Chat Control',
-      threads, matrix, kinds: THREAD_KINDS, engines: ENGINES,
+      threads, matrix, kinds: THREAD_KINDS, kindMeta: KIND_META, engines: ENGINES, models: ANTHROPIC_MODELS,
+      agentGroups: agentsByCategory(), agentConfig, tenantDefault,
       tools: MCP_TOOLS.map((t) => ({ name: t.name, description: t.description })),
       defaultAgent: DEFAULT_AGENT_CONFIG, status,
       tenantDb: req.tenant?.db || '', chatbotEnabled: req.tenant?.public?.chatbotEnabled === 'true',
@@ -138,11 +145,12 @@ router.post('/threads', async (req, res) => {
 // ── Chatflow matrix: set the agent config for a thread kind ────────────────────
 router.post('/flow/:kind', async (req, res) => {
   try {
-    const { enabled, agentKey, engine, tools, greeting, captureContact, mode } = req.body;
+    const { enabled, agentKey, engine, model, tools, greeting, captureContact, mode } = req.body;
     await setChatFlow(req.db, req.params.kind, {
       enabled: enabled === 'true' || enabled === true || enabled === 'on',
       agentKey: (agentKey || 'assistant').slice(0, 60),
-      engine: ['house', 'anthropic', 'claude-code'].includes(engine) ? engine : 'house',
+      engine: ['house', 'anthropic'].includes(engine) ? engine : 'house',
+      model: MODEL_KEYS.has(model) ? model : '', // '' → platform default (Opus 4.8)
       tools: Array.isArray(tools) ? tools : (tools ? [tools] : []),
       greeting: (greeting || '').slice(0, 500),
       captureContact: captureContact === 'true' || captureContact === true || captureContact === 'on',
@@ -152,6 +160,37 @@ router.post('/flow/:kind', async (req, res) => {
   } catch (err) {
     console.error('[admin/chat] flow save error:', err);
     res.redirect('/admin/chat?error=1#matrix');
+  }
+});
+
+// ── Tenant default: base engine/model the whole tenant inherits ───────────────
+router.post('/tenant-default', async (req, res) => {
+  try {
+    const { engine, model } = req.body;
+    await setTenantDefault(req.db, {
+      engine: ['house', 'anthropic'].includes(engine) ? engine : '', // '' → platform behaviour
+      model: MODEL_KEYS.has(model) ? model : '',
+    });
+    res.redirect('/admin/chat?saved=1#agents');
+  } catch (err) {
+    console.error('[admin/chat] tenant-default save error:', err);
+    res.redirect('/admin/chat?error=1#agents');
+  }
+});
+
+// ── Per-agent config: engine/model override + enable for one registry agent ───
+router.post('/agent-config/:key', async (req, res) => {
+  try {
+    const { enabled, engine, model } = req.body;
+    await setAgentConfig(req.db, req.params.key, {
+      enabled: enabled === 'true' || enabled === true || enabled === 'on',
+      engine: ['house', 'anthropic'].includes(engine) ? engine : '', // '' → inherit
+      model: MODEL_KEYS.has(model) ? model : '',                     // '' → inherit/default
+    });
+    res.redirect('/admin/chat?saved=1#agents');
+  } catch (err) {
+    console.error('[admin/chat] agent-config save error:', err);
+    res.redirect('/admin/chat?error=1#agents');
   }
 });
 

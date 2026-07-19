@@ -54,18 +54,7 @@
   </style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="topbar-left">
-      <div class="logo"><span>s</span>Lab</div>
-      <span class="badge">Superadmin</span>
-    </div>
-    <div class="topbar-right">
-      <a href="/superadmin">Dashboard</a>
-      <a href="/delegates/admin">Delegates</a>
-      <a href="/delegates/admin/reports/state-tax">State Tax</a>
-      <a href="/superadmin/logout">Logout</a>
-    </div>
-  </div>
+  <%- include('../superadmin/partials/nav', { active: 'delegates', user: (typeof user !== 'undefined' ? user : null), subtitle: 'Delegates' }) %>
 
   <div class="container">
     <a href="/delegates/admin" class="back">&larr; Back to Delegates</a>
@@ -88,15 +77,15 @@
     <!-- Status actions -->
     <div class="actions-row">
       <% if (delegate.status !== 'active') { %>
-        <form method="POST" action="/delegates/admin/<%= delegate._id %>/status"><input type="hidden" name="status" value="active"><button class="btn btn-green">Activate</button></form>
+        <form data-guard="button" method="POST" action="/delegates/admin/<%= delegate._id %>/status"><input type="hidden" name="status" value="active"><button class="btn btn-green">Activate</button></form>
       <% } %>
       <% if (delegate.status !== 'pending') { %>
-        <form method="POST" action="/delegates/admin/<%= delegate._id %>/status"><input type="hidden" name="status" value="pending"><button class="btn btn-amber">Set Pending</button></form>
+        <form data-guard="button" method="POST" action="/delegates/admin/<%= delegate._id %>/status"><input type="hidden" name="status" value="pending"><button class="btn btn-amber">Set Pending</button></form>
       <% } %>
       <% if (delegate.status !== 'suspended') { %>
-        <form method="POST" action="/delegates/admin/<%= delegate._id %>/status"><input type="hidden" name="status" value="suspended"><button class="btn btn-red" onclick="return confirm('Suspend this delegate?')">Suspend</button></form>
+        <form data-guard="button" method="POST" action="/delegates/admin/<%= delegate._id %>/status"><input type="hidden" name="status" value="suspended"><button class="btn btn-red" onclick="return confirm('Suspend this delegate?')">Suspend</button></form>
       <% } %>
-      <form method="POST" action="/delegates/admin/<%= delegate._id %>/send-reminder" style="margin-left:auto;">
+      <form data-guard="button" method="POST" action="/delegates/admin/<%= delegate._id %>/send-reminder" style="margin-left:auto;">
         <button type="submit" class="btn btn-gold" onclick="return confirm('Email <%= delegate.email %> a login reminder with their share code?')">Send Login Reminder</button>
       </form>
     </div>
@@ -108,40 +97,48 @@
         <div class="info-item"><label>Phone</label><span><%= delegate.phone || '—' %></span></div>
         <div class="info-item"><label>Address</label><span><%= delegate.address || '—' %></span></div>
         <div class="info-item"><label>City / State</label><span><%= delegate.city || '—' %>, <%= delegate.state || '—' %> <%= delegate.zip || '' %></span></div>
-        <div class="info-item"><label>Tax Info</label><span style="color:<%= delegate.taxInfoProvided ? '#4ade80' : '#f87171' %>;"><%= delegate.taxInfoProvided ? 'Submitted' : 'Not provided' %><% if (delegate.taxInfo?.w9_enc) { %> — <a href="/delegates/admin/<%= delegate._id %>/w9" target="_blank" style="color:#c9a848;font-size:12px;">View W-9</a><% } %></span></div>
+        <div class="info-item"><label>Tax Form</label><span style="color:<%= taxComplete ? '#4ade80' : '#f87171' %>;"><%= delegate.taxInfo?.formType || 'W-9' %> — <%= taxComplete ? 'complete' : 'incomplete' %><% if (delegate.taxInfo?.w9_enc) { %> &middot; <a href="/delegates/admin/<%= delegate._id %>/w9" target="_blank" style="color:#c9a848;font-size:12px;">View doc</a><% } %></span></div>
         <% if (delegate.taxInfo) { %>
         <div class="info-item"><label>Legal Name</label><span><%= delegate.taxInfo.legalName || '—' %></span></div>
-        <div class="info-item"><label>Entity Type</label><span><%= (delegate.taxInfo.entityType || '—').replace(/_/g, ' ') %></span></div>
+        <div class="info-item"><label>Business Type</label><span><%= (delegate.taxInfo.entityType || '—').replace(/_/g, ' ') %></span></div>
         <% } %>
-        <div class="info-item"><label>Total Earned</label><span style="color:#c9a848;">$<%= (delegate.totalEarned || 0).toFixed(2) %></span></div>
+        <div class="info-item"><label>Payable Balance</label><span style="color:#c9a848;">$<%= payable.toFixed(2) %></span></div>
+        <% if (heldTotal > 0) { %>
+        <div class="info-item"><label>Held (tax incomplete)</label><span style="color:#f87171;">$<%= heldTotal.toFixed(2) %></span></div>
+        <% } %>
+        <div class="info-item"><label>Total Earned</label><span style="color:#a3a3a3;">$<%= (delegate.totalEarned || 0).toFixed(2) %></span></div>
         <div class="info-item"><label>Total Paid</label><span style="color:#4ade80;">$<%= (delegate.totalPaid || 0).toFixed(2) %></span></div>
       </div>
     </div>
 
-    <!-- Attach tenant -->
+    <!-- Slab referrals -->
     <div class="section">
-      <h2>Assigned Accounts</h2>
-      <% if (availableTenants.length) { %>
-      <form method="POST" action="/delegates/admin/<%= delegate._id %>/attach" class="attach-form">
-        <select name="tenantId">
-          <% for (const t of availableTenants) { %>
-          <option value="<%= t._id %>"><%= t.brand?.name || t.domain %> (<%= t.domain %>)</option>
+      <h2>Slab Referrals</h2>
+      <div style="font-size:12px;color:#737373;margin-bottom:12px;line-height:1.6;">
+        Slab subscriptions (<span style="font-family:monospace;color:#c9a848;">slab.madladslab.com</span>) this delegate sold.
+        Signups link automatically via <span style="font-family:monospace;color:#c9a848;">/start?ref=<%= delegate.refCode %></span> —
+        add one manually below (customer name + tier).
+      </div>
+      <form method="POST" action="/delegates/admin/<%= delegate._id %>/attach" class="attach-form" data-guard data-guard-label="Adding..." style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <input type="text" name="customerName" required placeholder="Customer name" style="flex:1;min-width:160px;">
+        <select name="plan" required>
+          <% for (const tier of tiers) { %>
+          <option value="<%= tier %>" style="text-transform:capitalize;"><%= tier.charAt(0).toUpperCase() + tier.slice(1) %></option>
           <% } %>
         </select>
-        <button type="submit" class="btn btn-gold">Attach Tenant</button>
+        <input type="date" name="signedUpAt" title="Signed up (defaults to today)">
+        <button type="submit" class="btn btn-gold">Add Referral</button>
       </form>
-      <% } %>
 
       <% if (tenantDetails.length) { %>
       <table>
-        <thead><tr><th>Domain</th><th>Brand</th><th>State</th><th>Plan</th><th>Yr</th><th>Rate</th><th>Gross/mo</th><th>Net/mo</th><th>Commission</th><th></th></tr></thead>
+        <thead><tr><th>Customer</th><th>Signed Up</th><th>Plan</th><th>Yr</th><th>Rate</th><th>Gross/mo</th><th>Net/mo</th><th>Commission</th><th></th></tr></thead>
         <tbody>
           <% for (const t of tenantDetails) { %>
           <% const gross = Number(t.grossMonthly || 0), net = Number(t.netMonthly || 0), comm = Number(t.commission || 0), rate = Number(t.rate || 0); %>
           <tr>
-            <td><%= t.tenantDomain %></td>
             <td><%= t.brandName %></td>
-            <td style="color:<%= t.businessState ? '#e5e5e5' : '#f87171' %>;"><%= t.businessState || '—' %></td>
+            <td style="color:#a3a3a3;white-space:nowrap;"><%= t.attachedAt ? new Date(t.attachedAt).toLocaleDateString() : '—' %></td>
             <td style="text-transform:capitalize;"><%= t.plan || '—' %></td>
             <td><%= t.year || '—' %></td>
             <td><%= (rate * 100).toFixed(0) %>%</td>
@@ -151,9 +148,9 @@
               $<%= comm.toFixed(2) %><% if (t.inTrial) { %> <span style="font-size:10px;color:#fdba74;">(trial)</span><% } %>
             </td>
             <td>
-              <form method="POST" action="/delegates/admin/<%= delegate._id %>/detach" style="display:inline;">
-                <input type="hidden" name="tenantId" value="<%= t.tenantId %>">
-                <button type="submit" class="btn-sm" onclick="return confirm('Detach this tenant?')">Detach</button>
+              <form data-guard="button" method="POST" action="/delegates/admin/<%= delegate._id %>/detach" style="display:inline;">
+                <input type="hidden" name="key" value="<%= t.key %>">
+                <button type="submit" class="btn-sm" onclick="return confirm('Unlink this referral?')">Unlink</button>
               </form>
             </td>
           </tr>
@@ -164,7 +161,7 @@
         Net = gross &times; (1 &minus; <%= (ownerTaxRate * 100).toFixed(0) %>% owner tax). Commission = net &times; rate.
       </div>
       <% } else { %>
-        <div class="empty">No accounts attached yet.</div>
+        <div class="empty">No referrals yet.</div>
       <% } %>
     </div>
 
@@ -174,10 +171,10 @@
       <div style="font-size:12px;color:#737373;margin-bottom:12px;line-height:1.6;">
         Promo codes give a tenant a free trial when used at <code style="color:#c9a848;">/start?ref=CODE</code>.
         During the trial period, the delegate's commission is also $0 — commission begins after the trial ends.<br>
-        Each delegate also has their personal share code <code style="color:#c9a848;"><%= delegate.refCode %></code> (30-day default).
+        Each delegate also has their personal referral code <code style="color:#c9a848;"><%= delegate.refCode %></code> for signup attribution.
       </div>
 
-      <form method="POST" action="/delegates/admin/<%= delegate._id %>/promo-codes" class="payout-form" style="margin-bottom:18px;">
+      <form method="POST" action="/delegates/admin/<%= delegate._id %>/promo-codes" class="payout-form" style="margin-bottom:18px;" data-guard data-guard-label="Creating...">
         <div class="form-group">
           <label>Code (optional)</label>
           <input type="text" name="code" placeholder="auto-generated if blank" style="width:200px;text-transform:uppercase;">
@@ -218,7 +215,7 @@
             <td style="font-family:monospace;font-size:11px;color:#737373;"><%= (domain || 'https://slab.madladslab.com') %>/start?ref=<%= p.code %></td>
             <td>
               <% if (live) { %>
-              <form method="POST" action="/delegates/admin/<%= delegate._id %>/promo-codes/<%= p._id %>/disable" style="display:inline;">
+              <form data-guard="button" method="POST" action="/delegates/admin/<%= delegate._id %>/promo-codes/<%= p._id %>/disable" style="display:inline;">
                 <button type="submit" class="btn-sm" onclick="return confirm('Disable this promo code?')">Disable</button>
               </form>
               <% } %>
@@ -235,24 +232,42 @@
     <!-- Log payout -->
     <div class="section">
       <h2>Log PayPal Payout</h2>
-      <div style="font-size:12px;color:#737373;margin-bottom:10px;">
-        Payouts are PayPal-only to begin. Send via PayPal first, then record the transaction here.
+      <% if (!taxComplete) { %>
+      <div style="font-size:13px;color:#fca5a5;background:#451a1a;border:1px solid #602020;padding:10px 14px;border-radius:6px;margin-bottom:10px;">
+        &#9888; Payouts are blocked — this delegate has no complete W-9 / W-8BEN on file. $<%= heldTotal.toFixed(2) %> is being held.
       </div>
-      <form method="POST" action="/delegates/admin/<%= delegate._id %>/payout" class="payout-form">
+      <% } else { %>
+      <div style="font-size:12px;color:#737373;margin-bottom:10px;">
+        Payable balance: <strong style="color:#c9a848;">$<%= payable.toFixed(2) %></strong>.
+        <% if (typeof payoutsLive !== 'undefined' && payoutsLive && payable > 0) { %>
+        Send it instantly via the live PayPal Payouts API, or record a manual payment below.
+        <% } else { %>
+        Send via PayPal, then record the transaction below.
+        <% } %>
+      </div>
+      <% if (typeof payoutsLive !== 'undefined' && payoutsLive && payable > 0) { %>
+      <form method="POST" action="/delegates/admin/<%= delegate._id %>/paypal-payout" data-guard="button" style="margin-bottom:14px;">
+        <input type="hidden" name="idemKey" value="<%= payoutIdem %>">
+        <button type="submit" class="btn btn-gold" onclick="return confirm('Send a LIVE PayPal payout of $<%= payable.toFixed(2) %> to <%= delegate.taxInfo ? delegate.email : delegate.email %> now? This moves real money and cannot be undone.')">💸 Send $<%= payable.toFixed(2) %> via PayPal now</button>
+        <span style="font-size:11px;color:#737373;margin-left:8px;">→ <%= delegate.payoutEmail || delegate.email %></span>
+      </form>
+      <% } %>
+      <% } %>
+      <form method="POST" action="/delegates/admin/<%= delegate._id %>/payout" class="payout-form" data-guard data-guard-label="Logging payout...">
         <input type="hidden" name="method" value="paypal">
         <div class="form-group">
           <label>Amount ($)</label>
-          <input type="number" name="amount" step="0.01" min="0.01" required placeholder="0.00" style="width:120px;">
+          <input type="number" name="amount" step="0.01" min="0.01" max="<%= payable.toFixed(2) %>" required placeholder="0.00" style="width:120px;" <%= taxComplete ? '' : 'disabled' %>>
         </div>
         <div class="form-group">
           <label>PayPal Transaction ID</label>
-          <input type="text" name="paypalTxn" placeholder="e.g. 7XW12345AB678901C" style="width:220px;">
+          <input type="text" name="paypalTxn" placeholder="e.g. 7XW12345AB678901C" style="width:220px;" <%= taxComplete ? '' : 'disabled' %>>
         </div>
         <div class="form-group">
           <label>Note (optional)</label>
-          <input type="text" name="note" placeholder="e.g. March 2026 commission" style="width:240px;">
+          <input type="text" name="note" placeholder="e.g. March 2026 commission" style="width:240px;" <%= taxComplete ? '' : 'disabled' %>>
         </div>
-        <button type="submit" class="btn btn-gold">Log Payout</button>
+        <button type="submit" class="btn btn-gold" <%= taxComplete ? '' : 'disabled style=\"opacity:0.5;cursor:not-allowed;\"' %>>Log Payout</button>
       </form>
     </div>
 
@@ -281,5 +296,6 @@
       <% } %>
     </div>
   </div>
+<script src="/js/loadingWheel.js" defer></script>
 </body>
 </html>

@@ -16,20 +16,42 @@
   }
 </script>
 <% } %>
-<% if (typeof tenant !== 'undefined' && !tenant?.isPreview) { %>
 <script>
-  if (new URLSearchParams(window.location.search).get('activated') === '1') {
-    setTimeout(() => {
-      const d = document.createElement('div');
-      d.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:10001;background:#14532d;color:#86efac;padding:14px 24px;border-radius:8px;font-family:Inter,sans-serif;font-size:14px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
-      d.textContent = 'Your site is live! Visitors can now see your website.';
-      document.body.appendChild(d);
-      setTimeout(() => d.remove(), 5000);
-      const url = new URL(window.location); url.searchParams.delete('activated'); history.replaceState({}, '', url);
-    }, 300);
-  }
+// ── Go-live / checkout landing toasts ──────────────────────────────────────
+// Every payment path lands back on /admin with a status param; give each one
+// visible feedback. success (green) · info (blue) · warn (amber) · error (red).
+(function () {
+  const q = new URLSearchParams(window.location.search);
+  const PALETTE = {
+    success: { bg: '#14532d', fg: '#86efac' },
+    info:    { bg: '#0c2a4d', fg: '#93c5fd' },
+    warn:    { bg: '#3a2e08', fg: '#fcd34d' },
+    error:   { bg: '#4a1414', fg: '#fca5a5' },
+  };
+  // First matching rule wins. `param` is the query key; `value` (optional) must match.
+  const RULES = [
+    { param: 'activated', value: '1', type: 'success', msg: 'Your site is live! Visitors can now see your website.' },
+    { param: 'trial',     value: '1', type: 'info',    msg: 'Free trial started — your site is live for 14 days. Subscribe anytime to keep it up and add a custom domain.' },
+    { param: 'cancelled', value: '1', type: 'warn',    msg: 'Checkout cancelled — no charge was made. You can go live whenever you’re ready.' },
+    { param: 'error', value: 'payment_failed',  type: 'error', msg: 'Payment didn’t go through. No charge was made — please try again.' },
+    { param: 'error', value: 'payment_error',   type: 'error', msg: 'Something went wrong processing your payment. If you were charged, contact support.' },
+    { param: 'error', value: 'missing_token',   type: 'error', msg: 'We couldn’t confirm your PayPal payment. If you were charged, contact support.' },
+    { param: 'error', value: 'missing_session', type: 'error', msg: 'We couldn’t confirm your card payment. If you were charged, contact support.' },
+  ];
+  const hit = RULES.find(r => q.get(r.param) === r.value);
+  if (!hit) return;
+  const c = PALETTE[hit.type];
+  setTimeout(() => {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:10001;max-width:min(92vw,460px);text-align:center;background:' + c.bg + ';color:' + c.fg + ';padding:14px 24px;border-radius:8px;font-family:Inter,sans-serif;font-size:14px;font-weight:500;line-height:1.5;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+    d.textContent = hit.msg;
+    document.body.appendChild(d);
+    setTimeout(() => { d.style.transition = 'opacity .4s'; d.style.opacity = '0'; }, hit.type === 'error' ? 7000 : 5000);
+    setTimeout(() => d.remove(), hit.type === 'error' ? 7500 : 5500);
+    const url = new URL(window.location); url.searchParams.delete(hit.param); history.replaceState({}, '', url);
+  }, 300);
+})();
 </script>
-<% } %>
 
 <style>
 /* ── Dashboard-specific responsive styles ── */
@@ -600,8 +622,11 @@
   </div>
   <% } %>
 
-  <!-- MASTER AGENT -->
-  <div class="card agent-card">
+  <!-- MASTER AGENT — BACKSEATED 2026-07-15: consolidated into the ✦ universal
+       launcher. The daily briefing + prompts now render in the ✦ bubble on the
+       dashboard (agentLauncher.js). Hidden (not deleted) so it's reversible;
+       the inline .ma-* code is deprecated for later removal. -->
+  <div class="card agent-card" style="display:none">
     <div class="agent-header">
       <div>
         <div class="agent-name-row">
@@ -778,12 +803,28 @@
     <div id="digest-agents" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;"></div>
   </div>
 
+  <!-- AGENT TOOL USAGE — per-tool call counts + success %, the MCP scoreboard -->
+  <div class="card" id="tool-usage-card" style="margin-top:18px;padding:14px 18px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="color:var(--gold);font-size:1.05rem;">▦</span>
+        <span style="font-size:0.78rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--slate);">Agent Tool Usage</span>
+        <span id="tool-usage-summary" style="font-size:0.72rem;color:var(--slate);"></span>
+      </div>
+      <div id="tool-usage-scope" style="display:none;gap:6px;">
+        <button class="btn btn-navy btn-sm"  id="tu-scope-tenant" onclick="loadToolUsage('tenant')" style="font-size:0.65rem;">This site</button>
+        <button class="btn btn-ghost btn-sm" id="tu-scope-global" onclick="loadToolUsage('global')" style="font-size:0.65rem;">All sites</button>
+      </div>
+    </div>
+    <div id="tool-usage-body"></div>
+  </div>
+
 </div>
 </div></div>
 
 <script>
 const AGENT_NAME = '<%= agentName.replace(/\\/g,"\\\\").replace(/'/g,"\\'") %>';
-const DEPT_COLORS = { blog: '#2E4270', copy: '#1C2B4A', section: '#5B3E2B', page: '#2E5B3E', design: '#6B3FA0', asset: '#C9A848', social: '#3B5998', print: '#B5651D', email: '#D4563A', invoice: '#2B7A5B', outreach: '#4A6FA5', research: '#3A7B8C', onboarding: '#8C5A3A', navigate: '#555' };
+const DEPT_COLORS = { blog: '#2E4270', copy: '#1C2B4A', section: '#5B3E2B', page: '#2E5B3E', theme: '#6B3FA0', typography: '#6B3FA0', visibility: '#6B3FA0', design: '#6B3FA0', asset: '#C9A848', social: '#3B5998', print: '#B5651D', email: '#D4563A', invoice: '#2B7A5B', outreach: '#4A6FA5', research: '#3A7B8C', onboarding: '#8C5A3A', navigate: '#555' };
 
 // ── Cross-agent digest ──────────────────────────────────────────────────────
 async function loadDigest(range = 'day') {
@@ -834,6 +875,57 @@ async function loadDigest(range = 'day') {
   }
 }
 document.addEventListener('DOMContentLoaded', () => loadDigest('day'));
+
+// ── Agent tool-usage scoreboard ─────────────────────────────────────────────
+// Per-tool call counts + success %. Tenant-scoped by default; superadmins get a
+// "This site / All sites" toggle for the cross-tenant platform roll-up.
+async function loadToolUsage(scope = 'tenant') {
+  const body = document.getElementById('tool-usage-body');
+  if (!body) return;
+  try {
+    const r = await fetch('/admin/master-agent/tool-usage' + (scope === 'global' ? '?scope=global' : ''));
+    if (!r.ok) return;
+    const d = await r.json();
+
+    // Scope toggle only shows for superadmins (server sets canGlobal).
+    const scopeEl = document.getElementById('tool-usage-scope');
+    if (d.canGlobal && scopeEl) {
+      scopeEl.style.display = 'flex';
+      document.getElementById('tu-scope-tenant').className = 'btn btn-sm ' + (d.scope === 'tenant' ? 'btn-navy' : 'btn-ghost');
+      document.getElementById('tu-scope-global').className = 'btn btn-sm ' + (d.scope === 'global' ? 'btn-navy' : 'btn-ghost');
+    }
+
+    const t = d.totals || { calls: 0 };
+    document.getElementById('tool-usage-summary').textContent =
+      t.calls + ' call' + (t.calls === 1 ? '' : 's') +
+      (t.successPct !== null && t.successPct !== undefined ? ' · ' + t.successPct + '% ok' : '') +
+      (d.scope === 'global' ? ' · all sites' : '');
+
+    const used = (d.tools || []).filter(x => x.calls > 0);
+    if (!used.length) {
+      body.innerHTML = '<div style="font-size:0.75rem;color:var(--slate);padding:8px 0;">No agent tool calls recorded yet — usage appears here as your agents run.</div>';
+      return;
+    }
+    const maxCalls = used[0].calls || 1;
+    body.innerHTML = used.map(x => {
+      const pct = Math.round((x.calls / maxCalls) * 100);
+      const okColor = x.successPct === null ? 'var(--slate)'
+        : x.successPct >= 90 ? '#15803D'
+        : x.successPct >= 60 ? 'var(--gold)' : '#B91C1C';
+      const okStr  = x.successPct === null ? '' : ` · <span style="color:${okColor};font-weight:600;">${x.successPct}%</span>`;
+      const msStr  = x.avgMs === null ? '' : ` · ${x.avgMs >= 1000 ? (x.avgMs / 1000).toFixed(1) + 's' : x.avgMs + 'ms'}`;
+      const tnStr  = (d.scope === 'global' && x.tenantCount) ? ` · ${x.tenantCount} site${x.tenantCount === 1 ? '' : 's'}` : '';
+      return '<div style="display:grid;grid-template-columns:minmax(120px,180px) 1fr auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(0,0,0,0.05);">' +
+          '<span style="font-size:0.72rem;font-family:monospace;color:var(--on-surface);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + _escHtml(x.description || '') + '">' + _escHtml(x.tool) + '</span>' +
+          '<div style="background:var(--border);border-radius:2px;height:7px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--navy);border-radius:2px;"></div></div>' +
+          '<span style="font-size:0.72rem;color:var(--slate);white-space:nowrap;"><b style="color:var(--on-surface);">' + x.calls + '</b>' + okStr + msStr + tnStr + '</span>' +
+        '</div>';
+    }).join('');
+  } catch (e) {
+    console.warn('[tool-usage] load failed:', e);
+  }
+}
+document.addEventListener('DOMContentLoaded', () => loadToolUsage('tenant'));
 
 // Conversation history (multi-turn)
 let maHistory = [];
@@ -1919,23 +2011,27 @@ document.getElementById('ma-input').addEventListener('keydown', e => {
     </p>
     <div id="goLivePlans" style="display:grid; gap:10px; margin-bottom:20px; text-align:left;">
       <label style="display:flex; align-items:center; gap:12px; padding:12px 14px; background:#1a1a1a; border:2px solid #c9a848; border-radius:6px; cursor:pointer; transition:border 0.2s;">
-        <input type="radio" name="goPlan" value="starter" checked style="accent-color:#c9a848;">
-        <div><div style="font-size:14px; font-weight:600; color:#c9a848;">Starter — $1</div><div style="font-size:11px; color:#a3a3a3;">30 days live access</div></div>
+        <input type="radio" name="goPlan" value="monthly" checked style="accent-color:#c9a848;">
+        <div><div style="font-size:14px; font-weight:600; color:#fff;">Monthly — $39.95/mo</div><div style="font-size:11px; color:#a3a3a3;">Full platform access</div></div>
       </label>
       <label style="display:flex; align-items:center; gap:12px; padding:12px 14px; background:#1a1a1a; border:1px solid #333; border-radius:6px; cursor:pointer; transition:border 0.2s;">
-        <input type="radio" name="goPlan" value="monthly" style="accent-color:#c9a848;">
-        <div><div style="font-size:14px; font-weight:500; color:#fff;">Monthly — $50/mo</div><div style="font-size:11px; color:#737373;">Full platform access</div></div>
+        <input type="radio" name="goPlan" value="quarterly" style="accent-color:#c9a848;">
+        <div><div style="font-size:14px; font-weight:500; color:#fff;">Quarterly — $110.26/qtr</div><div style="font-size:11px; color:#737373;">Save 8% (~$36.75/mo)</div></div>
       </label>
       <label style="display:flex; align-items:center; gap:12px; padding:12px 14px; background:#1a1a1a; border:1px solid #333; border-radius:6px; cursor:pointer; transition:border 0.2s;">
         <input type="radio" name="goPlan" value="annual" style="accent-color:#c9a848;">
-        <div><div style="font-size:14px; font-weight:500; color:#fff;">Annual — $300/yr</div><div style="font-size:11px; color:#737373;">Save 50% ($25/mo)</div></div>
+        <div><div style="font-size:14px; font-weight:500; color:#fff;">Annual — $431.46/yr</div><div style="font-size:11px; color:#737373;">Save 10% (~$35.96/mo)</div></div>
       </label>
-      <label style="display:flex; align-items:center; gap:12px; padding:12px 14px; background:#1a1a1a; border:1px solid #333; border-radius:6px; cursor:pointer; transition:border 0.2s;">
-        <input type="radio" name="goPlan" value="lifetime" style="accent-color:#c9a848;">
-        <div><div style="font-size:14px; font-weight:500; color:#fff;">Lifetime — $499 once</div><div style="font-size:11px; color:#737373;">Pay once, use forever</div></div>
+      <label style="display:flex; align-items:center; gap:12px; padding:12px 14px; background:#111; border:1px dashed #4a7a4a; border-radius:6px; cursor:pointer; transition:border 0.2s;">
+        <input type="radio" name="goPlan" value="trial" style="accent-color:#4a7a4a;">
+        <div><div style="font-size:14px; font-weight:600; color:#8ecb8e;">Try Free — 14 days</div><div style="font-size:11px; color:#737373;">No card required · add a custom domain after you subscribe</div></div>
       </label>
     </div>
-    <button id="goLiveSubmit" style="width:100%; padding:14px; background:#c9a848; color:#0a0a0a; border:none; border-radius:6px; font-family:'Inter',sans-serif; font-size:15px; font-weight:600; cursor:pointer;">Continue to Payment</button>
+    <div id="goLivePayButtons" style="display:grid; gap:8px;">
+      <button id="goLivePaypal" style="width:100%; padding:14px; background:#c9a848; color:#0a0a0a; border:none; border-radius:6px; font-family:'Inter',sans-serif; font-size:15px; font-weight:600; cursor:pointer;">Pay with PayPal</button>
+      <button id="goLiveStripe" style="width:100%; padding:14px; background:#635bff; color:#fff; border:none; border-radius:6px; font-family:'Inter',sans-serif; font-size:15px; font-weight:600; cursor:pointer;">Pay with Card</button>
+    </div>
+    <button id="goLiveTrialBtn" style="display:none; width:100%; padding:14px; background:#4a7a4a; color:#fff; border:none; border-radius:6px; font-family:'Inter',sans-serif; font-size:15px; font-weight:600; cursor:pointer;">Start Free Trial</button>
     <button id="goLiveCancel" style="width:100%; padding:10px; background:none; border:none; color:#737373; font-size:13px; cursor:pointer; margin-top:8px;">Not yet — keep building</button>
   </div>
 </div>
@@ -1969,13 +2065,30 @@ document.getElementById('ma-input').addEventListener('keydown', e => {
   document.getElementById('goLiveCancel').addEventListener('click', hideModal);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) hideModal(); });
 
-  document.getElementById('goLiveSubmit').addEventListener('click', async () => {
-    const plan = document.querySelector('input[name=goPlan]:checked')?.value || 'monthly';
-    const btn = document.getElementById('goLiveSubmit');
-    btn.disabled = true;
+  const payButtons = document.getElementById('goLivePayButtons');
+  const trialBtn = document.getElementById('goLiveTrialBtn');
+  const paypalBtn = document.getElementById('goLivePaypal');
+  const stripeBtn = document.getElementById('goLiveStripe');
+
+  function selectedPlan() {
+    return document.querySelector('input[name=goPlan]:checked')?.value || 'monthly';
+  }
+  // Free trial has no payment step — swap the button set based on the choice.
+  function syncButtons() {
+    const isTrial = selectedPlan() === 'trial';
+    payButtons.style.display = isTrial ? 'none' : 'grid';
+    trialBtn.style.display = isTrial ? 'block' : 'none';
+  }
+  document.querySelectorAll('input[name=goPlan]').forEach(r => r.addEventListener('change', syncButtons));
+  syncButtons();
+
+  async function startCheckout(endpoint, btn, label) {
+    const plan = selectedPlan();
+    const original = btn.textContent;
+    paypalBtn.disabled = stripeBtn.disabled = trialBtn.disabled = true;
     btn.textContent = 'Redirecting...';
     try {
-      const res = await fetch('/start/go-live', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan }),
@@ -1984,16 +2097,20 @@ document.getElementById('ma-input').addEventListener('keydown', e => {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert(data.error || 'Could not start checkout. Contact support.');
-        btn.disabled = false;
-        btn.textContent = 'Continue to Payment';
+        SlabFlash.error(data.error || 'Could not start checkout. Contact support.');
+        paypalBtn.disabled = stripeBtn.disabled = trialBtn.disabled = false;
+        btn.textContent = original;
       }
     } catch {
-      alert('Network error. Please try again.');
-      btn.disabled = false;
-      btn.textContent = 'Continue to Payment';
+      SlabFlash.error('Network error. Please try again.');
+      paypalBtn.disabled = stripeBtn.disabled = trialBtn.disabled = false;
+      btn.textContent = original;
     }
-  });
+  }
+
+  paypalBtn.addEventListener('click', () => startCheckout('/start/go-live', paypalBtn));
+  stripeBtn.addEventListener('click', () => startCheckout('/start/go-live-stripe', stripeBtn));
+  trialBtn.addEventListener('click', () => startCheckout('/start/trial', trialBtn));
 })();
 </script>
 <% } %>

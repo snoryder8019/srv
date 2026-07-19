@@ -1,0 +1,344 @@
+<%- include('../partials/head', { title: 'Profit & Loss' }) %>
+<%- include('../partials/sidebar', { page: 'ledger', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Profit &amp; Loss</div>
+  <div class="topbar-actions">
+    <% if (canExport) { %><a href="/admin/ledger/export?mode=<%= mode %>&month=<%= month %>&year=<%= year %>&q=<%= q %>&compare=<%= compareMode %>" class="btn btn-navy btn-sm">Export / Print</a><% } %>
+  </div>
+</div>
+
+<div class="content" data-agent-scope="bookkeeping" data-agent-kind="agent" data-agent-title="P&amp;L Review" data-agent-suggest="Explain this month&#39;s P&amp;L in plain terms|What moved most vs last month?|Which line is furthest from budget?|Summarize gross vs net profit">
+  <%- include('_tabs', { active: 'pnl' }) %>
+  <% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <!-- Period selector -->
+  <div class="card" style="margin-bottom:20px;padding:16px 20px;">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div class="tabs" style="margin:0;border:none;">
+          <a href="/admin/ledger?mode=month&month=<%= month %>" class="tab-link <%= mode === 'month' ? 'active' : '' %>" style="padding:8px 16px;">Monthly</a>
+          <a href="/admin/ledger?mode=quarter&year=<%= year %>&q=<%= q %>" class="tab-link <%= mode === 'quarter' ? 'active' : '' %>" style="padding:8px 16px;">Quarterly</a>
+        </div>
+      </div>
+
+      <% if (mode === 'month') { %>
+      <form method="GET" action="/admin/ledger" style="display:flex;gap:8px;align-items:center;margin:0;">
+        <input type="hidden" name="mode" value="month">
+        <a href="/admin/ledger?mode=month&month=<%= prevMonth %>" class="btn btn-ghost btn-sm" style="padding:6px 12px;">&larr;</a>
+        <input type="month" name="month" value="<%= month %>" onchange="this.form.submit()" style="padding:6px 10px;font-size:0.85rem;">
+        <a href="/admin/ledger?mode=month&month=<%= nextMonth %>" class="btn btn-ghost btn-sm" style="padding:6px 12px;">&rarr;</a>
+      </form>
+      <% } else { %>
+      <form method="GET" action="/admin/ledger" style="display:flex;gap:8px;align-items:center;margin:0;">
+        <input type="hidden" name="mode" value="quarter">
+        <select name="q" onchange="this.form.submit()" style="padding:6px 10px;font-size:0.85rem;">
+          <% for (let i = 1; i <= 4; i++) { %><option value="<%= i %>" <%= q === i ? 'selected' : '' %>>Q<%= i %></option><% } %>
+        </select>
+        <input type="number" name="year" value="<%= year %>" onchange="this.form.submit()" style="width:90px;padding:6px 10px;font-size:0.85rem;">
+      </form>
+      <% } %>
+    </div>
+
+    <!-- Comparison basis -->
+    <div style="display:flex;gap:8px;align-items:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);flex-wrap:wrap;">
+      <span class="text-slate" style="font-size:0.7rem;text-transform:uppercase;letter-spacing:.1em;">Compare vs:</span>
+      <form method="GET" action="/admin/ledger" style="margin:0;display:flex;gap:6px;align-items:center;">
+        <input type="hidden" name="mode" value="<%= mode %>">
+        <% if (mode === 'month') { %>
+          <input type="hidden" name="month" value="<%= month %>">
+        <% } else { %>
+          <input type="hidden" name="year" value="<%= year %>">
+          <input type="hidden" name="q" value="<%= q %>">
+        <% } %>
+        <select name="compare" onchange="this.form.submit()" style="padding:5px 10px;font-size:0.82rem;">
+          <option value="prev" <%= compareMode === 'prev' ? 'selected' : '' %>>Previous <%= mode === 'quarter' ? 'quarter' : 'month' %></option>
+          <option value="year" <%= compareMode === 'year' ? 'selected' : '' %>>Same period last year</option>
+        </select>
+      </form>
+      <span class="text-slate" style="font-size:0.74rem;">showing change vs <strong><%= compareLabel %></strong></span>
+    </div>
+  </div>
+
+  <%
+    // ── comparison formatting helpers (shared by stats + tables) ──
+    function pctText(v) {
+      if (v === null || v === undefined) return '—';
+      return (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+    }
+    // upGood: true when a rise is favourable (income, gross, net); false for expenses/cogs.
+    function deltaColor(v, upGood) {
+      if (v === null || v === undefined) return 'var(--slate)';
+      return ((v >= 0) === upGood) ? 'var(--success)' : 'var(--danger)';
+    }
+    // Signed dollar variance vs the comparison period — always computes (even from
+    // a zero prior), so no "new"/"—" edge cases.
+    function prevText(o) {
+      const v = ((o && o.actual) || 0) - ((o && o.prev) || 0);
+      return (v >= 0 ? '+' : '') + money(v);
+    }
+    function prevColor(o, upGood) {
+      const v = ((o && o.actual) || 0) - ((o && o.prev) || 0);
+      if (v === 0) return 'var(--slate)';
+      return ((v > 0) === upGood) ? 'var(--success)' : 'var(--danger)';
+    }
+  %>
+
+  <!-- Headline stats -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-label">Revenue</div>
+      <div class="stat-value" style="color:var(--success);font-size:2rem;"><%= money(pnl.totals.income.actual) %></div>
+      <div class="stat-delta" style="color:<%= prevColor(pnl.totals.income, true) %>;"><%= prevText(pnl.totals.income) %> <span class="text-slate">vs <%= compareLabel %></span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Gross Profit</div>
+      <div class="stat-value" style="font-size:2rem;"><%= money(pnl.gross.actual) %></div>
+      <div class="stat-delta" style="color:<%= prevColor(pnl.gross, true) %>;"><%= prevText(pnl.gross) %> <span class="text-slate">vs <%= compareLabel %></span></div>
+    </div>
+    <%
+      // Combined expenses across all expense classes (labor + fixed + operating).
+      const expActual = pnl.totals.labor.actual + pnl.totals.fixed.actual + pnl.totals.expense.actual;
+      const expPrev = pnl.totals.labor.prev + pnl.totals.fixed.prev + pnl.totals.expense.prev;
+      const expPrevPct = expPrev ? ((expActual - expPrev) / expPrev) * 100 : null;
+      const expObj = { actual: expActual, prev: expPrev, prevPct: expPrevPct };
+    %>
+    <div class="stat-card">
+      <div class="stat-label">Expenses</div>
+      <div class="stat-value" style="color:var(--danger);font-size:2rem;"><%= money(expActual) %></div>
+      <div class="stat-delta" style="color:<%= prevColor(expObj, false) %>;"><%= prevText(expObj) %> <span class="text-slate">vs <%= compareLabel %></span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Net Profit — <%= label %></div>
+      <div class="stat-value" style="font-size:2rem;color:<%= pnl.net.actual >= 0 ? 'var(--success)' : 'var(--danger)' %>;"><%= money(pnl.net.actual) %></div>
+      <div class="stat-delta" style="color:<%= prevColor(pnl.net, true) %>;"><%= prevText(pnl.net) %> <span class="text-slate">vs <%= compareLabel %></span></div>
+    </div>
+  </div>
+  <style>.stat-delta{font-size:0.72rem;font-weight:600;margin-top:4px;}.stat-delta .text-slate{font-weight:400;}</style>
+
+  <% if (!hasPlan) { %>
+  <div class="alert alert-error" style="background:rgba(201,168,72,0.08);border-color:rgba(201,168,72,0.3);color:var(--badge-accent);">
+    No budget plan for <%= year %> yet — the Budget column is blank. <a href="/admin/ledger/budget?year=<%= year %>" style="color:inherit;text-decoration:underline;">Set percentage targets</a> to compare against.
+  </div>
+  <% } %>
+
+  <!-- P&L statement -->
+  <%
+    function pnlSection(rows, totals, title, isExpense) {
+  %>
+  <div class="table-wrap" style="margin-bottom:16px;">
+    <table class="pnl-table">
+      <thead>
+        <tr>
+          <th><%= title %></th>
+          <th style="text-align:right;">Actual</th>
+          <th style="text-align:right;">Budget</th>
+          <th style="text-align:right;" class="pct-col">% of Bud</th>
+          <th style="text-align:right;">Variance</th>
+          <th style="text-align:right;"><%= compareLabel %></th>
+          <th style="text-align:right;">Δ vs <%= compareLabel %></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (!rows.length) { %>
+          <tr><td colspan="7" style="color:var(--slate);font-style:italic;">No <%= title.toLowerCase() %> categories.</td></tr>
+        <% } %>
+        <% for (const r of rows) {
+             const good = isExpense ? r.variance <= 0 : r.variance >= 0;
+             const budGood = isExpense ? (r.budgetPct <= 100) : (r.budgetPct >= 100);
+             const cid = r.category._id.toString();
+             const items = lineItems[cid] || [];
+        %>
+        <tr>
+          <td>
+            <% if (items.length) { %>
+              <button type="button" class="pnl-cat-btn" onclick="openPnlModal('<%= cid %>')" title="Review the transactions in this line">
+                <span style="font-weight:500;"><%= r.category.name %></span>
+                <span class="pnl-cat-count"><%= items.length %></span>
+              </button>
+            <% } else { %>
+              <span style="font-weight:500;"><%= r.category.name %></span>
+            <% } %>
+            <% if (r.category.group) { %><span style="color:var(--slate);font-size:0.72rem;margin-left:8px;"><%= r.category.group %></span><% } %>
+          </td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums;"><%= money(r.actual) %></td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--slate);"><%= r.budget ? money(r.budget) : '—' %></td>
+          <td class="pct-col" style="text-align:right;font-variant-numeric:tabular-nums;color:<%= r.budgetPct !== null ? (budGood ? 'var(--success)' : 'var(--danger)') : 'var(--slate)' %>;"><%= r.budgetPct !== null ? r.budgetPct.toFixed(0) + '%' : '—' %></td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums;color:<%= r.budget ? (good ? 'var(--success)' : 'var(--danger)') : 'var(--slate)' %>;"><%= r.budget ? money(r.variance) : '—' %></td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--slate);"><%= r.prev ? money(r.prev) : '—' %></td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums;color:<%= prevColor(r, !isExpense) %>;"><%= prevText(r) %></td>
+        </tr>
+        <% } %>
+      </tbody>
+      <tfoot>
+        <tr style="background:var(--ivory);font-weight:600;">
+          <td style="padding:12px 16px;border-top:2px solid var(--border);">Total <%= title %></td>
+          <td style="padding:12px 16px;border-top:2px solid var(--border);text-align:right;font-variant-numeric:tabular-nums;"><%= money(totals.actual) %></td>
+          <td style="padding:12px 16px;border-top:2px solid var(--border);text-align:right;font-variant-numeric:tabular-nums;color:var(--slate);"><%= totals.budget ? money(totals.budget) : '—' %></td>
+          <td style="padding:12px 16px;border-top:2px solid var(--border);text-align:right;font-variant-numeric:tabular-nums;color:var(--slate);" class="pct-col"><%= totals.budgetPct !== null ? totals.budgetPct.toFixed(0) + '%' : '—' %></td>
+          <td style="padding:12px 16px;border-top:2px solid var(--border);text-align:right;font-variant-numeric:tabular-nums;color:<%= totals.budget ? (isExpense ? (totals.actual <= totals.budget ? 'var(--success)' : 'var(--danger)') : (totals.actual >= totals.budget ? 'var(--success)' : 'var(--danger)')) : 'var(--slate)' %>;"><%= totals.budget ? money(totals.actual - totals.budget) : '—' %></td>
+          <td style="padding:12px 16px;border-top:2px solid var(--border);text-align:right;font-variant-numeric:tabular-nums;color:var(--slate);"><%= totals.prev ? money(totals.prev) : '—' %></td>
+          <td style="padding:12px 16px;border-top:2px solid var(--border);text-align:right;font-variant-numeric:tabular-nums;color:<%= prevColor(totals, !isExpense) %>;"><%= prevText(totals) %></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  <% } %>
+
+  <% pnlSection(pnl.sections.income, pnl.totals.income, 'Income', false); %>
+  <% pnlSection(pnl.sections.cogs, pnl.totals.cogs, 'Cost of Goods Sold', true); %>
+
+  <!-- Gross profit band -->
+  <div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:var(--ivory);">
+    <div>
+      <span style="font-family:var(--font-heading);font-size:1.15rem;">Gross Profit</span>
+      <span style="font-size:0.72rem;color:var(--slate);margin-left:10px;"><%= compareLabel %>: <%= money(pnl.gross.prev) %></span>
+    </div>
+    <div style="text-align:right;">
+      <span style="font-family:var(--font-heading);font-size:1.4rem;color:<%= pnl.gross.actual >= 0 ? 'var(--success)' : 'var(--danger)' %>;"><%= money(pnl.gross.actual) %></span>
+      <div style="font-size:0.72rem;font-weight:600;color:<%= prevColor(pnl.gross, true) %>;"><%= prevText(pnl.gross) %> vs <%= compareLabel %></div>
+    </div>
+  </div>
+
+  <% if (pnl.sections.labor.length) { pnlSection(pnl.sections.labor, pnl.totals.labor, 'Labor', true); } %>
+  <% if (pnl.sections.fixed.length) { pnlSection(pnl.sections.fixed, pnl.totals.fixed, 'Fixed Costs', true); } %>
+  <% pnlSection(pnl.sections.expense, pnl.totals.expense, 'Operating Expenses', true); %>
+
+  <!-- Net profit band -->
+  <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border:2px solid <%= pnl.net.actual >= 0 ? 'rgba(21,128,61,0.4)' : 'rgba(185,28,28,0.4)' %>;">
+    <div>
+      <div style="font-family:var(--font-heading);font-size:1.3rem;">Net Profit</div>
+      <div style="font-size:0.75rem;color:var(--slate);">
+        Budget: <%= pnl.net.budget ? money(pnl.net.budget) : '—' %><% if (pnl.net.budgetPct !== null) { %> (<%= pnl.net.budgetPct.toFixed(0) %>%)<% } %>
+        &middot; <%= compareLabel %>: <%= money(pnl.net.prev) %>
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <span style="font-family:var(--font-heading);font-size:2rem;color:<%= pnl.net.actual >= 0 ? 'var(--success)' : 'var(--danger)' %>;"><%= money(pnl.net.actual) %></span>
+      <div style="font-size:0.78rem;font-weight:600;color:<%= prevColor(pnl.net, true) %>;"><%= prevText(pnl.net) %> vs <%= compareLabel %></div>
+    </div>
+  </div>
+
+  <!-- ═══ MARKETING COMPS (madladslab-only, NON-CASH memo) ═══════════════════════
+       List-price value of premium access given away (comped lifetime tenants).
+       Informational only — deliberately NOT added to any cash total above. -->
+  <% if (typeof compsMemo !== 'undefined' && compsMemo && compsMemo.count) { %>
+  <div class="card" style="margin-top:16px;padding:18px 22px;border:1px dashed var(--border);background:var(--ivory);">
+    <div class="flex-between" style="align-items:flex-start;">
+      <div>
+        <div style="font-family:var(--font-heading);font-size:1.15rem;">Marketing Comps <span style="font-size:0.68rem;color:var(--slate);border:1px solid var(--border);border-radius:4px;padding:1px 6px;margin-left:6px;">NON-CASH MEMO</span></div>
+        <div style="font-size:0.75rem;color:var(--slate);margin-top:4px;">
+          Value of premium access given away to <%= compsMemo.count %> comped account<%= compsMemo.count === 1 ? '' : 's' %>
+          at <%= money(compsMemo.monthlyRate) %>/mo &times; months comped. Not counted in Net Profit.
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <span style="font-family:var(--font-heading);font-size:1.6rem;color:var(--slate);"><%= money(compsMemo.totalValue) %></span>
+        <div style="font-size:0.7rem;color:var(--slate);">acquisition giveaway (marketing)</div>
+      </div>
+    </div>
+    <div class="table-wrap" style="margin-top:12px;">
+      <table style="font-size:0.82rem;">
+        <thead><tr><th>Comped account</th><th>Plan</th><th style="text-align:right;">Months</th><th style="text-align:right;">Comp value</th></tr></thead>
+        <tbody>
+          <% compsMemo.lines.forEach(function(l){ %>
+          <tr>
+            <td style="font-weight:500;"><%= l.name %></td>
+            <td style="color:var(--slate);"><%= l.plan %></td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;"><%= l.months %></td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;"><%= money(l.value) %></td>
+          </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <% } %>
+</div>
+
+<!-- P&L drill-down modals — the transactions composing each category's actual -->
+<%
+  const allRows = [].concat(pnl.sections.income, pnl.sections.cogs, pnl.sections.expense);
+  allRows.forEach(function(r){
+    const cid = r.category._id.toString();
+    const items = lineItems[cid] || [];
+    if (!items.length) return;
+    const isIncome = r.category.type === 'income';
+%>
+<div class="pnl-modal" id="pnlmodal-<%= cid %>" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="pnl-modal-backdrop" onclick="closePnlModal('<%= cid %>')"></div>
+  <div class="pnl-modal-card">
+    <div class="pnl-modal-head">
+      <div>
+        <div class="pnl-modal-title"><%= r.category.name %> <span class="text-slate" style="font-weight:400;font-size:0.8rem;">· <%= label %></span></div>
+        <div class="text-slate" style="font-size:0.76rem;"><%= items.length %> transaction<%= items.length === 1 ? '' : 's' %> · total <%= money(r.actual) %></div>
+      </div>
+      <button type="button" class="pnl-modal-x" onclick="closePnlModal('<%= cid %>')" aria-label="Close">&times;</button>
+    </div>
+    <div class="pnl-modal-body">
+      <table class="pnl-modal-table">
+        <thead><tr><th>Date</th><th>Description</th><th>Source</th><th style="text-align:right;">Amount</th><th></th></tr></thead>
+        <tbody>
+          <% items.forEach(function(it){ %>
+          <tr>
+            <td class="nowrap"><%= new Date(it.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) %></td>
+            <td class="desc"><%= it.description %></td>
+            <td><span class="badge badge-draft" style="font-size:0.6rem;text-transform:capitalize;"><%= it.source %></span></td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;color:<%= isIncome ? 'var(--success)' : 'inherit' %>;"><%= money(it.amount) %></td>
+            <td style="text-align:right;">
+              <% if (it.receiptUrl) { %><a href="<%= it.receiptUrl %>" target="_blank" class="btn btn-ghost btn-sm" style="font-size:0.64rem;padding:3px 9px;">Receipt</a><% } %>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <div class="pnl-modal-foot text-slate">
+      <a href="/admin/ledger/entries?month=<%= month %>">Open the ledger for <%= label %> &rarr;</a>
+    </div>
+  </div>
+</div>
+<% }) %>
+
+<style>
+  .pct-col{width:76px;}
+  .pnl-cat-btn{background:none;border:none;padding:0;cursor:pointer;font:inherit;color:var(--navy);text-align:left;display:inline-flex;align-items:center;gap:6px;border-bottom:1px dashed var(--border);}
+  .pnl-cat-btn:hover{border-bottom-color:var(--gold);color:var(--gold);}
+  .pnl-cat-count{font-size:0.6rem;font-weight:700;background:var(--ivory);border:1px solid var(--border);color:var(--slate);border-radius:10px;padding:0 6px;}
+  .pnl-modal{position:fixed;inset:0;z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:6vh 16px;}
+  .pnl-modal.open{display:flex;}
+  .pnl-modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,0.5);}
+  .pnl-modal-card{position:relative;background:var(--surface,#fff);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.3);width:100%;max-width:680px;max-height:84vh;display:flex;flex-direction:column;overflow:hidden;}
+  .pnl-modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 18px;border-bottom:1px solid var(--border);}
+  .pnl-modal-title{font-weight:600;color:var(--navy);font-size:1rem;}
+  .pnl-modal-x{background:none;border:none;font-size:1.5rem;line-height:1;cursor:pointer;color:var(--slate);padding:0 4px;}
+  .pnl-modal-body{overflow-y:auto;padding:6px 18px 12px;}
+  .pnl-modal-table{width:100%;font-size:0.82rem;border-collapse:collapse;}
+  .pnl-modal-table th{position:sticky;top:0;background:var(--surface,#fff);font-size:0.66rem;text-transform:uppercase;letter-spacing:.04em;color:var(--slate);text-align:left;padding:8px 6px;border-bottom:1px solid var(--border);}
+  .pnl-modal-table td{padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:middle;}
+  .pnl-modal-table .desc{max-width:280px;}
+  .pnl-modal-table .nowrap{white-space:nowrap;}
+  .pnl-modal-foot{padding:12px 18px;border-top:1px solid var(--border);font-size:0.76rem;}
+  @media print { .pnl-cat-count{display:none;} .pnl-cat-btn{border:none;color:inherit;} }
+</style>
+
+<script>
+(function(){
+  window.openPnlModal = function(id){
+    var m = document.getElementById('pnlmodal-' + id); if (!m) return;
+    m.classList.add('open'); m.setAttribute('aria-hidden','false'); document.body.style.overflow = 'hidden';
+  };
+  window.closePnlModal = function(id){
+    var m = document.getElementById('pnlmodal-' + id); if (!m) return;
+    m.classList.remove('open'); m.setAttribute('aria-hidden','true'); document.body.style.overflow = '';
+  };
+  document.addEventListener('keydown', function(ev){
+    if (ev.key === 'Escape') document.querySelectorAll('.pnl-modal.open').forEach(function(m){
+      m.classList.remove('open'); m.setAttribute('aria-hidden','true'); document.body.style.overflow = '';
+    });
+  });
+})();
+</script>
+
+</div></div></body></html>

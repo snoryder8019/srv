@@ -9,17 +9,20 @@ import {
   PLATFORMS, PLATFORM_LIST, LIVE_PLATFORMS,
   packCredentials, unpackCredentials, maskAccount, isAccountConfigured,
   publishToPlatform, publishPost, verifyPlatform, discoverInstagramFromPage,
+  platformSupportsFormat,
 } from '../../../plugins/socialPublish.js';
 import { refreshAccount, applyRefresh } from '../../../plugins/socialTokens.js';
 import { fetchEngagement, postReply, allEngageCaps, engageCaps } from '../../../plugins/socialEngage.js';
 import { encrypt, decrypt } from '../../../plugins/crypto.js';
 import { getSlabDb } from '../../../plugins/mongo.js';
-import { generateForTenant, generateSpotlight, publishWithRetry, renderLayersToPng, uploadPng } from '../../../plugins/autoSocial.js';
+import { bustTenantCache } from '../../../middleware/tenant.js';
+import { generateForTenant, generateSpotlight, publishWithRetry, renderLayersToPng, uploadPng, sliceSeamlessForPublish } from '../../../plugins/autoSocial.js';
 import { uploadBuffer } from '../../../plugins/s3.js';
 import { getVoice, saveVoice, synthesizeProfile, recordCorrection, buildVoiceBlock, VOICE_QUESTIONS } from '../../../plugins/socialVoice.js';
 import { enqueueJob, getJob, listJobs } from '../../../plugins/socialJobs.js';
 import { recordDesignFeedback, listDesignFeedback, removeDesignFeedback, getDesignPrefs, describePrefs } from '../../../plugins/socialDesign.js';
-import { suggestSlots } from '../../../plugins/socialSchedule.js';
+import { scoreLivePosts, getReliability } from '../../../plugins/socialScore.js';
+import { suggestSlots, staggerByPlatform } from '../../../plugins/socialSchedule.js';
 import { fetchAllFollows, followsAction } from '../../../plugins/socialFollows.js';
 import {
   AUTO_TOKEN_PLATFORMS, tryAutoUpgrade, linkInstagramFromFacebook,
@@ -28,6 +31,43 @@ import {
 } from './shared.js';
 
 const router = express.Router();
+
+// Resolve the platforms a review-queue action should target. `requested` comes
+// from the card's account chips; we keep only platforms that are actually
+// connected AND can carry this post's format (e.g. a story can't cross-post to X).
+// Falls back to the post's own platforms when nothing valid was requested.
+async function resolveTargetPlatforms(db, post, requested) {
+  const connected = new Set(
+    (await db.collection('social_accounts').find({}).project({ platform: 1, enabled: 1 }).toArray())
+      .filter(a => a.enabled !== false).map(a => a.platform),
+  );
+  const fmt = post.format || 'single';
+  const clean = (arr) => [...new Set((arr || []).map(String))]
+    .filter(p => PLATFORMS[p] && !PLATFORMS[p].comingSoon && !PLATFORMS[p].connectOnly)
+    .filter(p => connected.has(p) && platformSupportsFormat(p, fmt));
+  const picked = clean(Array.isArray(requested) ? requested : []);
+  return picked.length ? picked : clean(post.platforms);
+}
+
+// A seamless carousel stores a wide PREVIEW in mediaUrls and defers slicing until
+// it's actually sent. This cuts the panorama into ordered tiles and swaps them
+// into mediaUrls so the normal publish/schedule path posts a real carousel.
+// Idempotent (seamlessMaterialized guard) and mutates `post` in place. Never
+// throws — on failure it leaves the preview so nothing publishes half-baked.
+async function materializeSeamless(req, post) {
+  if (!post.seamless || post.seamlessMaterialized) return post.mediaUrls || [];
+  try {
+    const tiles = await sliceSeamlessForPublish(req.tenant, req.db, post);
+    if (tiles.length >= 2) {
+      await req.db.collection('social_posts').updateOne(
+        { _id: post._id },
+        { $set: { mediaUrls: tiles, seamlessMaterialized: true, previewUrl: post.previewUrl || post.mediaUrls?.[0] || null, updatedAt: new Date() } },
+      );
+      post.mediaUrls = tiles;
+    }
+  } catch (e) { console.error('[social] seamless slice failed:', e.message); }
+  return post.mediaUrls || [];
+}
 
 // ── AUTO SOCIAL SUGGESTIONS ───────────────────────────────────────────────────
 // A review dashboard: AI drafts on-brand posts (copy + platform-sized image) as
@@ -97,19 +137,29 @@ router.put('/suggestions/:id', express.json({ limit: '2mb' }), async (req, res) 
 });
 
 // Approve → publish this suggestion to its platform now
-router.post('/suggestions/:id/approve', async (req, res) => {
+router.post('/suggestions/:id/approve', express.json(), async (req, res) => {
   try {
     const db = req.db;
     const post = await db.collection('social_posts').findOne({ _id: new ObjectId(req.params.id) });
     if (!post) return res.json({ ok: false, error: 'Not found' });
-    const platform = post.platforms?.[0];
-    const account = await db.collection('social_accounts').findOne({ platform });
-    const r = await publishWithRetry(platform, post, account);
-    const status = r.ok ? 'published' : 'failed';
+    // Publish to the accounts chosen on the card (default: the post's own platform).
+    const targets = await resolveTargetPlatforms(db, post, req.body?.platforms);
+    if (!targets.length) return res.json({ ok: false, error: 'No connected account can post this' });
+    await materializeSeamless(req, post);   // seamless carousel → slice the panorama into tiles now
+    if (post.seamless && (!post.mediaUrls || post.mediaUrls.length < 2)) return res.json({ ok: false, error: 'Could not slice the carousel — try re-rendering it.' });
+    const results = [];
+    for (const platform of targets) {
+      const account = await db.collection('social_accounts').findOne({ platform });
+      const r = await publishWithRetry(platform, { ...post, platforms: [platform] }, account);
+      results.push(r);
+    }
+    const okCount = results.filter(r => r.ok).length;
+    const status = okCount === 0 ? 'failed' : okCount === results.length ? 'published' : 'partial';
+    const firstOk = results.find(r => r.ok);
     await db.collection('social_posts').updateOne({ _id: post._id },
-      { $set: { status, suggestion: false, results: [r], publishedAt: new Date(), updatedAt: new Date() } });
-    logActivity({ category: 'social', action: 'suggestion_approved', tenantDomain: req.tenant?.domain, tenantId: req.tenant?._id, status: r.ok ? 'success' : 'failed', actor: { email: req.adminUser?.email, role: 'admin' }, details: { platform }, error: r.ok ? undefined : r.error, ip: req.ip });
-    res.json({ ok: r.ok, status, url: r.url || null, error: r.error || null });
+      { $set: { status, platforms: targets, suggestion: false, results, publishedAt: new Date(), updatedAt: new Date() } });
+    logActivity({ category: 'social', action: 'suggestion_approved', tenantDomain: req.tenant?.domain, tenantId: req.tenant?._id, status: okCount ? 'success' : 'failed', actor: { email: req.adminUser?.email, role: 'admin' }, details: { platforms: targets, ok: okCount, total: results.length }, error: okCount ? undefined : results[0]?.error, ip: req.ip });
+    res.json({ ok: okCount > 0, status, url: firstOk?.url || null, published: okCount, total: results.length, error: okCount ? null : (results[0]?.error || 'Publish failed') });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
@@ -122,10 +172,13 @@ router.post('/suggestions/:id/schedule', express.json(), async (req, res) => {
     if (!post) return res.json({ ok: false, error: 'Not found' });
     const when = req.body?.scheduledAt ? new Date(req.body.scheduledAt) : null;
     if (!when || isNaN(when) || when.getTime() < Date.now() - 60000) return res.json({ ok: false, error: 'Pick a future date & time' });
-    const $set = { status: 'scheduled', scheduledAt: when, suggestion: false, updatedAt: new Date() };
+    const targets = await resolveTargetPlatforms(db, post, req.body?.platforms);
+    if (!targets.length) return res.json({ ok: false, error: 'No connected account can post this' });
+    await materializeSeamless(req, post);   // slice the panorama so the scheduler publishes real tiles
+    const $set = { status: 'scheduled', scheduledAt: when, platforms: targets, suggestion: false, updatedAt: new Date() };
     if (typeof req.body?.body === 'string' && req.body.body.trim()) $set.body = req.body.body.slice(0, 2000);
     await db.collection('social_posts').updateOne({ _id: post._id }, { $set });
-    res.json({ ok: true, scheduledAt: when });
+    res.json({ ok: true, scheduledAt: when, platforms: targets });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
@@ -151,6 +204,21 @@ router.post('/design/feedback', express.json(), async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// Score live posts now (manual) → engagement-based reliability dataset.
+router.post('/score/run', async (req, res) => {
+  try {
+    const r = await scoreLivePosts(req.db, req.tenant, { minAgeDays: Number(req.query.minAge) || 2 });
+    const rel = await getReliability(req.db);
+    res.json({ ok: true, ...r, reliability: rel });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Current reliability % + winning design signals.
+router.get('/score/reliability', async (req, res) => {
+  try { res.json({ ok: true, ...(await getReliability(req.db)) }); }
+  catch (e) { res.json({ ok: false, error: e.message }); }
+});
+
 // Review the memory (aggregated prefs + recent thumbed entries) — for pruning.
 router.get('/design/memory', async (req, res) => {
   try {
@@ -172,12 +240,29 @@ router.post('/suggestions/:id/auto-slot', express.json(), async (req, res) => {
     const db = req.db;
     const post = await db.collection('social_posts').findOne({ _id: new ObjectId(req.params.id) });
     if (!post) return res.json({ ok: false, error: 'Not found' });
-    const [slot] = await suggestSlots(db, 1);
-    if (!slot) return res.json({ ok: false, error: 'No open slot found' });
-    const $set = { status: 'scheduled', scheduledAt: slot, suggestion: false, updatedAt: new Date() };
-    if (typeof req.body?.body === 'string' && req.body.body.trim()) $set.body = req.body.body.slice(0, 2000);
+    const targets = await resolveTargetPlatforms(db, post, req.body?.platforms);
+    if (!targets.length) return res.json({ ok: false, error: 'No connected account can post this' });
+    const slots = await suggestSlots(db, Math.max(1, targets.length));
+    if (!slots.length) return res.json({ ok: false, error: 'No open slot found' });
+    await materializeSeamless(req, post);   // slice the panorama before it (and any staggered clones) schedule
+    const bodyOverride = (typeof req.body?.body === 'string' && req.body.body.trim()) ? req.body.body.slice(0, 2000) : null;
+    // Stagger: the draft's first network keeps this doc at slot[0]; each extra
+    // network becomes its own scheduled post at its own slot — networks don't
+    // all fire at the same single time.
+    const $set = { status: 'scheduled', scheduledAt: slots[0], platforms: [targets[0]], suggestion: false, updatedAt: new Date() };
+    if (bodyOverride) $set.body = bodyOverride;
     await db.collection('social_posts').updateOne({ _id: post._id }, { $set });
-    res.json({ ok: true, scheduledAt: slot });
+    if (targets.length > 1) {
+      const base = {
+        body: bodyOverride != null ? bodyOverride : (post.body || ''),
+        link: post.link || '', mediaUrls: post.mediaUrls || [], format: post.format || 'single',
+        publishedAt: null, results: [], suggestion: false,
+        createdBy: post.createdBy || req.adminUser?.email || null, createdAt: new Date(), updatedAt: new Date(),
+      };
+      const extra = staggerByPlatform(base, targets.slice(1), slots.slice(1));
+      if (extra.length) await db.collection('social_posts').insertMany(extra);
+    }
+    res.json({ ok: true, scheduledAt: slots[0], platforms: targets, scheduled: targets.length });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
@@ -222,14 +307,27 @@ router.post('/auto-toggle', express.json(), async (req, res) => {
     const standingPrompt = (req.body?.standingPrompt || '').toString().slice(0, 600);
     const useTrends = req.body?.useTrends !== false;
     const critic = req.body?.critic !== false;
+    const autoSlot = !!req.body?.autoSlot;   // schedule drafts onto the calendar (see the pipeline)
+    // Which site content Autopilot follows + whether it drives newsletter signups.
+    const PROMOTE = new Set(['blog', 'portfolio', 'careers']);
+    const promote = Array.isArray(req.body?.promote) ? req.body.promote.map(String).filter(p => PROMOTE.has(p)) : [];
+    const leadGen = !!req.body?.leadGen;
+    // Custom asset tags → autopilot pulls matching library images as backgrounds.
+    const assetTags = (req.body?.assetTags || '').toString().split(',').map(t => t.trim()).filter(Boolean).slice(0, 12);
     const slab = getSlabDb();
     await slab.collection('tenants').updateOne({ _id: req.tenant._id },
       { $set: {
         'autoSocial.enabled': enabled, 'autoSocial.autoPublish': autoPublish, 'autoSocial.count': count,
         'autoSocial.cadence': cadence, 'autoSocial.channels': channels, 'autoSocial.standingPrompt': standingPrompt,
-        'autoSocial.useTrends': useTrends, 'autoSocial.critic': critic, 'autoSocial.updatedAt': new Date(),
+        'autoSocial.useTrends': useTrends, 'autoSocial.critic': critic,
+        'autoSocial.promote': promote, 'autoSocial.leadGen': leadGen, 'autoSocial.assetTags': assetTags,
+        'autoSocial.autoSlot': autoSlot, 'autoSocial.updatedAt': new Date(),
       } });
-    res.json({ ok: true, enabled, autoPublish, count, cadence, channels, standingPrompt, useTrends, critic });
+    // Bust the 5-min tenant cache so the studio badge/toggle reflect the new
+    // state immediately — otherwise req.tenant.autoSocial stays stale and the
+    // pill reads "Off" while the cron (which reads the DB fresh) runs it.
+    for (const d of [req.tenant?.domain, req.tenant?.customDomain, req.tenant?.meta?.customDomain]) if (d) bustTenantCache(d);
+    res.json({ ok: true, enabled, autoPublish, count, cadence, channels, standingPrompt, useTrends, critic, promote, leadGen, assetTags, autoSlot });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 

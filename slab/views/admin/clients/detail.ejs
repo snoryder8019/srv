@@ -7,7 +7,7 @@
     <button class="btn btn-navy btn-sm" id="startMeetingBtn" title="Create meeting & email invite to client">Start Meeting</button>
     <button class="btn btn-ghost btn-sm" id="openAgentBtn" style="border-color:var(--navy);" title="AI-research this client">Research Client</button>
     <a href="/admin/clients/<%= c._id %>/edit" class="btn btn-ghost btn-sm">Edit</a>
-    <form method="POST" action="/admin/clients/<%= c._id %>/delete" style="display:inline" onsubmit="return confirm('Delete this client?')">
+    <form method="POST" action="/admin/clients/<%= c._id %>/delete" data-guard="button" style="display:inline" onsubmit="return confirm('Delete this client?')">
       <button class="btn btn-danger btn-sm">Delete</button>
     </form>
   </div>
@@ -51,7 +51,7 @@
     <% const activeTags = c.tags || []; %>
     <% for (const [slug, def] of Object.entries(tagDefs)) { %>
       <% const isOn = activeTags.includes(slug); %>
-      <form method="POST" action="/admin/clients/<%= c._id %>/tags" style="display:inline;">
+      <form method="POST" action="/admin/clients/<%= c._id %>/tags" data-guard="button" style="display:inline;">
         <input type="hidden" name="tag" value="<%= slug %>">
         <input type="hidden" name="action" value="<%= isOn ? 'remove' : 'add' %>">
         <button type="submit" class="tag-toggle<%= isOn ? ' on' : '' %>"
@@ -73,7 +73,9 @@
   <!-- Tabs -->
   <div class="tabs">
     <a href="?tab=overview" class="tab-link <%= tab === 'overview' ? 'active' : '' %>">Overview</a>
+    <a href="?tab=notes" class="tab-link <%= tab === 'notes' ? 'active' : '' %>">Notes (<%= counts.notes %>)</a>
     <a href="?tab=invoices" class="tab-link <%= tab === 'invoices' ? 'active' : '' %>">Invoices (<%= counts.invoices %>)</a>
+    <a href="?tab=engagements" class="tab-link <%= tab === 'engagements' ? 'active' : '' %>">Engagements (<%= counts.engagements %>)</a>
     <a href="?tab=assets" class="tab-link <%= tab === 'assets' ? 'active' : '' %>">Assets (<%= counts.assets %>)</a>
     <a href="?tab=files" class="tab-link <%= tab === 'files' ? 'active' : '' %>">Files (<%= counts.files %>)</a>
     <a href="?tab=emails" class="tab-link <%= tab === 'emails' ? 'active' : '' %>">Emails (<%= counts.emails %>)</a>
@@ -83,8 +85,19 @@
   <!-- OVERVIEW TAB -->
   <% if (tab === 'overview') { %>
     <div class="card">
-      <div class="card-title">Notes</div>
-      <p style="font-size:0.9rem;font-weight:300;color:var(--slate);line-height:1.7;"><%= c.notes || 'No notes yet.' %></p>
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Notes</span>
+        <a href="?tab=notes" style="font-size:0.7rem;font-weight:600;letter-spacing:.06em;color:var(--navy);text-decoration:none;">Manage →</a>
+      </div>
+      <% if (typeof c.notes === 'string' && c.notes.trim()) { %>
+        <p style="font-size:0.9rem;font-weight:300;color:var(--slate);line-height:1.7;white-space:pre-wrap;"><%= c.notes %></p>
+      <% } else if (counts.notes) { %>
+        <p style="font-size:0.9rem;font-weight:300;color:var(--slate);line-height:1.7;">
+          <%= counts.notes %> note<%= counts.notes === 1 ? '' : 's' %> on file — <a href="?tab=notes" style="color:var(--navy);">open the Notes tab</a>.
+        </p>
+      <% } else { %>
+        <p style="font-size:0.9rem;font-weight:300;color:var(--slate);line-height:1.7;">No notes yet.</p>
+      <% } %>
     </div>
     <div class="card mt-24">
       <div class="card-title">Summary</div>
@@ -180,11 +193,128 @@
     <% } %>
   <% } %>
 
+  <!-- NOTES TAB -->
+  <% if (tab === 'notes') { %>
+    <style>
+      .note-item { border:1px solid var(--border); border-radius:4px; padding:14px 16px; margin-bottom:10px; background:var(--surface); }
+      .note-src { display:inline-block; font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:2px 8px; border-radius:10px; }
+      .note-src.authored { color:var(--navy); background:rgba(28,43,74,0.08); }
+      .note-src.pushed   { color:#0369a1; background:rgba(14,165,233,0.10); }
+      .note-src.legacy   { color:var(--slate); background:rgba(120,120,120,0.10); }
+      .note-meta { font-size:0.72rem; color:var(--slate); }
+      .note-body { font-size:0.9rem; font-weight:300; color:var(--on-surface); line-height:1.7; white-space:pre-wrap; margin:8px 0 0; }
+    </style>
+
+    <!-- New note — authored straight into the notes engine, bound to this client -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">New Note</div>
+      <p class="text-slate" style="font-size:0.78rem;margin:-4px 0 12px;">
+        Saved to the Notes engine and attached to <strong><%= c.name %></strong> — auto-classified, TL;DR-able, and distributable to blog · email · campaign · web · ticket from the <a href="/admin/notes?client=<%= c._id %>" style="color:var(--navy);">Notes tool</a>.
+      </p>
+      <div class="form-field" style="margin-bottom:10px;">
+        <label>Title <span class="text-slate" style="font-weight:400;">(optional)</span></label>
+        <input type="text" id="cnTitle" placeholder="Untitled Note">
+      </div>
+      <div class="form-field" style="margin-bottom:10px;">
+        <label>Note</label>
+        <textarea id="cnBody" rows="4" placeholder="Type the note… anything over 60 words is stored as a full rant, shorter notes stay inline."></textarea>
+      </div>
+      <div class="form-field" style="margin-bottom:12px;">
+        <label>Tags <span class="text-slate" style="font-weight:400;">(comma-separated, optional)</span></label>
+        <input type="text" id="cnTags" placeholder="business, follow-up">
+      </div>
+      <button type="button" id="cnAddBtn" class="btn btn-navy btn-sm">Add Note</button>
+    </div>
+
+    <!-- Notes log -->
+    <% if (!clientNotes.length) { %>
+      <div class="empty"><div class="empty-icon">📝</div><p>No notes yet. Add one above, or push a note to this client from the Notes tool.</p></div>
+    <% } else { %>
+      <% for (const n of clientNotes) { %>
+      <div class="note-item">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+          <div style="min-width:0;">
+            <span class="note-src <%= n.source %>"><%= n.source === 'authored' ? 'Note' : (n.source === 'pushed' ? 'Pushed' : 'Legacy') %></span>
+            <% if (n.title) { %><strong style="font-size:0.9rem;margin-left:6px;"><%= n.title %></strong><% } %>
+          </div>
+          <div style="display:flex;gap:8px;white-space:nowrap;">
+            <% if (n.engineId) { %>
+              <a href="/admin/notes?client=<%= c._id %>" class="btn btn-ghost btn-sm" style="font-size:0.7rem;">Open</a>
+            <% } %>
+            <% if (n.entryId) { %>
+              <%# Embedded copy (pushed/legacy) → detach from this client only; source note in the Notes tool is untouched. Pushed copies pull by noteId so dupes clear together. %>
+              <button type="button" class="btn btn-ghost btn-sm cn-detach" data-note="<%= n.engineId || '' %>" data-entry="<%= n.entryId %>" style="font-size:0.7rem;color:var(--danger);">Remove</button>
+            <% } else if (n.engineId) { %>
+              <%# Authored engine note bound to this client → delete from the engine. %>
+              <button type="button" class="btn btn-ghost btn-sm cn-del-engine" data-id="<%= n.engineId %>" style="font-size:0.7rem;color:var(--danger);">Delete</button>
+            <% } %>
+          </div>
+        </div>
+        <% if (n.content) { %><p class="note-body"><%= n.content %></p><% } %>
+        <% if (n.tags && n.tags.length) { %>
+          <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">
+            <% for (const t of n.tags) { %><span style="font-size:10px;padding:2px 8px;border-radius:10px;background:var(--ivory);color:var(--slate);">#<%= t %></span><% } %>
+          </div>
+        <% } %>
+        <div class="note-meta" style="margin-top:8px;">
+          <% if (n.createdBy) { %><%= n.createdBy %> · <% } %><%= n.createdAt ? new Date(n.createdAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '' %>
+        </div>
+      </div>
+      <% } %>
+    <% } %>
+
+    <script>
+      (function () {
+        var addBtn = document.getElementById('cnAddBtn');
+        if (addBtn) addBtn.addEventListener('click', function () {
+          var body = document.getElementById('cnBody').value.trim();
+          if (!body) { SlabFlash.error('Write a note first.'); return; }
+          SlabLoader.post(addBtn, '/admin/notes', {
+            loadingLabel: 'Saving',
+            body: {
+              title:    document.getElementById('cnTitle').value.trim(),
+              body:     body,
+              tags:     document.getElementById('cnTags').value.trim(),
+              clientId: '<%= c._id %>',
+            },
+            successMessage: 'Note added.',
+            onSuccess: function () { setTimeout(function () { location.href = '?tab=notes'; }, 400); },
+          });
+        });
+
+        document.querySelectorAll('.cn-del-engine').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            if (!confirm('Delete this note? It is removed from the Notes tool too.')) return;
+            SlabLoader.post(btn, '/admin/notes/' + btn.dataset.id, {
+              method: 'DELETE',
+              successMessage: 'Note deleted.',
+              onSuccess: function () { setTimeout(function () { location.href = '?tab=notes'; }, 300); },
+            });
+          });
+        });
+
+        document.querySelectorAll('.cn-detach').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            if (!confirm('Remove this note from the client? The original note stays in the Notes tool.')) return;
+            // Pushed copies detach by noteId (clears any duplicate pushes); a
+            // legacy string-note with no backlink detaches by its entry id.
+            var payload = btn.dataset.note ? { noteId: btn.dataset.note } : { entryId: btn.dataset.entry };
+            SlabLoader.post(btn, '/admin/clients/<%= c._id %>/notes/remove', {
+              body: payload,
+              successMessage: 'Note removed from client.',
+              onSuccess: function () { setTimeout(function () { location.href = '?tab=notes'; }, 300); },
+            });
+          });
+        });
+      })();
+    </script>
+  <% } %>
+
   <!-- INVOICES TAB -->
   <% if (tab === 'invoices') { %>
     <div class="card" style="margin-bottom:20px;">
       <div class="card-title">New Invoice</div>
-      <form method="POST" action="/admin/clients/<%= c._id %>/invoices" id="invoiceForm">
+      <form method="POST" action="/admin/clients/<%= c._id %>/invoices" id="invoiceForm" data-guard data-guard-label="Creating">
         <div class="form-grid cols-3">
           <div class="form-field">
             <label>Invoice Title</label>
@@ -267,7 +397,7 @@
             <td style="font-weight:500;"><%= inv.title %></td>
             <td>$<%= inv.amount.toFixed(2) %></td>
             <td>
-              <form method="POST" action="/admin/clients/<%= c._id %>/invoices/<%= inv._id %>/status" style="display:inline;">
+              <form method="POST" action="/admin/clients/<%= c._id %>/invoices/<%= inv._id %>/status" data-guard="button" style="display:inline;">
                 <select name="status" onchange="this.form.submit()" style="padding:4px 8px;font-size:0.75rem;border:1px solid var(--border);border-radius:2px;background:var(--surface);font-family:'Jost',sans-serif;appearance:auto;">
                   <option value="draft" <%= inv.status === 'draft' ? 'selected' : '' %>>Draft</option>
                   <option value="unpaid" <%= inv.status === 'unpaid' ? 'selected' : '' %>>Unpaid</option>
@@ -284,14 +414,14 @@
               <div style="display:flex;gap:4px;align-items:center;">
                 <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.72rem;" title="Preview invoice email" onclick="openEmailPreview({ endpoint: '/admin/clients/<%= c._id %>/invoices/<%= inv._id %>/preview', title: 'Invoice preview' })">Preview</button>
                 <% if (inv.status !== 'paid' && inv.status !== 'void') { %>
-                <form method="POST" action="/admin/clients/<%= c._id %>/invoices/<%= inv._id %>/send" style="display:inline;" onsubmit="return confirm('Send invoice email to <%= c.email || 'client' %>?')">
+                <form method="POST" action="/admin/clients/<%= c._id %>/invoices/<%= inv._id %>/send" data-guard="button" style="display:inline;" onsubmit="return confirm('Send invoice email to <%= c.email || 'client' %>?')">
                   <button class="btn btn-ghost btn-sm" style="font-size:0.72rem;" title="Send via email">Email</button>
                 </form>
                 <% } %>
                 <% if (inv.paymentToken) { %>
                 <button class="btn btn-ghost btn-sm" style="font-size:0.72rem;" title="Copy payment link" onclick="navigator.clipboard.writeText(window.location.origin+'/pay/<%= inv.paymentToken %>');this.textContent='Copied!';setTimeout(()=>this.textContent='Link',1500)">Link</button>
                 <% } %>
-                <form method="POST" action="/admin/clients/<%= c._id %>/invoices/<%= inv._id %>/delete" onsubmit="return confirm('Delete invoice?')" style="display:inline;">
+                <form method="POST" action="/admin/clients/<%= c._id %>/invoices/<%= inv._id %>/delete" data-guard="button" onsubmit="return confirm('Delete invoice?')" style="display:inline;">
                   <button class="btn btn-danger btn-sm" style="font-size:0.72rem;">Del</button>
                 </form>
               </div>
@@ -410,7 +540,7 @@
             });
             const data = await r.json();
             if (data.success) window.location.reload();
-          } catch (err) { alert('Error attaching asset: ' + err.message); }
+          } catch (err) { SlabFlash.error('Error attaching asset: ' + err.message); }
         }
       });
     });
@@ -428,7 +558,7 @@
           });
           const data = await r.json();
           if (data.success) window.location.reload();
-        } catch (err) { alert('Error: ' + err.message); }
+        } catch (err) { SlabFlash.error('Error: ' + err.message); }
       });
     });
     </script>
@@ -438,7 +568,7 @@
   <% if (tab === 'files') { %>
     <div class="card" style="margin-bottom:20px;">
       <div class="card-title">Upload File</div>
-      <form method="POST" action="/admin/clients/<%= c._id %>/files" enctype="multipart/form-data">
+      <form method="POST" action="/admin/clients/<%= c._id %>/files" enctype="multipart/form-data" data-guard data-guard-label="Uploading">
         <div class="form-grid">
           <div class="form-field">
             <label>File</label>
@@ -468,9 +598,76 @@
             <td class="text-slate" style="font-size:0.8rem;"><%= f.size ? (f.size / 1024).toFixed(0) + ' KB' : '—' %></td>
             <td class="text-slate"><%= new Date(f.uploadedAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) %></td>
             <td>
-              <form method="POST" action="/admin/clients/<%= c._id %>/files/<%= f._id %>/delete" onsubmit="return confirm('Delete file?')">
+              <form method="POST" action="/admin/clients/<%= c._id %>/files/<%= f._id %>/delete" data-guard="button" onsubmit="return confirm('Delete file?')">
                 <button class="btn btn-danger btn-sm">Del</button>
               </form>
+            </td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  <% } %>
+
+  <!-- ENGAGEMENTS TAB -->
+  <% if (tab === 'engagements') { %>
+    <style>
+      .eng-st { font-size:0.55rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; padding:2px 8px; border-radius:9px; white-space:nowrap; }
+      .eng-st-draft { background:rgba(107,115,128,.12); color:var(--slate); }
+      .eng-st-sent, .eng-st-viewed { background:rgba(14,165,233,.1); color:#0ea5e9; }
+      .eng-st-revision_requested { background:rgba(249,115,22,.12); color:#f97316; }
+      .eng-st-signed { background:rgba(234,179,8,.14); color:#ca8a04; }
+      .eng-st-acknowledged { background:rgba(16,185,129,.12); color:#10b981; }
+      .eng-st-declined, .eng-st-void { background:rgba(239,68,68,.1); color:#ef4444; }
+      .eng-st-expired { background:rgba(245,158,11,.14); color:#b45309; }
+    </style>
+
+    <% const engAttention = engagements.filter(en => en.status === 'signed' || en.status === 'revision_requested' || (en.w9?.requestedAt && !en.w9?.releasedAt)); %>
+    <% if (engAttention.length) { %>
+      <div class="card" style="margin-bottom:20px; border-left:3px solid #f97316;">
+        <div class="card-title">Waiting on you</div>
+        <% for (const en of engAttention) { %>
+          <div style="font-size:0.85rem; padding:4px 0;">
+            <a href="/admin/clients/<%= c._id %>/engagements/<%= en._id %>" style="color:var(--navy); font-weight:600;"><%= en.engagementNumber %></a>
+            —
+            <% if (en.status === 'signed') { %>signed by <%= en.signature?.typedName %> · needs <strong>Confirm Receipt &amp; Engage Services</strong><% } %>
+            <% if (en.status === 'revision_requested') { %>revision requested · needs an answer<% } %>
+            <% if (en.w9?.requestedAt && !en.w9?.releasedAt) { %><%= en.status === 'signed' || en.status === 'revision_requested' ? ' · ' : '' %>W-9 requested · needs release<% } %>
+          </div>
+        <% } %>
+      </div>
+    <% } %>
+
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-title">New Letter of Engagement</div>
+      <form method="POST" action="/admin/clients/<%= c._id %>/engagements" data-guard data-guard-label="Creating">
+        <div class="form-grid">
+          <div class="form-field">
+            <label>Title</label>
+            <input type="text" name="title" value="Letter of Engagement" required>
+          </div>
+        </div>
+        <div style="margin-top:16px;"><button type="submit" class="btn btn-navy btn-sm">Create Draft</button></div>
+      </form>
+    </div>
+
+    <% if (!engagements.length) { %>
+      <div class="empty"><div class="empty-icon">✍️</div><p>No engagement letters yet. Create a draft above — build it from your <a href="/admin/engagements" style="color:var(--navy);">services catalog</a>.</p></div>
+    <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Reference</th><th>Title</th><th>Status</th><th>Sent</th><th>Signed by</th><th>W-9</th></tr></thead>
+        <tbody>
+          <% for (const en of engagements) { %>
+          <tr>
+            <td><a href="/admin/clients/<%= c._id %>/engagements/<%= en._id %>" style="color:var(--navy); font-weight:600;"><%= en.engagementNumber %></a></td>
+            <td><%= en.title %></td>
+            <td><span class="eng-st eng-st-<%= en.status %>"><%= en.status.replace('_', ' ') %></span></td>
+            <td class="text-slate"><%= en.sentAt ? new Date(en.sentAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—' %></td>
+            <td class="text-slate"><%= en.signature?.typedName || '—' %></td>
+            <td class="text-slate" style="font-size:0.8rem;">
+              <% if (en.w9?.releasedAt) { %>✓ <%= en.w9.revision %><% } else if (en.w9?.requestedAt) { %>⚠ requested<% } else { %>—<% } %>
             </td>
           </tr>
           <% } %>
@@ -582,10 +779,10 @@
             .then(function(r) { return r.json(); })
             .then(function(res) {
               btn.disabled = false;
-              if (res.ok) { btn.textContent = 'Saved!'; setTimeout(function() { btn.textContent = 'Save Response'; }, 1500); }
-              else { btn.textContent = 'Save Response'; alert(res.error || 'Save failed'); }
+              if (res.ok) { btn.textContent = 'Saved!'; SlabFlash.success('Response saved.'); setTimeout(function() { btn.textContent = 'Save Response'; }, 1500); }
+              else { btn.textContent = 'Save Response'; SlabFlash.error(res.error || 'Save failed'); }
             })
-            .catch(function() { btn.disabled = false; btn.textContent = 'Save Response'; alert('Save failed'); });
+            .catch(function() { btn.disabled = false; btn.textContent = 'Save Response'; SlabFlash.error('Save failed'); });
           });
         });
       })();
@@ -601,7 +798,7 @@
         <div class="card-title">Client Onboarding
           <a href="/admin/onboarding" style="font-size:0.72rem;font-weight:400;color:var(--gold);margin-left:12px;">Create custom forms &rarr;</a>
         </div>
-        <form method="POST" action="/admin/clients/<%= c._id %>/onboarding">
+        <form method="POST" action="/admin/clients/<%= c._id %>/onboarding" data-guard data-guard-label="Saving">
           <div class="form-grid">
             <div class="form-field">
               <label>Business Type</label>
@@ -749,7 +946,7 @@
         <div class="card-title" style="margin:0;border:none;padding-bottom:0;">Compose Email</div>
         <span class="chevron" style="font-size:1.2rem;color:var(--slate);font-weight:300;">+</span>
       </div>
-      <form method="POST" action="/admin/clients/<%= c._id %>/emails/send" id="composeForm" enctype="multipart/form-data" style="display:none;margin-top:16px;">
+      <form method="POST" action="/admin/clients/<%= c._id %>/emails/send" id="composeForm" enctype="multipart/form-data" data-guard data-guard-label="Sending" style="display:none;margin-top:16px;">
         <div class="form-grid" style="grid-template-columns:1fr 1fr;">
           <div class="form-field">
             <label>To</label>
@@ -840,7 +1037,7 @@
           <div class="thread-subject"><%= t.root.subject %></div>
           <% if (t.messages.length > 1) { %><span class="thread-count"><%= t.messages.length %></span><% } %>
           <span class="thread-meta"><%= new Date(t.lastAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) %></span>
-          <form method="POST" action="/admin/clients/<%= c._id %>/emails/<%= showArchived ? 'unarchive' : 'archive' %>" class="arch-btn" style="margin:0;" onclick="event.stopPropagation()">
+          <form method="POST" action="/admin/clients/<%= c._id %>/emails/<%= showArchived ? 'unarchive' : 'archive' %>" data-guard="button" class="arch-btn" style="margin:0;" onclick="event.stopPropagation()">
             <% for (const aid of t.allIds) { %><input type="hidden" name="emailIds" value="<%= aid %>"><% } %>
             <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.6rem;padding:2px 8px;color:var(--slate);" title="<%= showArchived ? 'Unarchive' : 'Archive' %> thread"><%= showArchived ? 'Restore' : 'Archive' %></button>
           </form>
@@ -864,7 +1061,7 @@
           <!-- Inline reply bar -->
           <% if (!showArchived) { %>
           <div class="msg" style="background:var(--ivory);padding:10px 16px;">
-            <form method="POST" action="/admin/clients/<%= c._id %>/emails/reply" style="display:flex;gap:8px;align-items:flex-start;">
+            <form method="POST" action="/admin/clients/<%= c._id %>/emails/reply" data-guard="button" style="display:flex;gap:8px;align-items:flex-start;">
               <input type="hidden" name="threadId" value="<%= t.root.threadId || t.root._id %>">
               <input type="hidden" name="subject" value="Re: <%= t.root.subject.replace(/^Re:\s*/i, '') %>">
               <input type="hidden" name="to" value="<%= c.email %>">
@@ -889,7 +1086,7 @@
           <% if (em.source === 'campaign') { %><span class="badge-source" style="background:rgba(99,91,255,0.1);color:#635bff;">Campaign</span><% } %>
           <div class="thread-subject"><%= em.subject %></div>
           <span class="thread-meta"><%= new Date(em.sentAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) %></span>
-          <form method="POST" action="/admin/clients/<%= c._id %>/emails/<%= showArchived ? 'unarchive' : 'archive' %>" class="arch-btn" style="margin:0;" onclick="event.stopPropagation()">
+          <form method="POST" action="/admin/clients/<%= c._id %>/emails/<%= showArchived ? 'unarchive' : 'archive' %>" data-guard="button" class="arch-btn" style="margin:0;" onclick="event.stopPropagation()">
             <input type="hidden" name="emailIds" value="<%= em._id %>">
             <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.6rem;padding:2px 8px;color:var(--slate);"><%= showArchived ? 'Restore' : 'Archive' %></button>
           </form>
@@ -911,7 +1108,7 @@
           <!-- Reply bar for unthreaded emails -->
           <% if (!showArchived) { %>
           <div class="msg" style="background:var(--ivory);padding:10px 16px;">
-            <form method="POST" action="/admin/clients/<%= c._id %>/emails/reply" style="display:flex;gap:8px;align-items:flex-start;">
+            <form method="POST" action="/admin/clients/<%= c._id %>/emails/reply" data-guard="button" style="display:flex;gap:8px;align-items:flex-start;">
               <input type="hidden" name="threadId" value="<%= em.threadId || em._id %>">
               <input type="hidden" name="subject" value="Re: <%= (em.subject || '').replace(/^Re:\s*/i, '') %>">
               <input type="hidden" name="to" value="<%= em.direction === 'inbound' ? em.from : (c.email || em.to) %>">
@@ -1293,16 +1490,17 @@ document.getElementById('startMeetingBtn')?.addEventListener('click', async func
     const data = await r.json();
     if (data.success) {
       window.open(data.meetingUrl, '_blank');
+      SlabFlash.success('Meeting started.');
       this.textContent = 'Meeting Started';
       this.style.background = 'var(--success)';
       setTimeout(() => { this.textContent = 'Start Meeting'; this.style.background = ''; this.disabled = false; }, 3000);
     } else {
-      alert('Error: ' + (data.error || 'Failed'));
+      SlabFlash.error('Error: ' + (data.error || 'Failed'));
       this.textContent = 'Start Meeting';
       this.disabled = false;
     }
   } catch (err) {
-    alert('Error: ' + err.message);
+    SlabFlash.error('Error: ' + err.message);
     this.textContent = 'Start Meeting';
     this.disabled = false;
   }
@@ -1390,11 +1588,12 @@ document.getElementById('detailStatusToggle')?.addEventListener('change', async 
     const data = await r.json();
     if (data.success) {
       this.style.borderColor = 'var(--gold)';
+      SlabFlash.success('Status updated.');
       setTimeout(() => { this.style.borderColor = ''; }, 1500);
     } else {
-      alert('Error: ' + (data.error || 'Failed'));
+      SlabFlash.error('Error: ' + (data.error || 'Failed'));
     }
-  } catch (err) { alert('Error: ' + err.message); }
+  } catch (err) { SlabFlash.error('Error: ' + err.message); }
 });
 </script>
 <script src="/js/agentHealth.js"></script>

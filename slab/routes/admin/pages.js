@@ -4,25 +4,42 @@ import { ObjectId } from 'mongodb';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { webSearch, callLLM, tryParseAgentResponse, generateSdImage, buildBrandedSdPrompt, recordTrainingCandidate } from '../../plugins/agentMcp.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
+import { agentLLMOpts } from '../../plugins/agentRegistry.js';
 import { s3Client, BUCKET, bucketUrl } from '../../plugins/s3.js';
-import { VALID_BLOCK_TYPES, BLOCK_FIELDS, BLOCK_DEFAULTS, BLOCK_META } from '../../config/blocks.js';
+import { BLOCK_FIELDS, PAGE_BLOCK_TYPES, PAGE_BLOCK_DEFAULTS, PAGE_BLOCK_META } from '../../config/blocks.js';
+import { PAGE_SOURCE_KEYS, PAGE_SOURCES, resolveSource, synthesizeLegacyBlocks } from '../../plugins/pageSources.js';
 
 const router = express.Router();
 
-const ALLOWED_COLLECTIONS = ['blog', 'portfolio'];
-const ALLOWED_PAGE_TYPES  = ['content', 'data-list', 'landing'];
-const RESERVED_SLUGS      = ['blog', 'newsletter', 'help', 'admin', 'auth', 'sitemap.xml'];
+const RESERVED_SLUGS = ['blog', 'newsletter', 'help', 'admin', 'auth', 'sitemap.xml'];
 
 function toSlug(str) {
   return str.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
+// Unified page builder: every page is a block stack. The view still expects the
+// `VALID_BLOCK_TYPES` key, but for pages we feed it the PAGE superset (visual
+// blocks + html + datalist). PAGE_SOURCE_KEYS/labels drive the datalist <select>.
 function blockCatalog() {
   return {
-    VALID_BLOCK_TYPES,
+    VALID_BLOCK_TYPES: PAGE_BLOCK_TYPES,
     BLOCK_FIELDS: JSON.stringify(BLOCK_FIELDS),
-    BLOCK_DEFAULTS: JSON.stringify(BLOCK_DEFAULTS),
-    BLOCK_META: JSON.stringify(BLOCK_META),
+    BLOCK_DEFAULTS: JSON.stringify(PAGE_BLOCK_DEFAULTS),
+    BLOCK_META: JSON.stringify(PAGE_BLOCK_META),
+    PAGE_SOURCES: JSON.stringify(PAGE_SOURCE_KEYS.map(k => ({ key: k, label: PAGE_SOURCES[k].label, group: !!PAGE_SOURCES[k].groupField }))),
+  };
+}
+
+// Sanitize one datalist block's fields against the source registry.
+function sanitizeDatalistFields(fields) {
+  const source = resolveSource(fields.source);
+  const hasGroup = !!PAGE_SOURCES[source].groupField;
+  return {
+    heading: typeof fields.heading === 'string' ? fields.heading : '',
+    source,
+    pageSize: String(Math.min(Math.max(parseInt(fields.pageSize) || 9, 1), 100)),
+    group: hasGroup && typeof fields.group === 'string' ? fields.group.trim() : '',
+    paginate: fields.paginate === 'true' || fields.paginate === true ? 'true' : '',
   };
 }
 
@@ -97,31 +114,26 @@ async function generateBlockImageForAgent({ seedPrompt, sizePreset, brandContext
 
 function pageFields(body, current) {
   const now = new Date();
-  // New pages default to the block builder (landing); existing pages keep their saved type.
-  const pageType = ALLOWED_PAGE_TYPES.includes(body.pageType)
-    ? body.pageType
-    : (current?.pageType || 'landing');
   let blocks = [];
   try { blocks = JSON.parse(body.blocksJson || '[]'); } catch {}
   blocks = blocks
-    .filter(b => b && VALID_BLOCK_TYPES.includes(b.type))
-    .map(b => ({
-      id: b.id || undefined,
-      type: b.type,
-      fields: b.fields && typeof b.fields === 'object' ? b.fields : {},
-      images: b.images && typeof b.images === 'object' ? b.images : {},
-    }));
-
-  const dataCollection = ALLOWED_COLLECTIONS.includes(body.dataCollection) ? body.dataCollection : 'blog';
-  const dataPageSize   = Math.min(Math.max(parseInt(body.dataPageSize) || 9, 1), 100);
-  const dataGroup      = dataCollection === 'portfolio' ? (body.dataGroup?.trim() || '') : '';
+    .filter(b => b && PAGE_BLOCK_TYPES.includes(b.type))
+    .map(b => {
+      const fields = b.fields && typeof b.fields === 'object' ? b.fields : {};
+      return {
+        id: b.id || undefined,
+        type: b.type,
+        // datalist config is validated against the source registry; other block
+        // types (incl. html — same <%- trust boundary as legacy `content`) pass through.
+        fields: b.type === 'datalist' ? sanitizeDatalistFields(fields) : fields,
+        images: b.images && typeof b.images === 'object' ? b.images : {},
+      };
+    });
 
   return {
-    pageType,
-    content:          body.content || '',
-    dataCollection,
-    dataPageSize,
-    dataGroup,
+    // Unified pages are always a block stack. 'landing' is the block-stack render
+    // path, so every saved page keeps it — no more content/data-list page modes.
+    pageType: 'landing',
     blocks,
     metaTitle:        body.metaTitle || body.title,
     metaDescription:  body.metaDescription || '',
@@ -166,18 +178,18 @@ router.post('/agent', async (req, res) => {
       ? `\n\n--- WEB RESEARCH ---\n${searchResults}\n--- END RESEARCH ---` : '';
 
     const pageCtx = currentPage?.title
-      ? `\n\nExisting page — title: "${currentPage.title}", type: "${currentPage.pageType || 'content'}"` : '';
-
-    const isLanding   = (pageType || currentPage?.pageType) === 'landing';
-    const isDataList  = (pageType || currentPage?.pageType) === 'data-list';
+      ? `\n\nExisting page — title: "${currentPage.title}"` : '';
 
     const brandCtx = await loadBrandContext(req.tenant, req.db);
 
-    let systemPrompt;
-    if (isLanding) {
-      systemPrompt = `You are a web page builder assistant for the business.
+    // ONE unified builder prompt. A page is a block stack; the agent may mix
+    // visual blocks, an "html" block (rich HTML prose), and a "datalist" block
+    // that pipes in another module's content (blog, portfolio, careers, …).
+    const systemPrompt = `You are a web page builder assistant for the business.
 
 ${brandCtx}
+
+A page is a STACK of blocks rendered top-to-bottom. Compose whatever mix best serves the page's purpose.
 
 Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
 {
@@ -193,88 +205,35 @@ Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
     "robotsMeta": "index,follow"
   },
   "suggestedBlocks": [
-    {
-      "type": "hero",
-      "fields": { "heading": "...", "subheading": "...", "cta_text": "...", "cta_link": "/#contact" },
-      "sd_prompts": { "background": "atmospheric dark steel workshop, sparks, navy palette — no text" }
-    },
-    {
-      "type": "split",
-      "fields": { "heading": "...", "body": "<p>...</p>", "cta_text": "...", "cta_link": "/#contact" },
-      "sd_prompts": { "main_image": "..." }
-    },
+    { "type": "hero",  "fields": { "heading": "...", "subheading": "...", "cta_text": "...", "cta_link": "/#contact" },
+      "sd_prompts": { "background": "atmospheric dark steel workshop, sparks, navy palette — no text" } },
+    { "type": "html",  "fields": { "html": "<h2>...</h2><p>...</p>" } },
     { "type": "cards", "fields": { "heading": "...", "subtext": "...", "card1_title": "...", "card1_body": "...", "card2_title": "...", "card2_body": "...", "card3_title": "...", "card3_body": "..." } },
+    { "type": "datalist", "fields": { "heading": "Latest from the blog", "source": "blog", "pageSize": "6", "paginate": "true" } },
     { "type": "cta",   "fields": { "heading": "...", "subtext": "...", "btn_text": "...", "btn_link": "/#contact" } }
   ]
 }
 
-Block types available: ${VALID_BLOCK_TYPES.join(', ')}.
+Visual block types: hero, text, split, cta, cards, faq, pricing, testimonials, stats, ticker.
+"html" block — fields.html is a single HTML string (<h2>,<p>,<strong>,<ul>,<li>,<a>). Escape inner quotes as \\" and use \\n for newlines. Use for long-form prose.
+"datalist" block — pipes in a module's published content. fields.source ∈ [${PAGE_SOURCE_KEYS.join(', ')}]. Optional fields.pageSize (default 9), fields.group (only for portfolio/careers/marketplace), fields.paginate ("true"/"false"). Use when the user wants a list of posts, portfolio work, jobs, or listings.
 
-Image slots per block type (use the "sd_prompts" map keyed by the slot name; the server will generate the image and attach the URL):
+Image slots (use the "sd_prompts" map keyed by slot name; the server generates the image and attaches the URL):
 - hero, cta, faq, pricing, stats, text: "background"
 - split: "main_image"
 - cards: "background", "card1_image" … "card4_image"
 - testimonials: "background", "t1_avatar" … "t3_avatar"
-- ticker: (none)
+- html, datalist, ticker: (none)
 
 SD prompt rules:
 - Describe textures, palette, mood, lighting only. NEVER include text, letters, logos, or brand names.
 - Pull palette hints from the business brand context above.
-- Use sd_prompts only for the 1-2 blocks that genuinely need imagery (usually the hero, sometimes split or cta). Other blocks can skip the field entirely.
+- Use sd_prompts only for the 1-2 blocks that genuinely need imagery (usually the hero).
 
-Design 3-6 blocks that make sense for the page purpose.
+Design 3-6 blocks that make sense for the page purpose. If the user is clearly asking for a single long article, one "html" block is fine.
 Tailor tone and content to the business and audience described above.${pageCtx}${researchCtx}`;
-    } else if (isDataList) {
-      systemPrompt = `You are a web page builder assistant. The user wants a data-list page that auto-paginates one of the tenant's collections.
 
-${brandCtx}
-
-Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
-{
-  "message": "one sentence describing what you built",
-  "fill": {
-    "title": "page title",
-    "slug": "url-slug",
-    "status": "draft | published",
-    "showInNav": true,
-    "metaTitle": "SEO title",
-    "metaDescription": "SEO description under 160 chars",
-    "dataCollection": "blog | portfolio",
-    "dataPageSize": 9,
-    "dataGroup": "optional portfolio group filter"
-  }
-}
-
-Tailor tone and content to the business above. Choose dataCollection based on the user's request.${pageCtx}${researchCtx}`;
-    } else {
-      systemPrompt = `You are a web page content writer for the business.
-
-${brandCtx}
-
-Output ONLY a raw JSON object. No prose, no markdown fences. Shape:
-{
-  "message": "one sentence describing what you wrote",
-  "fill": {
-    "title": "page title",
-    "slug": "url-slug",
-    "status": "draft | published",
-    "showInNav": true,
-    "metaTitle": "SEO title",
-    "metaDescription": "SEO description under 160 chars",
-    "ogImage": "https://… (optional)",
-    "content": "full HTML content as single escaped string"
-  }
-}
-
-Rules for content:
-- Write 300-600 words using <h2>, <p>, <strong>, <ul>, <li> tags
-- Escape all double quotes inside HTML as \\"
-- No literal newlines in the JSON string — use \\n
-- End with a mention of the business by name
-Tailor tone and content to the business and audience described above.${pageCtx}${researchCtx}`;
-    }
-
-    const raw = await callLLM(messages, systemPrompt);
+    const raw = await callLLM(messages, systemPrompt, 90000, await agentLLMOpts(req.db, req.tenant, 'page'));
     const parsed = tryParseAgentResponse(raw);
 
     // Extract suggestedBlocks separately (tryParseAgentResponse only handles fill)
@@ -289,13 +248,14 @@ Tailor tone and content to the business and audience described above.${pageCtx}$
     } catch {}
 
     // Materialize per-block SD images. We do these in parallel but cap to a
-    // reasonable budget so a 6-block landing page doesn't queue up 30 SD calls.
-    if (isLanding && suggestedBlocks.length) {
+    // reasonable budget so a 6-block page doesn't queue up 30 SD calls. Blocks
+    // with no image slots (html, datalist, ticker) are skipped automatically.
+    if (suggestedBlocks.length) {
       const userEmail = req.adminUser?.email || null;
       const jobs = [];
       const MAX_IMAGES = 4;
       for (const block of suggestedBlocks) {
-        if (!block || !VALID_BLOCK_TYPES.includes(block.type)) continue;
+        if (!block || !PAGE_BLOCK_TYPES.includes(block.type)) continue;
         const slots = BLOCK_IMAGE_SLOTS[block.type] || [];
         const sdMap = block.sd_prompts || {};
         for (const slot of slots) {
@@ -380,6 +340,9 @@ router.get('/:id/edit', async (req, res) => {
     const db = req.db;
     const pg = await db.collection('pages').findOne({ _id: new ObjectId(req.params.id) });
     if (!pg) return res.redirect('/admin/pages');
+    // Legacy content/data-list pages open in the unified builder as synthesized blocks.
+    pg.blocks = synthesizeLegacyBlocks(pg);
+    pg.pageType = 'landing';
     res.render('admin/pages/form', {
       user: req.adminUser, page: 'pages', title: 'Edit Page', pg, error: null,
       ...blockCatalog(),

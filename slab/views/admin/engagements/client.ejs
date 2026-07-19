@@ -1,0 +1,51 @@
+<%- include('../partials/head', { title: 'Engagements — ' + (c.name || 'Client') }) %>
+<%- include('../partials/sidebar', { page: 'clients', user }) %>
+
+<style>
+.wrap { padding:20px 24px; max-width:860px; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:18px 20px; margin-bottom:16px; }
+.eng-row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--border); }
+.eng-row:last-child { border-bottom:none; }
+.st { font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:2px 8px; border-radius:9px; }
+.st-draft { background:rgba(107,115,128,.12); color:var(--slate); }
+.st-sent,.st-viewed { background:rgba(14,165,233,.1); color:#0ea5e9; }
+.st-revision_requested { background:rgba(249,115,22,.12); color:#f97316; }
+.st-signed { background:rgba(234,179,8,.14); color:#ca8a04; }
+.st-acknowledged { background:rgba(16,185,129,.12); color:#10b981; }
+.st-declined,.st-void { background:rgba(239,68,68,.1); color:#ef4444; }
+.st-expired { background:rgba(245,158,11,.14); color:#b45309; }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">✍️ Engagements — <%= c.name || c.company %></div>
+  <div class="topbar-actions">
+    <a class="btn btn-ghost" href="/admin/clients/<%= c._id %>">‹ Client</a>
+    <form method="POST" action="/admin/clients/<%= c._id %>/engagements" style="display:inline;">
+      <input type="hidden" name="title" value="Letter of Engagement">
+      <button class="btn btn-gold" type="submit">+ New Letter</button>
+    </form>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="card">
+    <% if (!engagements.length) { %>
+      <div style="font-size:13px;color:var(--slate);">No engagement letters yet for this client.
+      <% if (!services.length) { %> Add services in <a href="/admin/engagements" style="color:var(--gold);">the catalog</a> first — letters are built from them.<% } %>
+      </div>
+    <% } %>
+    <% engagements.forEach(e => { %>
+    <div class="eng-row">
+      <div>
+        <a href="/admin/clients/<%= c._id %>/engagements/<%= e._id %>" style="font-size:14px;font-weight:600;color:var(--text);text-decoration:none;"><%= e.engagementNumber %> — <%= e.title %></a>
+        <div style="font-size:11px;color:var(--slate);">
+          Created <%= new Date(e.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) %>
+          <%= e.sentAt ? ' · Sent ' + new Date(e.sentAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '' %>
+          <%= e.signature ? ' · Signed by ' + e.signature.typedName : '' %>
+        </div>
+      </div>
+      <span class="st st-<%= e.status %>"><%= e.status.replace('_',' ') %></span>
+    </div>
+    <% }) %>
+  </div>
+</div>

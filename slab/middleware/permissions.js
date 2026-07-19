@@ -28,7 +28,7 @@ const LABS_ITEM = { key: 'labs', section: 'Admin', label: 'Labs', url: '/admin/l
 
 // Build the sidebar nav groups the current viewer is allowed to see, tagging
 // each item with its stage badge ('beta' | 'experimental' | null).
-function buildNavGroups(ctx, showLabs) {
+function buildNavGroups(ctx, showLabs, disabledFns = new Set()) {
   const withBadges = (list) => list.map((f) => ({
     ...f,
     _badge: stageBadge(resolveStage(f, ctx.featureStages)),
@@ -37,7 +37,7 @@ function buildNavGroups(ctx, showLabs) {
   return NAV_SECTIONS.map((section) => {
     // `hideNav` features (e.g. Account Resources) are routable + permission-gated
     // but never get their own sidebar slot.
-    let items = FEATURES.filter((f) => f.section === section && !f.hideNav && canSeeFeature(f, ctx));
+    let items = FEATURES.filter((f) => f.section === section && !f.hideNav && !disabledFns.has(f.key) && canSeeFeature(f, ctx));
     // Inject the Labs link into the Admin section when relevant + permitted.
     if (section === 'Admin' && showLabs && canSeeFeature(LABS_ITEM, ctx)) {
       items = [...items, LABS_ITEM];
@@ -119,13 +119,34 @@ export async function loadUserAccess(req, res, next) {
   res.locals.optInFeatures = optInFeatures;
 
   // Precompute the gated sidebar nav so the view stays presentational.
-  res.locals.navGroups = buildNavGroups(ctx, optInFeatures.length > 0);
+  // Tenant-level "Slab Functions" opt-outs (Settings → Slab Functions). Nav-only:
+  // hides a tool from the sidebar without changing what is permitted.
+  const disabledFns = new Set(
+    String(req.tenant?.public?.disabledFunctions || "")
+      .split(",").map((x) => x.trim()).filter(Boolean),
+  );
+  req.disabledFunctions = [...disabledFns];
+  res.locals.disabledFunctions = [...disabledFns];
+  res.locals.navGroups = buildNavGroups(ctx, optInFeatures.length > 0, disabledFns);
   next();
 }
 
 export function enforceFeatureAccess(req, res, next) {
   const f = matchFeatureByPath(req.path);
   if (!f) return next(); // uncatalogued / utility route — always allowed
+
+  // Workspace-level function switch (Settings → Slab Functions): a disabled tool
+  // is hidden from the nav AND hard-blocked on direct access. Superadmin (platform
+  // support) bypasses so they can still reach a tenant's switched-off tools.
+  if (!req.isSuperAdmin && (req.disabledFunctions || []).includes(f.key)) {
+    const msg = `${f.label} is switched off for this workspace (Settings → Slab Functions).`;
+    const dest = req.get('Sec-Fetch-Dest');
+    const wantsJson = req.xhr
+      || (dest && !['document', 'iframe', 'frame'].includes(dest))
+      || (req.get('Accept') || '').includes('application/json');
+    if (wantsJson) return res.status(403).json({ ok: false, error: msg });
+    return res.redirect('/admin/settings?error=' + encodeURIComponent(msg) + '#functions');
+  }
 
   const ctx = {
     isSuperAdmin: !!req.isSuperAdmin,

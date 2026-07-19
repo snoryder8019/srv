@@ -1,0 +1,77 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Custom API Keys</div>
+  <div class="topbar-actions">
+    <a href="/admin/settings" class="btn btn-ghost">← Settings</a>
+  </div>
+</div>
+<div class="content">
+
+  <% if (msg === 'added') { %><div class="alert alert-success">Key added.</div><% } %>
+  <% if (msg === 'updated') { %><div class="alert alert-success">Key updated.</div><% } %>
+  <% if (msg === 'deleted') { %><div class="alert alert-success">Key deleted.</div><% } %>
+  <% if (err === 'name') { %><div class="alert alert-error">A key name is required.</div><% } %>
+  <% if (err === 'value') { %><div class="alert alert-error">A key value is required.</div><% } %>
+  <% if (err === 'save') { %><div class="alert alert-error">Could not save. Please try again.</div><% } %>
+
+  <p style="opacity:.75;max-width:640px;margin-bottom:20px;">
+    Store your own API keys and secrets — encrypted at rest (AES-256-GCM), shown masked, and only decrypted server-side when a
+    connector uses them. Reference a key in code by its name, e.g. <code>getTenantKey(req.tenant, 'indeed_publisher_key')</code>.
+  </p>
+
+  <div class="card" style="padding:20px;max-width:640px;margin-bottom:26px;">
+    <h3 style="margin-top:0;">Add / update a key</h3>
+    <form action="/admin/settings/keys" method="post" data-guard data-guard-label="Saving">
+      <div class="form-field">
+        <label>Name <span style="opacity:.6;">(lowercase, becomes the lookup handle)</span></label>
+        <input type="text" name="name" required placeholder="indeed_publisher_key" pattern="[A-Za-z0-9_ -]+">
+      </div>
+      <div class="form-field">
+        <label>Value <span style="opacity:.6;">(the secret — stored encrypted)</span></label>
+        <input type="password" name="value" required autocomplete="new-password" placeholder="paste the key or token">
+      </div>
+      <div class="form-field">
+        <label>Note <span style="opacity:.6;">(optional, not secret)</span></label>
+        <input type="text" name="note" placeholder="What this key is for">
+      </div>
+      <div style="margin-top:14px;">
+        <button type="submit" class="btn btn-navy">Save key</button>
+        <span style="opacity:.6;font-size:.85em;margin-left:10px;">Re-adding an existing name rotates its value.</span>
+      </div>
+    </form>
+  </div>
+
+  <% if (!keys || keys.length === 0) { %>
+    <div class="empty">
+      <div class="empty-icon">&#128273;</div>
+      <p>No custom keys yet.</p>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Value</th><th>Note</th><th>Updated</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% keys.forEach(function(k){ %>
+            <tr>
+              <td><code><%= k.name %></code></td>
+              <td>
+                <span style="font-family:monospace;<%= k.broken ? 'color:#a11;' : '' %>"><%= k.masked %></span>
+              </td>
+              <td style="opacity:.8;"><%= k.note || '—' %></td>
+              <td style="white-space:nowrap;opacity:.7;"><%= k.updatedAt ? new Date(k.updatedAt).toLocaleDateString() : '—' %></td>
+              <td style="text-align:right;">
+                <form action="/admin/settings/keys/<%= k.id %>/delete" method="post" data-guard="button" style="display:inline;" onsubmit="return confirm('Delete key &quot;<%= k.name %>&quot;? Any connector using it will stop working.');">
+                  <button type="submit" class="btn btn-sm btn-ghost">Delete</button>
+                </form>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>

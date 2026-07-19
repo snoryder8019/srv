@@ -4,7 +4,7 @@ import { getSlabDb, getTenantDb } from './mongo.js';
 import { decrypt } from './crypto.js';
 import { resolveSmtp } from './mailer.js';
 import { getEmailAccessToken } from './emailOAuth.js';
-import cron from 'node-cron';
+import { scheduleIntervalJob } from './cronSafe.js';
 
 /* ──────────────────────────────────────────────────────────────────
  * MULTI-TENANT INBOUND POLLER
@@ -242,7 +242,7 @@ async function pollAllTenants() {
 }
 
 export function startImapPoller() {
-  setTimeout(() => pollAllTenants(), 10000);
-  cron.schedule('*/2 * * * *', () => pollAllTenants());
-  console.log('[IMAP] Multi-tenant email poller started (every 2 minutes)');
+  // Every 2 min, WSL-jitter-tolerant (node-cron skips ticks on this host). The
+  // reentrancy guard also prevents a slow poll from overlapping the next tick.
+  scheduleIntervalJob('imap-poller', 2 * 60 * 1000, pollAllTenants, { label: 'Multi-tenant email poller', bootDelayMs: 10000 });
 }

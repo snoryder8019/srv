@@ -29,15 +29,43 @@ import {
 
 const router = express.Router();
 
+// A real PAYING subscriber: on a recurring plan (monthly/quarterly/annual) AND
+// with a Stripe/PayPal go-live payment on file. Everything else is non-paying —
+// including comped 'lifetime' (a retired tier, $0 recurring) and the stale legacy
+// 'pro' plan. This is the "paying vs non-paying" division that matters for a
+// real-user read; the raw plan is still shown as a chip for context.
+const PAYING_PLANS = new Set(['monthly', 'quarterly', 'annual']);
+function isPayingTenant(tenant) {
+  const plan = tenant.meta?.plan;
+  const hasProcessorTxn = !!(tenant.meta?.stripeSessionId || tenant.meta?.paypalCaptureId);
+  return PAYING_PLANS.has(plan) && hasProcessorTxn;
+}
+
+// System / test accounts — seeded bots, smoke-test users, internal scanners. These
+// are not real people, so they're flagged 'system use' and muted from the list by
+// default (reveal with ?system=1). Kept narrow so a real user never matches.
+function isSystemAccount(u) {
+  const e = (u.email || '').toLowerCase();
+  if (!e) return false;
+  return e.endsWith('@slab.system')
+      || e.endsWith('@test.com')
+      || /^fakebot\d*@/.test(e)
+      || e.startsWith('scanner-test@')
+      || e === 'bot@slab.system';
+}
+
 router.get('/users', async (req, res) => {
   const slab = getSlabDb();
-  const tenants = await slab.collection('tenants').find({}, { projection: { db: 1, domain: 1, 'brand.name': 1, status: 1, platform: 1 } }).toArray();
+  const tenants = await slab.collection('tenants').find({}, { projection: { db: 1, dbHost: 1, domain: 1, 'brand.name': 1, status: 1, platform: 1, 'meta.plan': 1, 'meta.ownerEmail': 1, 'meta.stripeSessionId': 1, 'meta.paypalCaptureId': 1 } }).toArray();
 
   const tenantFilter = req.query.tenant || '';
   const roleFilter   = req.query.role || '';
   const searchQuery   = req.query.q || '';
   const productFilter = req.query.product || '';
+  const accountFilter = req.query.account || '';   // '', 'premium', 'free'
+  const showSystem    = req.query.system === '1';  // reveal muted system/bot accounts
   const allUsers = [];
+  const failedTenants = [];   // tenants whose users could NOT be loaded (so we surface, not hide)
 
   // Helper: apply role + search filters to a user
   function matchesFilters(u) {
@@ -57,8 +85,15 @@ router.get('/users', async (req, res) => {
   if (!productFilter || productFilter === 'slab') {
     for (const tenant of tenants) {
       if (tenantFilter && tenant.db !== tenantFilter) continue;
+      const plan = tenant.meta?.plan || 'free';
+      const premium = isPayingTenant(tenant);   // _premium now means "real paying subscriber"
+      if (accountFilter === 'premium' && !premium) continue;
+      if (accountFilter === 'free' && premium) continue;
+      const ownerEmail = (tenant.meta?.ownerEmail || '').toLowerCase();
       try {
-        const tDb = getTenantDb(tenant.db);
+        // Pass dbHost explicitly — all live tenants sit on the self-hosted 'gpu'
+        // cluster; relying on the host-map default is fragile.
+        const tDb = getTenantDb(tenant.db, tenant.dbHost);
         const users = await tDb.collection('users').find().toArray();
         for (const u of users) {
           if (!matchesFilters(u)) continue;
@@ -69,10 +104,18 @@ router.get('/users', async (req, res) => {
             _tenantDomain: tenant.domain,
             _tenantName: tenant.brand?.name || tenant.domain,
             _tenantStatus: tenant.status,
+            _tenantPlan: plan,
+            _premium: premium,
+            _isOwnerAccount: !!ownerEmail && (u.email || '').toLowerCase() === ownerEmail,
             _isSuperAdmin: isSuperAdminEmail(u.email),
           });
         }
-      } catch { /* skip dead tenant DBs */ }
+      } catch (e) {
+        // Do NOT silently drop the tenant — a gpu-tunnel blip would otherwise
+        // empty the whole page with no signal. Record it so the view can warn.
+        failedTenants.push({ db: tenant.db, name: tenant.brand?.name || tenant.domain, error: e.message });
+        console.error(`[superadmin/users] failed to load ${tenant.db}:`, e.message);
+      }
     }
   }
 
@@ -164,19 +207,29 @@ router.get('/users', async (req, res) => {
 
   allUsers.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
+  // Flag system/bot accounts, then mute them from the visible list unless asked for.
+  for (const u of allUsers) u._system = isSystemAccount(u);
+  const systemCount = allUsers.filter(u => u._system).length;
+  const users = showSystem ? allUsers : allUsers.filter(u => !u._system);
+
   res.render('superadmin/global-users', {
     superAdmin: req.superAdmin,
-    users: allUsers,
+    users,
     tenants,
     products: PRODUCTS,
-    filters: { tenant: tenantFilter, role: roleFilter, q: searchQuery, product: productFilter },
+    failedTenants,
+    showSystem,
+    filters: { tenant: tenantFilter, role: roleFilter, q: searchQuery, product: productFilter, account: accountFilter },
     stats: {
-      total: allUsers.length,
-      admins: allUsers.filter(u => u.isAdmin).length,
-      owners: allUsers.filter(u => u.isOwner).length,
-      clients: allUsers.filter(u => u.role === 'client').length,
-      superadmins: allUsers.filter(u => u._isSuperAdmin).length,
-      gftvSubs: allUsers.filter(u => u._gftv).length,
+      total: users.length,
+      admins: users.filter(u => u.isAdmin).length,
+      owners: users.filter(u => u.isOwner).length,
+      clients: users.filter(u => u.role === 'client').length,
+      superadmins: users.filter(u => u._isSuperAdmin).length,
+      gftvSubs: users.filter(u => u._gftv).length,
+      premium: users.filter(u => u._premium).length,
+      free: users.filter(u => u._product === 'slab' && !u._premium).length,
+      system: systemCount,
     },
   });
 });

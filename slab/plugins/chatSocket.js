@@ -25,6 +25,32 @@ import {
 
 const room = (threadId) => 'thread:' + String(threadId);
 
+// The /chat namespace, stashed at init so HTTP routes (the public support bubble
+// posts over HTTP, not the socket) can push guest messages into the live room —
+// that's the bridge that lets an admin watch/intercept a guest conversation.
+let _chatNsp = null;
+export function chatBroadcast(threadId, event, payload) {
+  try { if (_chatNsp) _chatNsp.to(room(threadId)).emit(event, payload); } catch { /* never throws into a route */ }
+}
+
+// Push a tenant-wide in-panel alert to every admin currently on the panel (they
+// auto-join `admin:<db>` on connect). Used for new-visitor chats + captured leads
+// so the flash fires wherever the admin is, not only inside an open thread.
+const adminRoom = (tenantDb) => 'admin:' + String(tenantDb);
+export function adminAlert(tenantDb, payload) {
+  try { if (_chatNsp && tenantDb) _chatNsp.to(adminRoom(tenantDb)).emit('admin:alert', payload); } catch { /* never throws into a route */ }
+}
+
+// The staff member's first name, for the guest-facing "X is joining" notice and
+// staff message labels — we don't expose full names/emails to visitors.
+function firstNameOf(user) {
+  const dn = String(user?.displayName || '').trim();
+  if (dn) return dn.split(/\s+/)[0];
+  const em = String(user?.email || '').trim();
+  if (em) return em.split('@')[0];
+  return 'A teammate';
+}
+
 // Build the canSeeFeature-style ctx from a decoded JWT. The JWT already carries
 // isAdmin/isOwner/permissions in this codebase; superadmin + stage/opt-in gating
 // is intentionally conservative here (feature inheritance still requires an
@@ -32,7 +58,11 @@ const room = (threadId) => 'thread:' + String(threadId);
 function ctxFromUser(user) {
   return {
     isSuperAdmin: !!user?.isSuperAdmin,
-    isOwner: !!user?.isOwner,
+    // A tenant admin is owner-level for their OWN tenant's threads — mirrors the
+    // HTTP chat control, which grants isOwner to anyone who can load the page so
+    // staff can review/intercept support conversations. Cross-tenant reach is
+    // blocked separately by binding the socket DB to the JWT's tenantDb (below).
+    isOwner: !!(user?.isOwner || user?.isAdmin),
     userPermissions: Array.isArray(user?.permissions) ? user.permissions : [],
     featureStages: {},
     tenantOptIns: {},
@@ -41,6 +71,7 @@ function ctxFromUser(user) {
 
 export function initChatNamespace(io) {
   const chat = io.of('/chat');
+  _chatNsp = chat;
 
   chat.on('connection', (socket) => {
     // Identify the user from the JWT cookie (same pattern as /meetings, /live).
@@ -57,12 +88,24 @@ export function initChatNamespace(io) {
     socket.data.tenantDb = '';
     socket.data.rooms = new Set();
 
+    // Tenant-wide admin room: every signed-in admin joins on connect so in-panel
+    // alerts reach whoever's on the panel, regardless of which thread (if any)
+    // they have open. The room is keyed to the admin's OWN JWT tenant.
+    if ((user.isAdmin || user.isOwner) && user.tenantDb) {
+      try { socket.join(adminRoom(user.tenantDb)); } catch { /* non-fatal */ }
+    }
+
     const db = () => (socket.data.tenantDb ? getTenantDb(socket.data.tenantDb) : getDb());
 
     // ── Join a thread room ────────────────────────────────────────────────────
     socket.on('chat:join', async ({ threadId, db: dbName } = {}) => {
       try {
-        if (dbName) socket.data.tenantDb = dbName;
+        // Bind the tenant DB to the admin's OWN token; only a superadmin may target
+        // another tenant's DB via the client param. Stops an admin from reaching a
+        // different tenant's threads by passing a foreign db name.
+        if (user.isSuperAdmin) { if (dbName) socket.data.tenantDb = dbName; }
+        else if (user.tenantDb) { socket.data.tenantDb = user.tenantDb; }
+        else if (dbName) { socket.data.tenantDb = dbName; }
         await ensureChatIndexes(db());
 
         const thread = await getThread(db(), threadId);
@@ -83,6 +126,8 @@ export function initChatNamespace(io) {
           kind: thread.kind,
           status: thread.status,
           canWrite: thread.status === 'active',
+          takeover: !!(thread.takeover && thread.takeover.active),
+          honeypot: !!thread.honeypot,
           messages: history,
         });
         socket.to(room(thread._id)).emit('chat:presence', { userId: user.id, name: user.displayName || user.email, state: 'joined' });
@@ -110,13 +155,18 @@ export function initChatNamespace(io) {
           return socket.emit('chat:error', { message: 'You do not have access to this thread.' });
         }
 
+        // On a public support thread the admin is replying TO a visitor — label
+        // the message with just their first name and mark it staff, so the guest
+        // sees a person (not an email) and the source is unambiguous.
+        const isSupport = thread.kind === 'support';
         const saved = await postMessage(db(), {
           threadId: thread._id,
           authorType: 'user',
           authorId: user.id,
-          authorName: user.displayName || user.email || 'User',
+          authorName: isSupport ? firstNameOf(user) : (user.displayName || user.email || 'User'),
           role: 'user',
           body: text,
+          meta: isSupport ? { staff: true } : null,
         });
         chat.to(room(thread._id)).emit('chat:message', saved);
 
@@ -132,7 +182,11 @@ export function initChatNamespace(io) {
         // agent for this thread is enabled. Reply is persisted + broadcast.
         let tenant = null;
         try { tenant = socket.data.tenantDb ? await getTenantMeta(socket.data.tenantDb) : null; } catch {}
-        if (chatbotEnabled(tenant) || (!tenant && false)) {
+        // Stand the AI down while a human has taken over or the thread is flagged
+        // as a honeypot — the assistant must not talk over a live staffer or feed
+        // a suspected bot.
+        const paused = !!((thread.takeover && thread.takeover.active) || thread.honeypot);
+        if (chatbotEnabled(tenant) && !paused) {
           chat.to(room(thread._id)).emit('chat:agent-status', { threadId: String(thread._id), state: 'thinking' });
           const history = await listMessages(db(), thread._id, { limit: 25 });
           dispatchAgent(db(), {
@@ -167,6 +221,63 @@ export function initChatNamespace(io) {
         chat.to(room(thread._id)).emit('chat:message', confirm);
       } catch (err) {
         socket.emit('chat:error', { message: err.message || 'Could not save contact info.' });
+      }
+    });
+
+    // ── Human takeover: stand the AI down + announce the staffer to the guest ──
+    socket.on('chat:takeover', async ({ threadId, on } = {}) => {
+      try {
+        const thread = await getThread(db(), threadId);
+        if (!thread) return socket.emit('chat:error', { message: 'Thread not found.' });
+        if (!canAccessThread(thread, user.id, ctxFromUser(user))) {
+          return socket.emit('chat:error', { message: 'You do not have access to this thread.' });
+        }
+        const active = !!on;
+        const name = firstNameOf(user);
+        const now = new Date();
+        await db().collection('chat_threads').updateOne(
+          { _id: thread._id },
+          { $set: { takeover: active ? { active: true, byUserId: user.id, byName: name, at: now } : { active: false, byName: name, at: now }, updatedAt: now } },
+        );
+        // A visible notice the guest sees (green) and the admin room mirrors.
+        const notice = await postMessage(db(), {
+          threadId: thread._id, authorType: 'system', authorName: 'System', role: 'system',
+          body: active ? `${name} is joining the chat` : `${name} handed the chat back to the assistant`,
+          meta: { event: active ? 'admin-join' : 'admin-leave', byName: name },
+        });
+        chat.to(room(thread._id)).emit('chat:message', notice);
+        chat.to(room(thread._id)).emit('chat:takeover', { threadId: String(thread._id), active, byName: name });
+      } catch (err) {
+        console.error('[chat] takeover error:', err.message);
+        socket.emit('chat:error', { message: 'Could not change takeover.' });
+      }
+    });
+
+    // ── Honeypot: flag a suspected bot/scanner — AI stands down, no lead alerts ──
+    socket.on('chat:honeypot', async ({ threadId, on } = {}) => {
+      try {
+        const thread = await getThread(db(), threadId);
+        if (!thread) return socket.emit('chat:error', { message: 'Thread not found.' });
+        if (!canAccessThread(thread, user.id, ctxFromUser(user))) {
+          return socket.emit('chat:error', { message: 'You do not have access to this thread.' });
+        }
+        const flagged = !!on;
+        await db().collection('chat_threads').updateOne(
+          { _id: thread._id }, { $set: { honeypot: flagged, updatedAt: new Date() } },
+        );
+        // Admin-only note (the guest only ever sees join/leave system messages).
+        const note = await postMessage(db(), {
+          threadId: thread._id, authorType: 'system', authorName: 'System', role: 'system',
+          body: flagged
+            ? `${firstNameOf(user)} flagged this visitor as a suspected bot — honeypot on, assistant silenced.`
+            : `${firstNameOf(user)} cleared the honeypot flag.`,
+          meta: { event: 'honeypot', on: flagged },
+        });
+        chat.to(room(thread._id)).emit('chat:message', note);
+        chat.to(room(thread._id)).emit('chat:honeypot', { threadId: String(thread._id), on: flagged });
+      } catch (err) {
+        console.error('[chat] honeypot error:', err.message);
+        socket.emit('chat:error', { message: 'Could not change honeypot.' });
       }
     });
 

@@ -94,6 +94,10 @@
   .acc-group.open .acc-head .acc-chevron { transform: rotate(90deg); }
   .acc-body { display: none; padding: 0 16px 8px; border-top: 1px solid var(--border); }
   .acc-group.open .acc-body { display: block; }
+  /* sLab Network opt-in toggles */
+  .net-toggle { display: flex; align-items: flex-start; gap: 11px; padding: 11px 0; cursor: pointer; font-size: 0.82rem; color: var(--on-surface); }
+  .net-toggle input[type=checkbox] { margin-top: 2px; width: 16px; height: 16px; accent-color: var(--gold); cursor: pointer; flex: 0 0 auto; }
+  .net-toggle .net-sub { font-size: 0.72rem; color: var(--slate); font-weight: 400; }
   /* Sections inside an accordion drop their outer chrome — the group supplies it */
   .acc-body .settings-section { border: none; border-radius: 0; padding: 18px 4px; margin-bottom: 0; }
   .acc-body .settings-section + .settings-section { border-top: 1px solid var(--border); }
@@ -266,20 +270,56 @@
         document.getElementById('setupReqForm').style.display = 'none';
         document.getElementById('setupReqDone').style.display = 'block';
       } else {
-        alert(j.error || 'Something went wrong — please try again.');
+        SlabFlash.error(j.error || 'Something went wrong — please try again.');
       }
     } catch (e) {
-      alert('Network error — please try again.');
+      SlabFlash.error('Network error — please try again.');
     }
   }
   </script>
 
-  <form method="POST" action="/admin/settings">
+  <form method="POST" action="/admin/settings" data-guard data-guard-label="Saving">
 
     <!-- ░░░ ACCORDION GROUP: BUSINESS ░░░ -->
     <div class="acc-group open">
       <button type="button" class="acc-head" onclick="toggleAcc(this)"><span class="acc-ic">&#9672;</span> Business <span class="acc-sub">profile &amp; domain</span><span class="acc-chevron">&#9656;</span></button>
       <div class="acc-body">
+
+    <!-- ═══════════ CUSTOM API KEYS ═══════════ -->
+    <div class="settings-section">
+      <h2>&#128273; Custom API Keys</h2>
+      <p class="desc">Store your own API keys &amp; secrets (encrypted, decrypt-on-use) for connectors and integrations — beyond the built-in providers below.</p>
+      <a href="/admin/settings/keys" class="btn btn-navy btn-sm">Manage API keys &rarr;</a>
+    </div>
+
+    <!-- ═══════════ SLAB FUNCTIONS ═══════════ -->
+    <div class="settings-section">
+      <h2>&#9707; Slab Functions</h2>
+      <p class="desc">sLab's toolkit runs deep. Switch individual tools on or off to keep your sidebar focused on what you actually use — this only changes what shows in the menu, not your data or anyone's permissions.</p>
+      <input type="hidden" name="functionsForm" value="1">
+      <div class="fn-grid">
+        <% (typeof toggleableFunctions !== 'undefined' ? toggleableFunctions : []).forEach(function(f){
+             var on = !((typeof disabledFunctions !== 'undefined' ? disabledFunctions : []).includes(f.key)); %>
+          <label class="fn-toggle">
+            <input type="checkbox" name="fn_<%= f.key %>" value="on" <%= on ? 'checked' : '' %>>
+            <span class="fn-sw"></span>
+            <span class="fn-txt"><%= f.label %><span class="fn-sec"><%= f.section %></span></span>
+          </label>
+        <% }) %>
+      </div>
+      <button type="submit" style="margin-top:14px;padding:10px 24px;background:var(--gold);color:var(--on-surface);border:none;border-radius:3px;font-family:'Jost',sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;letter-spacing:0.04em;">Save Functions</button>
+    </div>
+    <style>
+      .fn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 16px;margin-top:4px;}
+      .fn-toggle{display:flex;align-items:center;gap:10px;cursor:pointer;padding:5px 0;}
+      .fn-toggle input{position:absolute;opacity:0;width:0;height:0;}
+      .fn-sw{position:relative;flex:0 0 auto;width:34px;height:19px;border-radius:19px;background:var(--border);transition:background .15s;}
+      .fn-sw::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,0.2);}
+      .fn-toggle input:checked + .fn-sw{background:var(--gold);}
+      .fn-toggle input:checked + .fn-sw::after{transform:translateX(15px);}
+      .fn-txt{font-size:0.82rem;color:var(--on-surface);display:flex;flex-direction:column;line-height:1.2;}
+      .fn-sec{font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--slate);}
+    </style>
 
     <!-- ═══════════ BUSINESS PROFILE ═══════════ -->
     <div class="settings-section">
@@ -392,11 +432,15 @@
 
       <div class="field-row">
         <label>Custom Domain</label>
-        <input type="text" name="customDomain" value="<%= settings.customDomain %>" placeholder="yourbusiness.com">
+        <input type="text" name="customDomain" value="<%= settings.customDomain %>" placeholder="yourbusiness.com" <%= (settings.customDomainPaidRequired && !settings.customDomain) ? 'disabled' : '' %>>
+        <% if (settings.customDomainPaidRequired && !settings.customDomain) { %>
+        <div class="field-hint" style="color:var(--gold);">🔒 Custom domains are a paid feature. <a href="/admin?golive=1" style="color:var(--gold);text-decoration:underline;">Subscribe to a plan</a> to point your own domain.</div>
+        <% } else { %>
         <div class="field-hint">Point A records for <code>@</code> and <code>www</code> to <code style="user-select:all;">104.237.138.28</code> first. SSL is provisioned automatically.</div>
+        <% } %>
       </div>
 
-      <% if (!settings.customDomain) { %>
+      <% if (!settings.customDomain && !settings.customDomainPaidRequired) { %>
       <button type="submit" style="margin-top:12px;padding:10px 24px;background:var(--gold);color:var(--on-surface);border:none;border-radius:3px;font-family:'Jost',sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;letter-spacing:0.04em;">Save Domain</button>
       <% } %>
     </div>
@@ -649,6 +693,15 @@
       </div>
 
       <div class="field-row" style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border);">
+        <label>Owner / Billing Email</label>
+        <input type="email" name="ownerEmail" value="<%= settings.ownerEmail %>" placeholder="owner@yourbusiness.com">
+        <div class="field-hint">
+          Your account&rsquo;s billing &amp; notification address — where invoices, receipts and account emails are sent.
+          Changing it here updates it everywhere. This is <strong>not</strong> your login email; your sign-in stays the same.
+        </div>
+      </div>
+
+      <div class="field-row" style="margin-top:18px;">
         <label>Contact Form Recipient</label>
         <input type="email" name="contactEmail" value="<%= settings.contactEmail %>" placeholder="<%= settings.ownerEmail || 'leads@yourbusiness.com' %>">
         <div class="field-hint">
@@ -999,13 +1052,63 @@
           if (!confirm('Disconnect ' + label + ' from this site?')) return;
           fetch('/admin/assets/' + svc + '/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
             .then(function (r) { return r.json(); })
-            .then(function (d) { if (d.success) location.reload(); else alert(d.error || 'Disconnect failed'); })
-            .catch(function (e) { alert('Disconnect failed: ' + e.message); });
+            .then(function (d) { if (d.success) location.reload(); else SlabFlash.error(d.error || 'Disconnect failed'); })
+            .catch(function (e) { SlabFlash.error('Disconnect failed: ' + e.message); });
         }
       </script>
     </div>
 
       </div><!-- /acc-body --></div><!-- /GROUP: INTEGRATIONS -->
+
+    <!-- ░░░ ACCORDION GROUP: sLAB NETWORK ░░░ -->
+    <div class="acc-group">
+      <button type="button" class="acc-head" onclick="toggleAcc(this)"><span class="acc-ic">&#9672;</span> sLab Network <span class="acc-sub">backlink exchange &amp; syndication</span><span class="acc-chevron">&#9656;</span></button>
+      <div class="acc-body">
+
+    <div class="settings-section">
+      <h2>&#9672; Join the sLab Network</h2>
+      <p class="desc">Opt in to the <a href="https://slab.madladslab.com/network" target="_blank" rel="noopener">sLab Network</a> &mdash; a shared directory of the brands built on sLab. Members get listed in the directory and can syndicate content (jobs, press, blogs, newsletters) to a high-traffic hub &mdash; and let visitors follow their newsletter right from the hub. In exchange, a small &ldquo;Part of the sLab Network&rdquo; backlink appears in your site footer.</p>
+
+      <!-- Marker so the settings POST knows this section was submitted (checkboxes -->
+      <!-- post nothing when off; without this we can't tell "off" from "untouched"). -->
+      <input type="hidden" name="networkForm" value="1">
+
+      <label class="net-toggle">
+        <input type="checkbox" name="networkOptIn" id="networkOptIn" value="on" <%= settings.networkOptIn === 'true' ? 'checked' : '' %> onchange="netToggleModules(this.checked)">
+        <span><strong>Join the sLab Network</strong><br><span class="net-sub">Lists your brand in the public directory and adds the footer backlink.</span></span>
+      </label>
+
+      <div id="net-modules" style="<%= settings.networkOptIn === 'true' ? '' : 'opacity:0.45;pointer-events:none;' %>margin-top:14px;padding-left:14px;border-left:2px solid var(--border);">
+        <label class="net-toggle">
+          <input type="checkbox" name="networkJobs" value="on" <%= settings.networkJobs === 'true' ? 'checked' : '' %>>
+          <span><strong>Syndicate my job board</strong><br><span class="net-sub">Publishes your open roles to the Network job board.</span></span>
+        </label>
+        <label class="net-toggle">
+          <input type="checkbox" name="networkPress" value="on" <%= settings.networkPress === 'true' ? 'checked' : '' %>>
+          <span><strong>Syndicate my press releases</strong><br><span class="net-sub">Shares your published press posts to the Network newsroom.</span></span>
+        </label>
+        <label class="net-toggle">
+          <input type="checkbox" name="networkVideo" value="on" <%= settings.networkVideo === 'true' ? 'checked' : '' %>>
+          <span><strong>Syndicate my videos</strong><br><span class="net-sub">Features your latest YouTube uploads on the Network. Requires a YouTube channel set in Design.</span></span>
+        </label>
+        <label class="net-toggle">
+          <input type="checkbox" name="networkMarket" value="on" <%= settings.networkMarket === 'true' ? 'checked' : '' %>>
+          <span><strong>Syndicate my marketplace</strong><br><span class="net-sub">Lists your active marketplace items on the Network marketplace.</span></span>
+        </label>
+        <label class="net-toggle">
+          <input type="checkbox" name="networkContent" value="on" <%= settings.networkContent === 'true' ? 'checked' : '' %>>
+          <span><strong>Syndicate my writing</strong><br><span class="net-sub">Picks up everything you publish &mdash; blog posts, newsletter issues, help &amp; guides &mdash; and routes each to its matching section on the Network, just like it appears on your own site.</span></span>
+        </label>
+        <label class="net-toggle">
+          <input type="checkbox" name="networkFollow" value="on" <%= settings.networkFollow === 'true' ? 'checked' : '' %>>
+          <span><strong>Let the Network grow my list</strong><br><span class="net-sub">Adds a &ldquo;Follow&rdquo; toggle to your directory card so hub visitors can subscribe to your newsletter in one click.</span></span>
+        </label>
+      </div>
+
+      <button type="submit" style="margin-top:16px;padding:10px 24px;background:var(--gold);color:var(--on-surface);border:none;border-radius:3px;font-family:'Jost',sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;letter-spacing:0.04em;">Save Network Settings</button>
+    </div>
+
+      </div><!-- /acc-body --></div><!-- /GROUP: sLAB NETWORK -->
 
     <button type="submit" style="padding:12px 32px;background:var(--gold);color:var(--on-surface);border:none;border-radius:3px;font-family:'Jost',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;letter-spacing:0.04em;">Save Settings</button>
   </form>
@@ -1040,6 +1143,15 @@ function toggleGuide(id) {
 function toggleAcc(head) {
   const g = head.closest('.acc-group');
   if (g) g.classList.toggle('open');
+}
+
+// ── sLab Network — dim the per-module toggles until the master switch is on ──
+function netToggleModules(on) {
+  const box = document.getElementById('net-modules');
+  if (!box) return;
+  box.style.opacity = on ? '' : '0.45';
+  box.style.pointerEvents = on ? '' : 'none';
+  if (!on) box.querySelectorAll('input[type=checkbox]').forEach(c => { c.checked = false; });
 }
 
 // ── Email provider switching ─────────────────────────────────────────────────
@@ -1134,8 +1246,8 @@ async function disconnectOAuth() {
     const r = await fetch('/admin/settings/email/oauth/' + p + '/disconnect', { method: 'POST' });
     const d = await r.json();
     if (d.ok) { OAUTH_STATUS[p] = { connected: false, user: '' }; applyEmailAuthVisibility(); }
-    else { alert(d.error || 'Disconnect failed'); }
-  } catch { alert('Network error'); }
+    else { SlabFlash.error(d.error || 'Disconnect failed'); }
+  } catch { SlabFlash.error('Network error'); }
 }
 function setEmailResult(text, cls) {
   ['emailResult', 'emailResult2'].forEach(function(id) {

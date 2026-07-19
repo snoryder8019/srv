@@ -13,7 +13,7 @@
     <div class="alert alert-error"><%= error %></div>
   <% } %>
 
-  <form method="POST" action="<%= item ? `/admin/portfolio/${item._id}` : '/admin/portfolio' %>" enctype="multipart/form-data">
+  <form method="POST" action="<%= item ? `/admin/portfolio/${item._id}` : '/admin/portfolio' %>" enctype="multipart/form-data" data-guard data-guard-label="Saving">
     <div class="card">
       <div class="card-title">Project Details</div>
       <div class="form-grid">
@@ -159,8 +159,8 @@
         try {
           const res = await fetch(`/admin/portfolio/${itemId}/image/delete`, { method: 'POST' });
           const data = await res.json();
-          if (!data.ok) { alert(data.error || 'Delete failed'); return; }
-        } catch (e) { alert('Delete failed: ' + e.message); return; }
+          if (!data.ok) { SlabFlash.error(data.error || 'Delete failed'); return; }
+        } catch (e) { SlabFlash.error('Delete failed: ' + e.message); return; }
       }
       removeFlag.value = '1';
       imgWrap.style.display = 'none';
@@ -217,8 +217,8 @@
             body: JSON.stringify({ url: target.url })
           });
           const data = await res.json();
-          if (!data.ok) { alert(data.error || 'Delete failed'); return; }
-        } catch (e) { alert('Delete failed: ' + e.message); return; }
+          if (!data.ok) { SlabFlash.error(data.error || 'Delete failed'); return; }
+        } catch (e) { SlabFlash.error('Delete failed: ' + e.message); return; }
       }
       gallery.splice(idx, 1);
     }
@@ -271,15 +271,16 @@
         const res = await fetch('/admin/assets/upload', { method: 'POST', body: fd });
         const data = await res.json();
         if (!res.ok || !data.success) {
-          alert(data.error || 'Upload failed');
+          SlabFlash.error(data.error || 'Upload failed');
         } else {
           (data.assets || []).forEach(a => {
             if (a.publicUrl) gallery.push({ url: a.webUrl || a.publicUrl, caption: a.title || '' });
           });
           save(); render();
+          SlabFlash.success('Uploaded.');
         }
       } catch (e) {
-        alert('Upload failed: ' + e.message);
+        SlabFlash.error('Upload failed: ' + e.message);
       } finally {
         uploadBtn.disabled = false;
         uploadStatus.textContent = '';

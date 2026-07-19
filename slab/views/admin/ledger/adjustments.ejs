@@ -1,0 +1,165 @@
+<%- include('../partials/head', { title: 'Adjustments' }) %>
+<%- include('../partials/sidebar', { page: 'ledger', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Adjustments</div>
+  <div class="topbar-actions">
+    <a href="/admin/ledger/entries?month=<%= month %>" class="btn btn-ghost btn-sm">Go to Ledger</a>
+  </div>
+</div>
+
+<div class="content">
+  <%- include('_tabs', { active: 'adjustments' }) %>
+  <% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <!-- Month nav -->
+  <div class="card" style="margin-bottom:20px;padding:14px 18px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+    <form method="GET" action="/admin/ledger/adjustments" style="display:flex;gap:8px;align-items:center;margin:0;">
+      <a href="/admin/ledger/adjustments?month=<%= prevMonth %>" class="btn btn-ghost btn-sm" style="padding:6px 12px;">&larr;</a>
+      <input type="month" name="month" value="<%= month %>" onchange="this.form.submit()" style="padding:6px 10px;font-size:0.85rem;">
+      <a href="/admin/ledger/adjustments?month=<%= nextMonth %>" class="btn btn-ghost btn-sm" style="padding:6px 12px;">&rarr;</a>
+    </form>
+    <div class="text-slate" style="font-size:0.8rem;"><%= monthLabel %> &middot; <%= entries.length %> posted line<%= entries.length === 1 ? '' : 's' %></div>
+  </div>
+
+  <%
+    function catOptions(selectedId){
+      var html = '';
+      ['income','cogs','labor','fixed','expense','liability'].forEach(function(tp){
+        var opts = categories.filter(function(c){ return c.type === tp; });
+        if (!opts.length) return;
+        html += '<optgroup label="' + tp.toUpperCase() + '">';
+        opts.forEach(function(c){
+          var sel = String(selectedId) === String(c._id) ? ' selected' : '';
+          html += '<option value="' + c._id + '"' + sel + '>' + c.name + '</option>';
+        });
+        html += '</optgroup>';
+      });
+      return html;
+    }
+    var backUrl = '/admin/ledger/adjustments?month=' + month;
+  %>
+
+  <!-- Posted lines: change account + tune allocation % -->
+  <% if (!entries.length) { %>
+    <div class="empty"><div class="empty-icon">&#9878;</div><p>No posted lines for <%= monthLabel %>.</p></div>
+  <% } else { %>
+  <div class="table-wrap" style="margin-bottom:26px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th><th>Description</th><th style="min-width:150px;">Account</th>
+          <th style="text-align:right;">Base</th><th style="width:170px;">Allocation %</th><th style="text-align:right;">Charged</th>
+          <% if (transferTenants && transferTenants.length) { %><th style="width:180px;">Transfer to</th><% } %>
+        </tr>
+      </thead>
+      <tbody>
+        <% for (const e of entries) {
+             const c = catMap[String(e.categoryId)];
+             const base = (e.allocationOf != null ? e.allocationOf : e.amount) || 0;
+             const pct = e.allocationPct != null ? e.allocationPct : 100;
+        %>
+        <tr>
+          <td style="white-space:nowrap;font-size:0.82rem;"><%= new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) %></td>
+          <td style="font-size:0.82rem;"><%= e.description || '—' %></td>
+          <td>
+            <form method="POST" action="/admin/ledger/entries/<%= e._id %>/recategorize" style="margin:0;">
+              <input type="hidden" name="back" value="<%= backUrl %>">
+              <select name="categoryId" class="gl-inline" onchange="this.form.submit()" title="Change GL account">
+                <%- catOptions(e.categoryId) %>
+                <% if (!c) { %><option value="" selected>— uncategorized —</option><% } %>
+              </select>
+            </form>
+          </td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--slate);"><%= money(base) %></td>
+          <td>
+            <form method="POST" action="/admin/ledger/entries/<%= e._id %>/adjust-allocation" style="margin:0;display:flex;gap:5px;align-items:center;">
+              <input type="hidden" name="back" value="<%= backUrl %>">
+              <input type="number" name="pct" value="<%= pct %>" min="0" max="100" step="0.01" class="pct-adj" data-base="<%= base %>" style="width:70px;text-align:right;padding:5px 6px;font-size:0.8rem;">
+              <span style="font-size:0.8rem;color:var(--slate);">%</span>
+              <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 9px;">Apply</button>
+              <span class="pct-preview text-slate" style="font-size:0.68rem;white-space:nowrap;"></span>
+            </form>
+          </td>
+          <td style="text-align:right;font-weight:600;font-variant-numeric:tabular-nums;"><%= money(e.amount) %></td>
+          <% if (transferTenants && transferTenants.length) { %>
+          <td>
+            <form method="POST" action="/admin/ledger/entries/<%= e._id %>/transfer" style="margin:0;display:flex;gap:4px;align-items:center;" onsubmit="return this.targetDb.value ? confirm('Move ' + '<%= money(e.amount) %>' + ' to the selected tenant’s expenses and remove it here?') : false;">
+              <input type="hidden" name="back" value="<%= backUrl %>">
+              <select name="targetDb" class="gl-inline" style="max-width:130px;">
+                <option value="">— tenant —</option>
+                <% transferTenants.forEach(function(t){ %><option value="<%= t.db %>"><%= t.name %></option><% }) %>
+              </select>
+              <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 8px;" title="Move this cost to another tenant's books">&rarr;</button>
+            </form>
+          </td>
+          <% } %>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+
+  <!-- Audit trail -->
+  <h3 class="section-h" style="margin:6px 0 12px;">Change log <span class="pill"><%= adjustments.length %></span></h3>
+  <% if (!adjustments.length) { %>
+    <div class="empty" style="padding:20px;"><p>No adjustments recorded for <%= monthLabel %> yet. Account changes and allocation edits show up here with who made them.</p></div>
+  <% } else { %>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>When</th><th>User</th><th>Line</th><th>Change</th></tr></thead>
+      <tbody>
+        <% adjustments.forEach(function(a){ %>
+        <tr>
+          <td style="white-space:nowrap;font-size:0.78rem;color:var(--slate);"><%= new Date(a.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) %></td>
+          <td style="font-size:0.82rem;font-weight:500;"><%= a.by %></td>
+          <td style="font-size:0.82rem;"><%= a.entryDesc || '—' %></td>
+          <td style="font-size:0.82rem;">
+            <% if (a.field === 'category') { %>
+              <span class="badge badge-draft" style="font-size:0.6rem;">account</span>
+              <span class="text-slate"><%= a.from %></span> &rarr; <strong><%= a.to %></strong>
+            <% } else if (a.field === 'allocation') { %>
+              <span class="badge badge-draft" style="font-size:0.6rem;">allocation</span>
+              <span class="text-slate"><%= a.from %></span> &rarr; <strong><%= a.to %></strong>
+              <% if (a.delta != null) { %><span style="color:<%= a.delta >= 0 ? 'var(--success)' : 'var(--danger)' %>;">(<%= a.delta >= 0 ? '+' : '' %><%= a.delta %>%)</span><% } %>
+            <% } else if (a.field === 'transfer') { %>
+              <span class="badge" style="font-size:0.6rem;background:rgba(201,168,72,0.16);color:var(--gold);">transfer</span>
+              moved to <strong><%= a.to %></strong> <span class="text-slate">(<%= money(a.amount || 0) %>)</span>
+            <% } else { %>
+              <%= a.field %>: <%= a.from %> &rarr; <%= a.to %>
+            <% } %>
+          </td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</div>
+
+<style>
+  .section-h{font-size:0.95rem;font-weight:600;color:var(--navy);margin:0;display:flex;align-items:center;gap:8px;}
+  .pill{display:inline-block;font-size:0.66rem;font-weight:700;background:var(--navy);color:#fff;border-radius:20px;padding:1px 9px;}
+  .gl-inline{font-size:0.8rem;padding:4px 6px;border:1px solid var(--border);border-radius:5px;background:var(--surface);max-width:180px;cursor:pointer;color:var(--on-surface);font-weight:500;}
+  .gl-inline:hover,.gl-inline:focus{border-color:var(--gold);}
+</style>
+
+<script>
+(function(){
+  function fmt(n){ return '$' + (Math.round(n*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function upd(inp){
+    var base = parseFloat(inp.getAttribute('data-base')) || 0;
+    var pct = Math.min(100, Math.max(0, parseFloat(inp.value) || 0));
+    var prev = inp.parentNode.querySelector('.pct-preview');
+    if (prev) prev.textContent = base ? ('= ' + fmt(base*pct/100)) : '';
+  }
+  document.querySelectorAll('.pct-adj').forEach(function(inp){
+    upd(inp);
+    inp.addEventListener('input', function(){ upd(inp); });
+  });
+})();
+</script>
+
+</div></div></body></html>

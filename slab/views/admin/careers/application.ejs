@@ -1,0 +1,58 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<% var a = application; %>
+<div class="topbar">
+  <div class="topbar-title"><%= a.name %></div>
+  <div class="topbar-actions">
+    <a href="/admin/careers/applications" class="btn btn-ghost btn-sm">← All Applications</a>
+  </div>
+</div>
+<div class="content">
+  <% if (msg === 'stage') { %><div class="alert alert-success">Stage updated.</div><% } %>
+
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;max-width:960px;">
+    <div>
+      <div class="card" style="padding:18px;margin-bottom:18px;">
+        <h3 style="margin-top:0;">Applicant</h3>
+        <p><strong>Email:</strong> <a href="mailto:<%= a.email %>"><%= a.email %></a></p>
+        <% if (a.phone) { %><p><strong>Phone:</strong> <%= a.phone %></p><% } %>
+        <% if (a.linkedin) { %><p><strong>LinkedIn:</strong> <a href="<%= a.linkedin %>" target="_blank" rel="noopener"><%= a.linkedin %></a></p><% } %>
+        <% if (a.portfolio) { %><p><strong>Portfolio:</strong> <a href="<%= a.portfolio %>" target="_blank" rel="noopener"><%= a.portfolio %></a></p><% } %>
+        <p><strong>Position:</strong> <%= (job && job.title) || a.jobTitleSnapshot || '—' %></p>
+        <p><strong>Received:</strong> <%= new Date(a.createdAt).toLocaleString() %></p>
+      </div>
+
+      <% if (a.resumeKey) { %>
+        <div class="card" style="padding:18px;margin-bottom:18px;">
+          <h3 style="margin-top:0;">Résumé</h3>
+          <p style="opacity:.7;font-size:.9em;">Stored privately — this link streams the file behind admin auth; it is not publicly reachable.</p>
+          <a href="/admin/careers/applications/<%= a._id %>/resume" target="_blank" rel="noopener" class="btn btn-navy btn-sm">View / Download <%= a.resumeName ? ('(' + a.resumeName + ')') : '' %></a>
+        </div>
+      <% } %>
+
+      <% if (a.coverLetter) { %>
+        <div class="card" style="padding:18px;">
+          <h3 style="margin-top:0;">Cover Letter</h3>
+          <div style="white-space:pre-wrap;"><%= a.coverLetter %></div>
+        </div>
+      <% } %>
+    </div>
+
+    <div>
+      <div class="card" style="padding:18px;">
+        <h3 style="margin-top:0;">Pipeline</h3>
+        <form data-guard action="/admin/careers/applications/<%= a._id %>/stage" method="post">
+          <div class="form-field">
+            <select name="stage">
+              <% stages.forEach(function(s){ %>
+                <option value="<%= s %>" <%= a.stage === s ? 'selected' : '' %>><%= s %></option>
+              <% }); %>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-navy btn-sm" style="margin-top:10px;width:100%;">Update Stage</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

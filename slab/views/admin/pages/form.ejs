@@ -21,10 +21,6 @@
 .palette-icon { font-size:1.1rem;width:24px;text-align:center;color:var(--navy); }
 .palette-label { font-size:0.78rem;font-weight:600;color:var(--on-surface); }
 .palette-divider { border-top:1px solid var(--border);margin:14px 0 10px;padding-top:10px; }
-.palette-mode-row { display:flex;flex-direction:column;gap:6px; }
-.palette-mode-btn { display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:4px;background:transparent;cursor:pointer;font-size:0.74rem;color:var(--slate);font-family:inherit;text-align:left; }
-.palette-mode-btn.active { border-color:var(--navy);background:color-mix(in srgb, var(--navy) 5%, white);color:var(--navy);font-weight:600; }
-.palette-mode-btn .pm-icon { font-size:0.95rem; }
 
 /* ── Block cards ── */
 .block-card { border:1px solid var(--border);border-radius:4px;margin-bottom:10px;overflow:hidden;background:var(--surface); }
@@ -109,7 +105,7 @@
   <div class="alert alert-error" style="margin:12px 20px;"><%= error %></div>
 <% } %>
 
-<form method="POST" action="<%= pg && pg._id ? '/admin/pages/' + pg._id : '/admin/pages' %>" id="page-form" data-pipes>
+<form method="POST" action="<%= pg && pg._id ? '/admin/pages/' + pg._id : '/admin/pages' %>" id="page-form" data-pipes data-guard data-guard-label="Saving">
   <input type="hidden" name="blocksJson" id="blocks-json" value="<%= pg && pg.blocks ? JSON.stringify(pg.blocks) : '[]' %>">
   <input type="hidden" name="pageType" id="pageType-field" value="<%= pg && pg.pageType ? pg.pageType : 'landing' %>">
 
@@ -130,6 +126,8 @@
             testimonials: { icon: '❝', label: 'Testimonials' },
             stats:        { icon: '#', label: 'Stats Row' },
             ticker:       { icon: '»', label: 'Ticker / Marquee' },
+            html:         { icon: '</>', label: 'HTML Block' },
+            datalist:     { icon: '⊞', label: 'Data List' },
           };
           VALID_BLOCK_TYPES.forEach(type => {
             const m = paletteMeta[type] || { icon: '□', label: type };
@@ -141,75 +139,16 @@
         <% }) %>
       </div>
 
-      <div class="palette-divider">
-        <div class="palette-title">Page Mode</div>
-        <div class="palette-mode-row">
-          <button type="button" class="palette-mode-btn" id="mode-landing"  onclick="setPageType('landing')"><span class="pm-icon">◈</span> Block Builder</button>
-          <button type="button" class="palette-mode-btn" id="mode-content"  onclick="setPageType('content')"><span class="pm-icon">✎</span> HTML Content</button>
-          <button type="button" class="palette-mode-btn" id="mode-data-list" onclick="setPageType('data-list')"><span class="pm-icon">⊞</span> Data List</button>
-        </div>
-      </div>
     </div>
 
-    <!-- ── Center: Block Stack / HTML Editor / Data-List Config ── -->
+    <!-- ── Center: Unified block stack (hero, HTML, data-list, cta, …) ── -->
     <div class="builder-center">
-      <!-- Block builder (landing) -->
-      <div class="builder-blocks" id="section-landing">
+      <div class="builder-blocks">
         <div id="block-empty" class="block-empty" style="display:none;">
           <div class="block-empty-icon">+</div>
           <p>Click a block on the left to start building your page,<br>or open the Page Agent to generate a full layout.</p>
         </div>
         <div id="block-list"></div>
-      </div>
-
-      <!-- HTML content editor -->
-      <div class="html-editor" id="section-content" style="display:none;">
-        <div class="tag-row">
-          <% const tags = [
-            ['<p>','</p>','Paragraph'],
-            ['<h2>','</h2>','Heading 2'],
-            ['<h3>','</h3>','Heading 3'],
-            ['<strong>','</strong>','Bold'],
-            ['<em>','</em>','Italic'],
-            ['<ul>\n  <li></li>\n</ul>','','List'],
-            ['<a href="">','</a>','Link'],
-            ['<img src="" alt="">','','Image'],
-            ['<blockquote>','</blockquote>','Quote'],
-          ]; %>
-          <% tags.forEach(function(t) { %>
-            <button type="button" class="btn btn-ghost btn-sm tag-btn"
-              data-open="<%= encodeURIComponent(t[0]) %>"
-              data-close="<%= encodeURIComponent(t[1]) %>"
-              style="font-size:0.7rem;"><%- t[2] %></button>
-          <% }); %>
-        </div>
-        <textarea name="content" id="field-content" rows="22" placeholder="Write page content here. HTML tags supported."><%= pg ? pg.content || '' : '' %></textarea>
-      </div>
-
-      <!-- Data list configuration -->
-      <div class="html-editor" id="section-data-list" style="display:none;">
-        <div style="max-width:520px;">
-          <div class="form-group">
-            <label class="form-label">Data Source</label>
-            <select name="dataCollection" id="field-dataCollection" class="form-select">
-              <option value="blog"      <%= !pg || pg.dataCollection === 'blog'      ? 'selected' : '' %>>Blog Posts</option>
-              <option value="portfolio" <%= pg && pg.dataCollection === 'portfolio'   ? 'selected' : '' %>>Portfolio Items</option>
-            </select>
-            <div class="form-hint">Shows published items only, sorted newest first.</div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Items Per Page</label>
-            <input type="number" name="dataPageSize" id="field-dataPageSize" min="1" max="100" class="form-input" value="<%= pg && pg.dataPageSize ? pg.dataPageSize : 9 %>">
-          </div>
-          <div class="form-group" id="field-dataGroup-wrap" style="<%= pg && pg.dataCollection === 'portfolio' ? '' : 'display:none;' %>">
-            <label class="form-label">Portfolio Group</label>
-            <input type="text" name="dataGroup" id="field-dataGroup" class="form-input" value="<%= pg?.dataGroup || '' %>" placeholder="Leave blank for all groups">
-            <div class="form-hint">Only show portfolio items in this group.</div>
-          </div>
-          <div style="margin-top:16px;padding:14px;background:var(--ivory);border-radius:4px;font-size:0.82rem;color:var(--slate);">
-            <strong style="color:var(--on-surface);">How it works:</strong> This page auto-fetches and paginates your selected collection. Visitors use <code>?p=2</code>, <code>?p=3</code> to navigate. No content to write — the cards are auto-generated.
-          </div>
-        </div>
       </div>
     </div>
 
@@ -252,7 +191,7 @@
             <% if (pg.status === 'published') { %>
               <a href="/<%= pg.slug %>" target="_blank" class="btn btn-ghost btn-sm">View Live →</a>
             <% } %>
-            <form method="POST" action="/admin/pages/<%= pg._id %>/delete" onsubmit="return confirm('Delete this page?')" style="display:inline;">
+            <form method="POST" action="/admin/pages/<%= pg._id %>/delete" data-guard="button" onsubmit="return confirm('Delete this page?')" style="display:inline;">
               <button type="submit" class="btn btn-danger btn-sm">Delete</button>
             </form>
           </div>
@@ -366,6 +305,15 @@
 const BLOCK_FIELDS = <%- BLOCK_FIELDS %>;
 const BLOCK_DEFAULTS = <%- BLOCK_DEFAULTS %>;
 const BLOCK_META = <%- BLOCK_META %>;
+const PAGE_SOURCES = <%- PAGE_SOURCES %>;   // [{ key, label, group }] for the Data List block
+const PAGE_BLOCK_TYPES = Object.keys(BLOCK_META);
+// Rich-text toolbar shared by every HTML block.
+const HTML_TAGS = [
+  ['<p>','</p>','Paragraph'], ['<h2>','</h2>','H2'], ['<h3>','</h3>','H3'],
+  ['<strong>','</strong>','Bold'], ['<em>','</em>','Italic'],
+  ['<ul>\n  <li></li>\n</ul>','','List'], ['<a href="">','</a>','Link'],
+  ['<img src="" alt="">','','Image'], ['<blockquote>','</blockquote>','Quote'],
+];
 
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -377,24 +325,8 @@ function toSlug(s) { return s.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').re
 function autoSlug(v) { if (!slugEdited) document.getElementById('slug-field').value = toSlug(v); }
 document.getElementById('slug-field').addEventListener('input', () => { slugEdited = true; });
 
-// ── Page mode (landing / content / data-list) ────────────────────────────────
-function setPageType(type) {
-  document.getElementById('pageType-field').value = type;
-  ['landing','content','data-list'].forEach(t => {
-    const btn = document.getElementById('mode-' + t);
-    if (btn) btn.classList.toggle('active', t === type);
-    const sec = document.getElementById('section-' + t);
-    if (sec) sec.style.display = t === type ? '' : 'none';
-  });
-  // Show the block palette only in landing mode
-  const palette = document.getElementById('palette-blocks');
-  if (palette) palette.style.display = type === 'landing' ? '' : 'none';
-}
-setPageType('<%= pg && pg.pageType ? pg.pageType : "landing" %>');
-
-document.getElementById('field-dataCollection').addEventListener('change', function() {
-  document.getElementById('field-dataGroup-wrap').style.display = this.value === 'portfolio' ? '' : 'none';
-});
+// The page is always a block stack now; pageType stays 'landing' (the block-render path).
+document.getElementById('pageType-field').value = 'landing';
 
 // ── Right panel tabs ─────────────────────────────────────────────────────────
 function switchRightPanel(panel) {
@@ -402,20 +334,19 @@ function switchRightPanel(panel) {
   document.querySelectorAll('.builder-right-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + panel));
 }
 
-// ── HTML tag buttons ─────────────────────────────────────────────────────────
-document.querySelectorAll('.tag-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const ta = document.getElementById('field-content');
-    const open  = decodeURIComponent(btn.dataset.open);
-    const close = decodeURIComponent(btn.dataset.close);
-    const s = ta.selectionStart, e = ta.selectionEnd;
-    const selected = ta.value.substring(s, e);
-    ta.value = ta.value.substring(0, s) + open + selected + close + ta.value.substring(e);
-    ta.selectionStart = s + open.length;
-    ta.selectionEnd   = s + open.length + selected.length;
-    ta.focus();
-  });
-});
+// Insert a tag pair around the current selection of an HTML block's textarea.
+function htmlTag(blockId, openEnc, closeEnc) {
+  const ta = document.querySelector(`textarea[data-bid="${blockId}"][data-key="html"]`);
+  if (!ta) return;
+  const open = decodeURIComponent(openEnc), close = decodeURIComponent(closeEnc);
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const selected = ta.value.substring(s, e);
+  ta.value = ta.value.substring(0, s) + open + selected + close + ta.value.substring(e);
+  ta.selectionStart = s + open.length;
+  ta.selectionEnd   = s + open.length + selected.length;
+  ta.focus();
+  updateBlockField(blockId, 'html', ta.value);
+}
 
 // ── Block builder ────────────────────────────────────────────────────────────
 // Which image slots each block type supports. Stored on block.images.{slotKey}.
@@ -495,7 +426,7 @@ function updateBlockImage(blockId, slotKey, url, rerender) {
 
 function pickBlockImage(blockId, slotKey) {
   if (typeof window.openAssetPicker !== 'function') {
-    alert('Asset picker not loaded.');
+    SlabFlash.error('Asset picker not loaded.');
     return;
   }
   window.openAssetPicker({
@@ -533,8 +464,9 @@ async function generateBlockImage(blockId, slotKey) {
     const data = await r.json();
     if (!r.ok || !data.url) throw new Error(data.error || 'Generation failed');
     updateBlockImage(blockId, slotKey, data.url, true);
+    SlabFlash.success('Image generated.');
   } catch (e) {
-    alert('Image generation failed: ' + e.message);
+    SlabFlash.error('Image generation failed: ' + e.message);
   } finally {
     buttons.forEach(b => b.disabled = false);
     if (cardEl) cardEl.style.opacity = '';
@@ -562,9 +494,8 @@ function renderBlocks() {
       dragSrc = null; renderBlocks();
     });
 
-    const fields = BLOCK_FIELDS[block.type] || [];
-    const previewText = block.fields?.heading || block.fields?.q1 || block.type;
     const meta = BLOCK_META[block.type] || { icon: '?', label: block.type };
+    const previewText = blockPreview(block);
 
     card.innerHTML = `
       <div class="block-card-header" onclick="toggleBlock('${block.id}')">
@@ -579,20 +510,88 @@ function renderBlocks() {
         </div>
       </div>
       <div class="block-body collapsed" id="block-body-${block.id}">
-        ${renderBlockImages(block)}
-        ${fields.map(([key, label, type]) => {
-          const val = block.fields?.[key] ?? '';
-          return `<div class="block-field">
-            <label>${label}</label>
-            ${type === 'textarea'
-              ? `<textarea data-bid="${block.id}" data-key="${key}" oninput="updateBlockField('${block.id}','${key}',this.value)">${escapeHtml(val)}</textarea>`
-              : `<input type="text" data-bid="${block.id}" data-key="${key}" value="${escapeHtml(val)}" oninput="updateBlockField('${block.id}','${key}',this.value)">`}
-          </div>`;
-        }).join('')}
+        ${renderBlockBody(block)}
       </div>`;
     list.appendChild(card);
   });
   serializeBlocks();
+}
+
+// Header preview text per block type.
+function blockPreview(block) {
+  const f = block.fields || {};
+  if (block.type === 'html')     return (f.html || '').replace(/<[^>]*>/g, ' ').trim() || 'HTML';
+  if (block.type === 'datalist') { const s = PAGE_SOURCES.find(x => x.key === f.source); return `${s ? s.label : f.source || 'blog'}${f.paginate === 'true' ? ' · paginated' : ''}`; }
+  return f.heading || f.q1 || block.type;
+}
+
+// Block editor body. html + datalist use custom widgets; everything else uses BLOCK_FIELDS.
+function renderBlockBody(block) {
+  if (block.type === 'html') {
+    const val = block.fields?.html ?? '';
+    const toolbar = HTML_TAGS.map(([o, c, label]) =>
+      `<button type="button" class="btn btn-ghost btn-sm" style="font-size:0.7rem;"
+        onclick="htmlTag('${block.id}','${encodeURIComponent(o)}','${encodeURIComponent(c)}')">${escapeHtml(label)}</button>`).join('');
+    return `<div class="block-field">
+      <label>HTML Content</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${toolbar}</div>
+      <textarea data-bid="${block.id}" data-key="html" style="min-height:220px;font-family:monospace;font-size:0.84rem;line-height:1.6;"
+        oninput="updateBlockField('${block.id}','html',this.value)" placeholder="Write HTML — tags supported. {{ }} content pipes work too.">${escapeHtml(val)}</textarea>
+    </div>`;
+  }
+
+  if (block.type === 'datalist') {
+    const f = block.fields || {};
+    const source = f.source || 'blog';
+    const srcMeta = PAGE_SOURCES.find(x => x.key === source);
+    const opts = PAGE_SOURCES.map(s => `<option value="${s.key}" ${s.key === source ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('');
+    return `<div class="block-field">
+      <label>Heading (optional)</label>
+      <input type="text" data-bid="${block.id}" data-key="heading" value="${escapeHtml(f.heading ?? '')}"
+        oninput="updateBlockField('${block.id}','heading',this.value)" placeholder="e.g. Latest from the blog">
+    </div>
+    <div class="block-field">
+      <label>Source Module</label>
+      <select data-bid="${block.id}" data-key="source" onchange="updateDatalistSource('${block.id}',this.value)">${opts}</select>
+      <div style="font-size:0.7rem;color:var(--slate);margin-top:4px;">Pulls published items from this module. It stays managed in its own admin.</div>
+    </div>
+    <div class="block-field">
+      <label>Items Per Page</label>
+      <input type="number" min="1" max="100" data-bid="${block.id}" data-key="pageSize" value="${escapeHtml(f.pageSize ?? '9')}"
+        oninput="updateBlockField('${block.id}','pageSize',this.value)">
+    </div>
+    <div class="block-field" data-datalist-group="${block.id}" style="${srcMeta && srcMeta.group ? '' : 'display:none;'}">
+      <label>Group Filter (optional)</label>
+      <input type="text" data-bid="${block.id}" data-key="group" value="${escapeHtml(f.group ?? '')}"
+        oninput="updateBlockField('${block.id}','group',this.value)" placeholder="Leave blank for all">
+    </div>
+    <div class="block-field">
+      <label class="block-check" style="display:flex;align-items:center;gap:8px;font-size:0.82rem;text-transform:none;letter-spacing:0;">
+        <input type="checkbox" ${f.paginate === 'true' ? 'checked' : ''}
+          onchange="updateBlockField('${block.id}','paginate',this.checked?'true':'')"> Paginate (visitors page through with ?p=)
+      </label>
+    </div>`;
+  }
+
+  // Default: image slots + BLOCK_FIELDS text/textarea inputs.
+  const fields = BLOCK_FIELDS[block.type] || [];
+  return renderBlockImages(block) + fields.map(([key, label, type]) => {
+    const val = block.fields?.[key] ?? '';
+    return `<div class="block-field">
+      <label>${label}</label>
+      ${type === 'textarea'
+        ? `<textarea data-bid="${block.id}" data-key="${key}" oninput="updateBlockField('${block.id}','${key}',this.value)">${escapeHtml(val)}</textarea>`
+        : `<input type="text" data-bid="${block.id}" data-key="${key}" value="${escapeHtml(val)}" oninput="updateBlockField('${block.id}','${key}',this.value)">`}
+    </div>`;
+  }).join('');
+}
+
+// Changing a datalist source toggles the group field's visibility to match.
+function updateDatalistSource(blockId, value) {
+  updateBlockField(blockId, 'source', value);
+  const srcMeta = PAGE_SOURCES.find(x => x.key === value);
+  const wrap = document.querySelector(`[data-datalist-group="${blockId}"]`);
+  if (wrap) wrap.style.display = srcMeta && srcMeta.group ? '' : 'none';
 }
 
 function toggleBlock(id) {
@@ -661,13 +660,10 @@ function apAddMsg(role, text) {
 }
 
 // Map of agent fill keys -> DOM ids / input selectors. Lets the agent touch
-// every page-level field (not just title/meta), and includes pageType / mode
-// so it can change the active section.
+// every page-level field (not just title/meta). Page structure (html/datalist)
+// arrives as suggestedBlocks, not fill keys, so pageType/mode fills are ignored.
 function fillField(key, aiValue) {
-  if (key === 'pageType' || key === 'mode' || key === 'page_type') {
-    if (['landing','content','data-list'].includes(aiValue)) setPageType(aiValue);
-    return;
-  }
+  if (key === 'pageType' || key === 'mode' || key === 'page_type') return; // page is always a block stack
   if (key === 'slug') {
     const el = document.getElementById('slug-field');
     if (el) { el.value = String(aiValue); el.classList.add('ai-filled'); slugEdited = true; }
@@ -682,15 +678,12 @@ function fillField(key, aiValue) {
     }
     return;
   }
-  // Direct id matches: title, content, metaTitle, metaDescription, dataCollection, dataPageSize, dataGroup
+  // Direct id matches: title, metaTitle, metaDescription
   const el = document.getElementById('field-' + key);
   if (el) {
     el.value = String(aiValue);
     el.classList.add('ai-filled');
     if (key === 'title' && !slugEdited) autoSlug(String(aiValue));
-    if (key === 'dataCollection') {
-      document.getElementById('field-dataGroup-wrap').style.display = aiValue === 'portfolio' ? '' : 'none';
-    }
     return;
   }
   // Fallback: try a name-based lookup (covers ogImage / canonicalUrl / sitemapPriority)
@@ -733,9 +726,8 @@ async function apSend() {
     }
 
     if (Array.isArray(data.suggestedBlocks) && data.suggestedBlocks.length) {
-      const validTypes = Object.keys(BLOCK_FIELDS);
       const newBlocks = data.suggestedBlocks
-        .filter(b => b && validTypes.includes(b.type))
+        .filter(b => b && PAGE_BLOCK_TYPES.includes(b.type))
         .map(b => ({
           id: Math.random().toString(36).slice(2),
           type: b.type,
@@ -747,7 +739,6 @@ async function apSend() {
         renderBlocks();
         const imageCount = newBlocks.reduce((n, b) => n + Object.keys(b.images || {}).length, 0);
         apAddMsg('agent', `Added ${newBlocks.length} block${newBlocks.length > 1 ? 's' : ''}${imageCount ? ` with ${imageCount} generated image${imageCount > 1 ? 's' : ''}` : ''}. Expand each block to edit, or click "Pick from Assets" / "Generate (SD)" on any image slot.`);
-        if (document.getElementById('pageType-field').value !== 'landing') setPageType('landing');
       }
     }
   } catch (e) {
@@ -772,7 +763,6 @@ document.getElementById('ap-input').addEventListener('keydown', e => {
     if (data.department !== 'page' || !data.fill) return;
     sessionStorage.removeItem('slab_agent_fill');
     Object.entries(data.fill).forEach(([k, v]) => { if (v) fillField(k, String(v)); });
-    if (data.page_type) setPageType(data.page_type);
     if (Array.isArray(data.suggestedBlocks) && data.suggestedBlocks.length) {
       pageBlocks = [];
       data.suggestedBlocks.forEach(b => {

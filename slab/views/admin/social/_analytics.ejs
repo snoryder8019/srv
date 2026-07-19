@@ -1,0 +1,142 @@
+<%
+  // Analytics tab — LIVE insights from connected accounts (Facebook, Instagram,
+  // Threads, LinkedIn org pages). Data is fetched client-side from the existing
+  // /admin/analytics/social endpoint so this page never blocks on slow platform
+  // APIs. Dependency-free: metric tiles + per-platform cards + inline-SVG
+  // sparklines (no Chart.js on the social page).
+%>
+<style>
+  .an2-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+  .an2-head h3 { margin:0; font-family:var(--font-heading); color:var(--on-surface); font-size:1.1rem; }
+  .an2-range { margin-left:auto; display:flex; gap:6px; }
+  .an2-range button { font-size:0.72rem; padding:5px 12px; border:1px solid var(--border); background:var(--surface); color:var(--slate); border-radius:6px; cursor:pointer; }
+  .an2-range button.on { background:var(--navy); color:#fff; border-color:var(--navy); font-weight:600; }
+  .an2-tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:18px; }
+  .an2-tile { border:1px solid var(--border); border-radius:8px; padding:14px 16px; background:var(--surface); }
+  .an2-tile .lbl { font-size:0.62rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--slate); }
+  .an2-tile .val { font-size:1.5rem; font-weight:700; color:var(--on-surface); font-family:var(--font-heading); margin-top:4px; }
+  .an2-tile .val.gold { color:var(--gold,#C9A848); }
+  .an2-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
+  .an2-card { border:1px solid var(--border); border-radius:8px; padding:16px; background:var(--surface); }
+  .an2-card-head { display:flex; align-items:center; gap:9px; margin-bottom:8px; }
+  .an2-card-head .ic { font-size:1.3rem; }
+  .an2-card-head .nm { font-weight:600; color:var(--on-surface); min-width:0; }
+  .an2-card-head .fol { margin-left:auto; text-align:right; flex-shrink:0; }
+  .an2-card-head .fol b { font-size:1.05rem; color:var(--on-surface); }
+  .an2-card-head .fol span { display:block; font-size:0.58rem; color:var(--slate); text-transform:uppercase; letter-spacing:.05em; }
+  .an2-metrics { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
+  .an2-metric { font-size:0.7rem; background:var(--ivory); border:1px solid var(--border); border-radius:12px; padding:3px 10px; color:var(--slate); }
+  .an2-metric b { color:var(--on-surface); }
+  .an2-spark { width:100%; height:44px; display:block; margin-top:6px; }
+  .an2-spark-lbl { font-size:0.58rem; color:var(--slate); text-transform:uppercase; letter-spacing:.04em; margin-top:4px; }
+  .an2-note { font-size:0.72rem; color:var(--slate); margin-top:8px; }
+  .an2-note.err { color:var(--danger); }
+  .an2-spin { font-size:0.85rem; color:var(--slate); padding:24px; text-align:center; }
+  @media (max-width:820px){ .an2-cards { grid-template-columns:1fr; } }
+</style>
+
+<div class="an2-head">
+  <h3>📊 Social Analytics <span style="font-weight:400;font-size:0.8rem;color:var(--slate);">· live · connected accounts</span></h3>
+  <div class="an2-range" id="an2Range">
+    <button data-r="day">Today</button>
+    <button data-r="week">7 days</button>
+    <button data-r="month" class="on">30 days</button>
+  </div>
+</div>
+<div id="an2Body"><div class="an2-spin">✦ Pulling live insights from connected accounts…</div></div>
+
+<script>
+(function(){
+  let AN2_RANGE = 'month';
+  const RANGE_LBL = { day:'today', week:'7d', month:'30d' };
+  const byId = (id) => document.getElementById(id);
+  const esc = (s) => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const fmtNum = (n) => { n = Number(n)||0; return n>=1e6 ? (n/1e6).toFixed(1).replace(/\.0$/,'')+'M' : n>=1e3 ? (n/1e3).toFixed(1).replace(/\.0$/,'')+'k' : String(Math.round(n)); };
+  const titleCase = (s) => String(s).replace(/([A-Z])/g,' $1').replace(/^./,c=>c.toUpperCase()).trim();
+  // Which series is the headline trend line for each platform.
+  const PRIMARY = { facebook:'impressions', instagram:'reach', threads:'views', linkedin:'impressions', bluesky:'engagements' };
+
+  // Tiny inline-SVG sparkline from a [{date,value}] series (no chart library).
+  function spark(series, color) {
+    const pts = (series||[]).map(p => Number(p.value)||0);
+    if (pts.length < 2) return '';
+    const W=280, H=44, pad=3;
+    const max = Math.max.apply(null, pts.concat([1])), min = Math.min.apply(null, pts.concat([0]));
+    const rng = (max-min)||1;
+    const step = (W-pad*2)/(pts.length-1);
+    const xy = pts.map((v,i)=>[pad+i*step, H-pad-((v-min)/rng)*(H-pad*2)]);
+    const line = xy.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+    const area = line+' L'+xy[xy.length-1][0].toFixed(1)+' '+(H-pad)+' L'+xy[0][0].toFixed(1)+' '+(H-pad)+' Z';
+    return '<svg class="an2-spark" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">' +
+      '<path d="'+area+'" fill="'+color+'22"/>' +
+      '<path d="'+line+'" fill="none" stroke="'+color+'" stroke-width="2" stroke-linejoin="round"/></svg>';
+  }
+
+  function tile(lbl,val,gold){ return '<div class="an2-tile"><div class="lbl">'+esc(lbl)+'</div><div class="val'+(gold?' gold':'')+'">'+esc(val)+'</div></div>'; }
+
+  function card(key, p){
+    const url = p.profile && p.profile.url;
+    const handle = p.profile && p.profile.name;
+    let h = '<div class="an2-card"><div class="an2-card-head"><span class="ic">'+esc(p.icon||'')+'</span>' +
+      '<span class="nm">'+(url?'<a href="'+esc(url)+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">'+esc(p.name)+'</a>':esc(p.name)) +
+        (handle?' <span style="font-weight:400;color:var(--slate);font-size:0.76rem;">@'+esc(handle)+'</span>':'') + '</span>' +
+      '<span class="fol"><b>'+fmtNum(p.followers)+'</b><span>followers</span></span></div>';
+    const m = p.metrics||{};
+    const mk = Object.keys(m);
+    if (mk.length) h += '<div class="an2-metrics">' + mk.map(k => '<span class="an2-metric"><b>'+fmtNum(m[k])+'</b> '+esc(titleCase(k))+'</span>').join('') + '</div>';
+    const pm = PRIMARY[key] || Object.keys(p.series||{})[0];
+    const s = pm && p.series ? p.series[pm] : null;
+    if (s && s.length>1) h += spark(s, p.color||'#888') + '<div class="an2-spark-lbl">'+esc(titleCase(pm))+' · '+RANGE_LBL[AN2_RANGE]+'</div>';
+    if (p.error) h += '<div class="an2-note err">'+esc(p.error)+'</div>';
+    else if (p.note) h += '<div class="an2-note">'+esc(p.note)+'</div>';
+    return h + '</div>';
+  }
+
+  async function load() {
+    const body = byId('an2Body');
+    body.innerHTML = '<div class="an2-spin">✦ Pulling live insights from connected accounts…</div>';
+    let data;
+    try {
+      const r = await fetch('/admin/analytics/social?range='+AN2_RANGE);
+      data = await r.json();
+      if (data.error) throw new Error(data.error);
+    } catch(e) {
+      body.innerHTML = '<div class="an2-note err">Could not load analytics: '+esc(e.message)+'</div>'; return;
+    }
+    const keys = Object.keys(data.platforms||{});
+    if (!keys.length) {
+      body.innerHTML = '<div class="an2-note">No analytics-capable accounts connected. Live analytics come from <strong>Facebook</strong>, <strong>Instagram</strong>, <strong>Threads</strong>, and <strong>LinkedIn</strong> (organization pages). Connect one under <a href="/admin/settings#socialSettings">Connections</a>. Other networks don’t expose an analytics API.</div>';
+      return;
+    }
+    const t = data.totals||{};
+    // Reach is Instagram-only (Facebook Pages no longer expose a reach metric and
+    // LinkedIn personal profiles have no analytics). If IG's insights call was
+    // blocked, a 0 here is an auth gap — not a real zero — so say so.
+    const reachVal = t.reachBlocked ? '—' : fmtNum(t.reach);
+    let banner = '';
+    if (t.reachBlocked) {
+      banner = '<div class="an2-note err" style="margin-bottom:14px;">⚠️ Reach is unavailable: Instagram (the only platform that reports reach) denied the insights request. Reconnect Instagram and grant the <strong>instagram_manage_insights</strong> scope — see the platform card below.</div>';
+    } else if (t.hasErrors) {
+      banner = '<div class="an2-note err" style="margin-bottom:14px;">⚠️ Some platforms returned errors — affected tiles may read low. Details on the cards below.</div>';
+    }
+    let html = banner + '<div class="an2-tiles">' +
+      tile('Total Followers', fmtNum(t.followers), true) +
+      tile('Reach', reachVal) +
+      tile('Impressions', fmtNum(t.impressions)) +
+      tile('Engagements', fmtNum(t.engagements)) +
+      tile('Posts', fmtNum(t.posts)) +
+      '</div><div class="an2-cards">';
+    keys.forEach(k => { html += card(k, data.platforms[k]); });
+    html += '</div>';
+    body.innerHTML = html;
+  }
+
+  byId('an2Range').addEventListener('click', (e)=>{
+    const b = e.target.closest('button[data-r]'); if(!b) return;
+    AN2_RANGE = b.dataset.r;
+    byId('an2Range').querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
+    load();
+  });
+  load();
+})();
+</script>

@@ -1,0 +1,211 @@
+<%- include('../partials/head', { title: 'Receipt Scanner' }) %>
+<%- include('../partials/sidebar', { page: 'ledger', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Finance</div>
+  <div class="topbar-actions">
+    <a href="/admin/ledger/entries" class="btn btn-ghost btn-sm">Go to Ledger</a>
+  </div>
+</div>
+
+<div class="content" data-agent-scope="bookkeeping" data-agent-kind="agent" data-agent-title="Receipt Scan" data-agent-suggest="Turn this receipt into a ledger entry|Extract the vendor, date and total|Suggest a GL category for this receipt|Check if this duplicates an entry">
+  <%- include('_tabs', { active: 'scan' }) %>
+
+  <% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <!-- Uploader -->
+  <div class="scan-hero card">
+    <div class="scan-hero-copy">
+      <div class="scan-kicker">AI Receipt &amp; Invoice Scanner</div>
+      <h2 class="scan-title">Snap it, we read it, you approve it.</h2>
+      <p class="text-slate" style="font-size:0.82rem;margin:0;">Upload a photo of a receipt or invoice. The AI drafts the vendor, date, amount and a category guess — nothing posts to your books until you review and approve it.</p>
+    </div>
+    <form data-guard class="scan-drop" method="POST" action="/admin/ledger/scan" enctype="multipart/form-data" id="scanForm">
+      <label class="dropzone" id="dropzone">
+        <input type="file" name="receipt" accept="image/*,application/pdf" required id="fileInput" hidden>
+        <div class="dz-icon">&#128247;</div>
+        <div class="dz-main" id="dzMain">Tap to choose or drop a file</div>
+        <div class="dz-sub text-slate">JPG, PNG, WEBP or PDF · up to 12MB</div>
+      </label>
+      <button type="submit" class="btn btn-navy" id="scanBtn" disabled>Scan &amp; Extract</button>
+    </form>
+  </div>
+
+  <!-- Pending review queue -->
+  <div class="flex-between" style="margin:26px 0 12px;">
+    <h3 class="section-h">Pending review <span class="pill"><%= pending.length %></span></h3>
+  </div>
+
+  <% if (!pending.length) { %>
+    <div class="empty"><div class="empty-icon">&#9989;</div><p>Nothing waiting. Uploaded receipts land here for your approval.</p></div>
+  <% } else { %>
+    <div class="scan-grid">
+      <% pending.forEach(function(s){
+           const isImg = (s.receiptType || '').startsWith('image/');
+           const dstr = s.date ? new Date(s.date).toISOString().slice(0,10) : todayInput;
+      %>
+      <div class="scan-card card">
+        <div class="scan-card-media">
+          <% if (isImg) { %>
+            <a href="/admin/ledger/scan/<%= s._id %>/receipt" target="_blank" title="Open full receipt">
+              <img src="/admin/ledger/scan/<%= s._id %>/receipt" alt="receipt" loading="lazy">
+            </a>
+          <% } else { %>
+            <a href="/admin/ledger/scan/<%= s._id %>/receipt" target="_blank" class="file-chip">
+              <span class="file-ic">&#128196;</span>
+              <span><%= s.receiptName || 'Document' %></span>
+            </a>
+          <% } %>
+          <div class="scan-flags">
+            <span class="badge badge-draft" style="text-transform:capitalize;"><%= s.docType || 'receipt' %></span>
+            <% if (s.needsManual) { %>
+              <span class="badge badge-inactive" title="<%= s.aiNote || '' %>">Manual entry</span>
+            <% } else { %>
+              <span class="badge badge-featured">AI read</span>
+            <% } %>
+          </div>
+        </div>
+
+        <form data-guard class="scan-card-form" method="POST" action="/admin/ledger/scan/<%= s._id %>/approve">
+          <% if (s.needsManual && s.aiNote) { %>
+            <div class="ai-note"><%= s.aiNote %></div>
+          <% } else if (s.summary) { %>
+            <div class="ai-note ai-note-quote">&ldquo;<%= s.summary %>&rdquo;</div>
+          <% } %>
+
+          <div class="form-grid cols-2">
+            <div class="form-field">
+              <label>Date</label>
+              <input type="date" name="date" value="<%= dstr %>">
+            </div>
+            <div class="form-field">
+              <label>Amount</label>
+              <input type="number" step="0.01" min="0" name="amount" value="<%= (s.total || 0) ? s.total : '' %>" placeholder="0.00" required>
+            </div>
+            <div class="form-field span-2">
+              <label>Vendor</label>
+              <input type="text" name="vendor" value="<%= s.vendor || '' %>" placeholder="Merchant / biller">
+            </div>
+            <div class="form-field span-2">
+              <label>Description</label>
+              <input type="text" name="description" value="<%= s.summary || s.vendor || '' %>" placeholder="What was this?">
+            </div>
+            <div class="form-field span-2">
+              <label>GL Category
+                <% if (s.categoryGuess) { %><span class="guess">AI guess: <%= s.categoryGuess %></span><% } %>
+              </label>
+              <select name="categoryId" required>
+                <option value="">— choose account —</option>
+                <% ['income','cogs','labor','fixed','expense','liability'].forEach(function(tp){
+                     const opts = categories.filter(function(c){ return c.type === tp; });
+                     if (!opts.length) return; %>
+                  <optgroup label="<%= tp.toUpperCase() %>">
+                    <% opts.forEach(function(c){
+                         const guess = (s.categoryGuess||'').toLowerCase();
+                         const match = guess && c.name.toLowerCase().includes(guess.split(' ')[0]);
+                         const typeMatch = (tp === (s.suggestedType === 'income' ? 'income' : 'expense'));
+                    %>
+                      <option value="<%= c._id %>" <%= match ? 'selected' : '' %>><%= c.name %></option>
+                    <% }) %>
+                  </optgroup>
+                <% }) %>
+              </select>
+            </div>
+            <div class="form-field span-2">
+              <label>Tags</label>
+              <input type="text" name="tags" list="scanTagList" placeholder="comma,separated,tags">
+            </div>
+          </div>
+
+          <div class="scan-card-actions">
+            <button type="submit" class="btn btn-navy btn-sm">&#10003; Approve &amp; Post</button>
+            <span class="scan-mini-actions">
+              <button type="submit" formaction="/admin/ledger/scan/<%= s._id %>/reject" formnovalidate class="btn btn-ghost btn-sm">Reject</button>
+              <button type="submit" formaction="/admin/ledger/scan/<%= s._id %>/delete" formnovalidate class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="return confirm('Delete this scan?')">Delete</button>
+            </span>
+          </div>
+        </form>
+      </div>
+      <% }) %>
+    </div>
+  <% } %>
+
+  <!-- Recently handled -->
+  <% if (recent.length) { %>
+  <h3 class="section-h" style="margin:28px 0 12px;">Recently handled</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Date</th><th>Vendor</th><th style="text-align:right;">Amount</th><th>Result</th><th>Reviewed by</th></tr></thead>
+      <tbody>
+        <% recent.forEach(function(s){ %>
+        <tr>
+          <td><%= s.date ? new Date(s.date).toLocaleDateString('en-US') : '—' %></td>
+          <td><%= s.vendor || '—' %></td>
+          <td style="text-align:right;"><%= money(s.total || 0) %></td>
+          <td><span class="badge <%= s.status === 'approved' ? 'badge-active' : 'badge-inactive' %>" style="text-transform:capitalize;"><%= s.status %></span></td>
+          <td class="text-slate" style="font-size:0.8rem;"><%= s.reviewedBy || '' %></td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+
+  <datalist id="scanTagList">
+    <% allTags.forEach(function(t){ %><option value="<%= t %>"></option><% }) %>
+  </datalist>
+</div>
+
+<style>
+  .section-h{font-size:0.95rem;font-weight:600;color:var(--navy);margin:0;display:flex;align-items:center;gap:8px;}
+  .pill{display:inline-block;font-size:0.66rem;font-weight:700;background:var(--navy);color:#fff;border-radius:20px;padding:1px 9px;}
+  .scan-hero{display:flex;gap:24px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:linear-gradient(135deg,rgba(28,43,74,0.03),rgba(201,168,72,0.05));}
+  .scan-hero-copy{flex:1;min-width:260px;}
+  .scan-kicker{font-size:0.62rem;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);margin-bottom:6px;}
+  .scan-title{font-family:var(--font-heading,serif);font-size:1.5rem;font-weight:500;color:var(--navy);margin:0 0 8px;line-height:1.15;}
+  .scan-drop{display:flex;flex-direction:column;gap:10px;min-width:260px;flex:1;}
+  .dropzone{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:2px dashed var(--border);border-radius:10px;padding:22px;cursor:pointer;text-align:center;transition:border-color .15s,background .15s;background:var(--surface);}
+  .dropzone.drag{border-color:var(--gold);background:rgba(201,168,72,0.06);}
+  .dropzone.has-file{border-color:var(--success);background:rgba(21,128,61,0.05);}
+  .dz-icon{font-size:1.6rem;}
+  .dz-main{font-weight:500;font-size:0.86rem;color:var(--navy);}
+  .dz-sub{font-size:0.7rem;}
+  .scan-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px;}
+  .scan-card{padding:0;overflow:hidden;display:flex;flex-direction:column;}
+  .scan-card-media{position:relative;background:var(--ivory);border-bottom:1px solid var(--border);min-height:120px;display:flex;align-items:center;justify-content:center;}
+  .scan-card-media img{width:100%;max-height:200px;object-fit:contain;display:block;}
+  .file-chip{display:flex;align-items:center;gap:8px;padding:24px;color:var(--navy);text-decoration:none;font-size:0.82rem;}
+  .file-chip .file-ic{font-size:1.4rem;}
+  .scan-flags{position:absolute;top:8px;right:8px;display:flex;gap:5px;}
+  .scan-card-form{padding:16px;display:flex;flex-direction:column;gap:12px;}
+  .ai-note{font-size:0.75rem;color:var(--slate);background:var(--ivory);border-radius:6px;padding:8px 10px;}
+  .ai-note-quote{font-style:italic;color:var(--navy);}
+  .guess{font-weight:400;text-transform:none;letter-spacing:0;color:var(--gold);font-size:0.66rem;margin-left:6px;}
+  .scan-card-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px;}
+  .scan-mini-actions{display:flex;gap:4px;}
+  @media print { .scan-hero, .topbar-actions { display:none !important; } }
+</style>
+
+<script>
+(function(){
+  var input = document.getElementById('fileInput');
+  var zone = document.getElementById('dropzone');
+  var main = document.getElementById('dzMain');
+  var btn = document.getElementById('scanBtn');
+  function refresh(){
+    if (input.files && input.files.length){
+      main.textContent = input.files[0].name;
+      zone.classList.add('has-file');
+      btn.disabled = false;
+    } else { btn.disabled = true; zone.classList.remove('has-file'); }
+  }
+  input.addEventListener('change', refresh);
+  ['dragover','dragenter'].forEach(function(e){ zone.addEventListener(e, function(ev){ ev.preventDefault(); zone.classList.add('drag'); }); });
+  ['dragleave','drop'].forEach(function(e){ zone.addEventListener(e, function(ev){ ev.preventDefault(); zone.classList.remove('drag'); }); });
+  zone.addEventListener('drop', function(ev){ if (ev.dataTransfer.files.length){ input.files = ev.dataTransfer.files; refresh(); } });
+  document.getElementById('scanForm').addEventListener('submit', function(){ btn.disabled = true; btn.textContent = 'Reading document…'; });
+})();
+</script>
+
+</div></div></body></html>

@@ -1,9 +1,10 @@
+import '../plugins/secretGuard.js'; // FIRST — redact key-shaped secrets from all console output before anything logs
 import http from 'http';
 import app from '../app.js';
 import { config } from '../config/config.js';
 import { initSocketIO } from '../plugins/socketio.js';
 import { startRecurringInvoiceCron } from '../plugins/recurringCron.js';
-import { startSocialScheduler, startSocialTokenRefresh, startAutoSocialCron, reapAllSocialJobs, reapStuckSocialPosts } from '../plugins/socialCron.js';
+import { startSocialScheduler, startSocialTokenRefresh, startAutoSocialCron, startSocialScoring, reapAllSocialJobs, reapStuckSocialPosts } from '../plugins/socialCron.js';
 import { startImapPoller } from '../plugins/imapPoller.js';
 
 const port = config.PORT || 3601;
@@ -17,6 +18,7 @@ server.listen(port, () => {
   startSocialScheduler();
   startSocialTokenRefresh();
   startAutoSocialCron();
+  startSocialScoring();
   setTimeout(() => { reapAllSocialJobs(); reapStuckSocialPosts(); }, 20000);   // after DB connect settles
   startImapPoller();
 });

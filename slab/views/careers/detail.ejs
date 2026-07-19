@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= job.title %> — <%= brand?.name || 'Careers' %></title>
+  <meta name="description" content="<%= job.title %> at <%= brand?.name || 'our team' %>.">
+  <meta property="og:title" content="<%= job.title %> — <%= brand?.name || 'Careers' %>">
+  <meta property="og:description" content="<%= (job.description || '').replace(/<[^>]+>/g,'').slice(0,180) %>">
+  <% if (typeof jsonLd !== 'undefined' && jsonLd) { %>
+  <script type="application/ld+json"><%- JSON.stringify(jsonLd) %></script>
+  <% } %>
+  <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&family=Cormorant+Garamond:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --primary: <%= design.color_primary || '#1C2B4A' %>;
+      --accent: <%= design.color_accent || '#C9A848' %>;
+      --bg: <%= design.color_bg || '#F5F3EF' %>;
+    }
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'Jost',system-ui,sans-serif;background:var(--bg);color:#1a1a1a;line-height:1.65;}
+    .wrap{max-width:760px;margin:0 auto;padding:56px 24px;}
+    a.back{color:var(--primary);text-decoration:none;opacity:.7;font-size:.9rem;}
+    h1{font-family:'Cormorant Garamond',serif;font-size:2.4rem;color:var(--primary);margin:14px 0 8px;}
+    .meta{display:flex;gap:14px;flex-wrap:wrap;font-size:.92rem;opacity:.75;margin-bottom:8px;}
+    .meta span::before{content:'•';margin-right:14px;opacity:.5;}
+    .meta span:first-child::before{content:'';margin:0;}
+    .salary{color:var(--primary);font-weight:500;margin-bottom:28px;}
+    .card{background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:26px;margin-bottom:22px;}
+    .card h3{font-family:'Cormorant Garamond',serif;color:var(--primary);font-size:1.3rem;margin-bottom:12px;}
+    .desc :is(p,ul,ol){margin-bottom:12px;} .desc ul,.desc ol{padding-left:22px;}
+    ul.list{padding-left:20px;} ul.list li{margin-bottom:6px;}
+    label{display:block;font-size:.9rem;font-weight:500;margin-bottom:6px;color:var(--primary);}
+    input,textarea{width:100%;padding:11px 13px;border:1px solid rgba(0,0,0,.16);border-radius:8px;font:inherit;background:#fff;margin-bottom:16px;}
+    textarea{resize:vertical;}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+    button{background:var(--primary);color:#fff;border:0;border-radius:8px;padding:13px 26px;font:inherit;font-weight:500;cursor:pointer;}
+    button:hover{opacity:.92;}
+    .ok{background:#e7f6ec;border:1px solid #9fd8b4;color:#1a6b3a;padding:16px;border-radius:10px;margin-bottom:22px;}
+    .err{background:#fdecec;border:1px solid #f0b4b4;color:#a11;padding:14px;border-radius:10px;margin-bottom:18px;}
+    .hp{position:absolute;left:-9999px;opacity:0;height:0;overflow:hidden;}
+    .ext-apply{display:inline-block;background:var(--primary);color:#fff;text-decoration:none;padding:13px 26px;border-radius:8px;font-weight:500;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="/careers">← All positions</a>
+    <h1><%= job.title %></h1>
+    <div class="meta">
+      <% if (job.department) { %><span><%= job.department %></span><% } %>
+      <% if (job.location || job.remote) { %><span><%= job.location || 'Remote' %><%= (job.remote && job.location) ? ' · Remote' : '' %></span><% } %>
+      <% if (job.employmentType) { %><span><%= job.employmentType %></span><% } %>
+    </div>
+    <% if (job.salaryMin || job.salaryMax) { %>
+      <div class="salary">
+        <%= job.salaryCurrency || 'USD' %>
+        <%= job.salaryMin ? Number(job.salaryMin).toLocaleString() : '' %><%= (job.salaryMin && job.salaryMax) ? ' – ' : '' %><%= job.salaryMax ? Number(job.salaryMax).toLocaleString() : '' %>
+      </div>
+    <% } %>
+
+    <% if (submitted) { %>
+      <div class="ok"><strong>Application received.</strong> Thank you — we'll be in touch.</div>
+    <% } %>
+
+    <div class="card desc"><%- job.description || '<p>No description provided.</p>' %></div>
+
+    <% if (job.requirements && job.requirements.length) { %>
+      <div class="card"><h3>Requirements</h3><ul class="list"><% job.requirements.forEach(function(r){ %><li><%= r %></li><% }); %></ul></div>
+    <% } %>
+    <% if (job.benefits && job.benefits.length) { %>
+      <div class="card"><h3>Benefits</h3><ul class="list"><% job.benefits.forEach(function(b){ %><li><%= b %></li><% }); %></ul></div>
+    <% } %>
+
+    <div class="card" id="apply">
+      <h3>Apply</h3>
+      <% if (job.applyMode === 'external' && job.applyUrl) { %>
+        <p style="margin-bottom:18px;opacity:.8;">Applications for this role are handled on an external site.</p>
+        <a class="ext-apply" href="<%= job.applyUrl %>" target="_blank" rel="noopener">Apply on external site →</a>
+      <% } else if (job.applyMode === 'email' && job.applyEmail) { %>
+        <p style="margin-bottom:18px;opacity:.8;">To apply, email your résumé to:</p>
+        <a class="ext-apply" href="mailto:<%= job.applyEmail %>?subject=Application: <%= encodeURIComponent(job.title) %>"><%= job.applyEmail %></a>
+      <% } else { %>
+        <% if (typeof error !== 'undefined' && error) { %><div class="err"><%= error %></div><% } %>
+        <% var f = (typeof formData !== 'undefined' && formData) ? formData : {}; %>
+        <form action="/careers/<%= job.slug %>/apply" method="post" enctype="multipart/form-data">
+          <div class="hp"><label>Website<input type="text" name="website2" tabindex="-1" autocomplete="off"></label></div>
+          <div class="row">
+            <div><label>Full name *</label><input type="text" name="name" value="<%= f.name || '' %>" required></div>
+            <div><label>Email *</label><input type="email" name="email" value="<%= f.email || '' %>" required></div>
+          </div>
+          <div class="row">
+            <div><label>Phone</label><input type="text" name="phone" value="<%= f.phone || '' %>"></div>
+            <div><label>LinkedIn / Portfolio URL</label><input type="url" name="portfolio" value="<%= f.portfolio || '' %>"></div>
+          </div>
+          <label>Cover letter</label>
+          <textarea name="coverLetter" rows="6"><%= f.coverLetter || '' %></textarea>
+          <label>Résumé (PDF or Word, max 8 MB)</label>
+          <input type="file" name="resume" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+          <button type="submit">Submit Application</button>
+        </form>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

@@ -40,8 +40,10 @@ export const FEATURES = [
   { key: 'pages',     section: 'Content', label: 'Pages',         url: '/admin/pages',            page: 'pages',     icon: '&#9723;', perm: true },
   { key: 'blog',      section: 'Content', label: 'Blog',          url: '/admin/blog',             page: 'blog',      icon: '&#9997;', perm: true },
   { key: 'portfolio', section: 'Content', label: 'Portfolio',     url: '/admin/portfolio',        page: 'portfolio', icon: '&#9672;', perm: true },
+  { key: 'marketplace', section: 'Content', label: 'Marketplace',   url: '/admin/marketplace',      page: 'marketplace', icon: '&#128722;', perm: true },
   { key: 'design',    section: 'Content', label: 'Design & Copy', url: '/admin/design',           page: 'design',    icon: '&#9681;', perm: true },
   { key: 'assets',    section: 'Content', label: 'Assets',        url: '/admin/assets',           page: 'assets',    icon: '&#9636;', perm: true },
+  { key: 'careers',   section: 'Content', label: 'Careers',       url: '/admin/careers',          page: 'careers',   icon: '&#9998;', perm: true, experimental: true },
   // Account Resources stays a real (permission-gated, routable) feature but is
   // reached from within Assets — it doesn't get its own sidebar slot.
   { key: 'resources', section: 'Content', label: 'Account Resources', url: '/admin/assets/resources', page: 'resources', icon: '&#9707;', perm: true, hideNav: true },
@@ -67,6 +69,7 @@ export const FEATURES = [
 
   // ── Finance (all advanced) ─────────────────────────────────────────────────
   { key: 'bookkeeping', section: 'Finance', label: 'Bookkeeping', url: '/admin/bookkeeping', page: 'bookkeeping', icon: '$', perm: true, advanced: true },
+  { key: 'ledger', section: 'Finance', label: 'Ledger & P&L', url: '/admin/ledger', page: 'ledger', icon: '&#8801;', perm: true, advanced: true },
   { key: 'calculators', section: 'Finance', label: 'Calculators', url: '/admin/calculators', page: 'calculators', icon: '&#129518;', perm: true, advanced: true },
   { key: 'analytics',   section: 'Finance', label: 'Analytics',   url: '/admin/analytics',   page: 'analytics',   icon: '&#128202;', perm: true, advanced: true },
 
@@ -76,6 +79,7 @@ export const FEATURES = [
   // kept out of these even though they aren't individually permission-gated, so
   // e.g. a Blog-only collaborator can't reach API keys or user management.
   { key: 'users',    section: 'Admin', label: 'Users & Permissions', url: '/admin/users',    page: 'users',    icon: '&#9672;', adminOnly: true },
+  { key: 'roles',    section: 'Admin', label: 'Roles',               url: '/admin/roles',    page: 'roles',    icon: '&#9862;', adminOnly: true },
   { key: 'settings', section: 'Admin', label: 'Settings & Keys',     url: '/admin/settings', page: 'settings', icon: '&#9881;', adminOnly: true },
   { key: 'docs',     section: 'Admin', label: 'Docs & Guides',       url: '/admin/docs',     page: 'docs',     icon: '&#9776;' },
   { key: 'chat', section: 'Admin', label: 'Chat Control', url: '/admin/chat', page: 'chat', icon: '&#128172;', adminOnly: true, experimental: true, advanced: true },
@@ -97,6 +101,18 @@ export function permissionCatalog() {
 }
 
 /** Valid permission keys (for validating a submitted permissions form). */
+// Deep/optional tools a tenant can switch off from Settings → Slab Functions.
+// Nav-only visibility (never permission enforcement), so toggling one just tidies
+// the sidebar. Advanced + experimental "perm" features qualify as the deep set.
+export function toggleableFunctions() {
+  return FEATURES
+    .filter((f) => f.perm && (f.advanced || f.experimental))
+    .map((f) => ({ key: f.key, label: f.label, section: f.section }));
+}
+export function toggleableFunctionKeys() {
+  return toggleableFunctions().map((f) => f.key);
+}
+
 export function permissionKeys() {
   return FEATURES.filter((f) => f.perm).map((f) => f.key);
 }

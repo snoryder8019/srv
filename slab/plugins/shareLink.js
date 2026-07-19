@@ -27,6 +27,9 @@ export function shareTargetPath(link) {
   if (link.collection === 'pages') {
     return link.slug ? `/${link.slug}` : '/';
   }
+  if (link.collection === 'jobs') {
+    return link.slug ? `/careers/${link.slug}` : '/careers';
+  }
   // Unknown source — fall back to whatever slug/path we stored.
   return link.path || (link.slug ? `/${link.slug}` : '/');
 }
@@ -36,6 +39,7 @@ export function isShareable({ collection, contentType, slug }) {
   if (!slug) return false;
   if (collection === 'blog') return CONTENT_TYPE_BASE[contentType] != null;
   if (collection === 'pages') return true;
+  if (collection === 'jobs') return true;
   return false;
 }
 

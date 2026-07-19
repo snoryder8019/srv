@@ -30,6 +30,8 @@ async function processJob(db, tenant, jobId) {
       count: job.count, mode: job.mode === 'publish' ? 'publish' : 'suggest',
       platforms: (job.platforms && job.platforms.length) ? job.platforms : null,
       direction: job.direction, trends, critic: !!job.critic, style: job.style || 'solid', createdBy: job.createdBy || 'agent-studio',
+      sources: (Array.isArray(job.promote) && job.promote.length) ? job.promote : null,   // follow site content
+      leadGen: !!job.leadGen,
       onProgress: (done, total, stage) => setJob(db, jobId, { progress: { done, total, stage } }),
     });
     await setJob(db, jobId, {
@@ -64,6 +66,8 @@ export async function enqueueJob(db, tenant, opts = {}) {
     useTrends: !!opts.useTrends,
     critic: !!opts.critic,
     style: ['solid', 'photo', 'auto'].includes(opts.style) ? opts.style : 'solid',
+    promote: Array.isArray(opts.promote) ? opts.promote.map(String).filter(k => ['blog', 'portfolio', 'careers'].includes(k)) : [],
+    leadGen: !!opts.leadGen,
     mode: opts.mode === 'publish' ? 'publish' : 'suggest',
     status: 'queued',
     progress: { done: 0, total: 0, stage: 'queued' },

@@ -94,13 +94,21 @@ router.get('/new', (req, res) => {
 router.post('/', ticketUpload.single('screenshot'), async (req, res) => {
   try {
     const db = req.db;
-    const { subject, description, category, priority, assignedTo } = req.body;
+    const { subject, description, category, priority, assignedTo, debugData } = req.body;
     if (!subject?.trim()) throw new Error('Subject is required.');
 
     const ticketNumber = await nextTicketNumber(db);
     const attachments = [];
     const att = fileToAttachment(req.file);
     if (att) attachments.push(att);
+
+    // Passive system snapshot from the form (page context, console errors). Best
+    // effort — a malformed payload never blocks ticket creation.
+    let parsedDebug = null;
+    if (debugData) {
+      try { parsedDebug = typeof debugData === 'string' ? JSON.parse(debugData) : debugData; }
+      catch { parsedDebug = null; }
+    }
 
     const now = new Date();
     const tenantDomain = req.tenant?.domain || '';
@@ -129,7 +137,7 @@ router.post('/', ticketUpload.single('screenshot'), async (req, res) => {
       tenantDbName,
       tenantBrandName,
       attachments,
-      debugData: null,
+      debugData: parsedDebug,
       replies: [],
       assignedTo: null,
       createdAt: now,

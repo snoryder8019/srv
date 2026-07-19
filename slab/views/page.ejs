@@ -168,7 +168,13 @@
 <body>
 <%- include("partials/header", { activePage: (pg && pg.slug) || '' }) %>
 
-<% if (pg.pageType !== 'landing') { %>
+<%
+  // Unified page = one block stack. Show the title banner only when the page
+  // doesn't lead with its own hero block (reproduces the old content/data-list look).
+  const _blocks = pg.blocks || [];
+  const _hasHero = _blocks.some(b => b && b.type === 'hero');
+%>
+<% if (!_hasHero) { %>
 <div class="page-hero reveal">
   <div class="page-hero-inner">
     <a href="/" class="back-link">← Home</a>
@@ -177,94 +183,13 @@
 </div>
 <% } %>
 
-<!-- ── CONTENT PAGE ───────────────────────────────────────────── -->
-<% if (!pg.pageType || pg.pageType === 'content') { %>
-<div class="page-content-wrap reveal">
-  <div class="page-content"><%- pg.content %></div>
-</div>
-
-<!-- ── DATA LIST PAGE ─────────────────────────────────────────── -->
-<% } else if (pg.pageType === 'data-list') { %>
-<div class="data-list-wrap">
-  <% if (!items || items.length === 0) { %>
-    <p style="color:var(--slate);text-align:center;padding:60px 0;">No items to display yet.</p>
-  <% } else { %>
-    <% const _col = typeof col !== 'undefined' ? col : (pg.dataCollection || ''); %>
-    <div class="data-grid">
-      <% items.forEach(function(item) { %>
-        <%
-          const isPost = _col === 'blog' || (!_col && item.slug);
-          const isPortfolio = _col === 'portfolio';
-          const href   = isPost ? '/blog/' + item.slug : '#';
-          const img    = item.featuredImageUrl || item.imageUrl || '';
-          const desc   = item.excerpt || item.description || '';
-          const dateVal = item.publishedAt || item.createdAt;
-          const galleryCount = isPortfolio ? ((item.gallery && item.gallery.length) || (item.imageUrl ? 1 : 0)) : 0;
-        %>
-        <% if (isPortfolio) { %>
-        <div class="data-card pf-card-clickable" tabindex="0" role="button"
-             data-portfolio-id="<%= item._id %>" aria-label="View <%= item.title %>"
-             style="cursor:pointer;">
-          <% if (img) { %>
-            <div style="position:relative;">
-              <img src="<%= img %>" alt="<%= item.title %>" loading="lazy" decoding="async" class="data-card-img">
-              <% if (galleryCount > 1) { %>
-                <span style="position:absolute;top:10px;right:10px;background:rgba(0,0,0,0.7);color:#C9A848;font-size:11px;font-weight:600;letter-spacing:0.5px;padding:3px 8px;border-radius:4px;">◧ <%= galleryCount %></span>
-              <% } %>
-            </div>
-          <% } else { %>
-            <div class="data-card-img-placeholder"></div>
-          <% } %>
-          <div class="data-card-body">
-            <% if (dateVal && item.showDate) { %>
-              <div class="data-card-date"><%= new Date(dateVal).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) %></div>
-            <% } %>
-            <div class="data-card-title"><%= item.title %></div>
-            <% if (desc) { %><div class="data-card-excerpt"><%= desc.slice(0, 120) %><%= desc.length > 120 ? '…' : '' %></div><% } %>
-          </div>
-        </div>
-        <% } else { %>
-        <a href="<%= href %>" class="data-card" <%= href === '#' ? 'onclick="return false"' : '' %>>
-          <% if (img) { %>
-            <img src="<%= img %>" alt="<%= item.title %>" class="data-card-img">
-          <% } else { %>
-            <div class="data-card-img-placeholder"></div>
-          <% } %>
-          <div class="data-card-body">
-            <% if (dateVal) { %>
-              <div class="data-card-date"><%= new Date(dateVal).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) %></div>
-            <% } %>
-            <div class="data-card-title"><%= item.title %></div>
-            <% if (desc) { %><div class="data-card-excerpt"><%= desc.slice(0, 120) %><%= desc.length > 120 ? '…' : '' %></div><% } %>
-            <% if (isPost) { %><div class="data-card-cta">Read More →</div><% } %>
-          </div>
-        </a>
-        <% } %>
-      <% }); %>
-    </div>
-    <% if (_col === 'portfolio') { %>
-      <%- include('partials/portfolio-modal', { portfolio: items }) %>
-    <% } %>
-
-    <% if (totalPages > 1) { %>
-    <nav class="data-pagination" aria-label="Pagination">
-      <a href="?p=<%= p - 1 %>" class="data-page-btn <%= p <= 1 ? 'disabled' : '' %>">← Prev</a>
-      <% for (let i = 1; i <= totalPages; i++) { %>
-        <a href="?p=<%= i %>" class="data-page-btn <%= i === p ? 'active' : '' %>"><%= i %></a>
-      <% } %>
-      <a href="?p=<%= p + 1 %>" class="data-page-btn <%= p >= totalPages ? 'disabled' : '' %>">Next →</a>
-    </nav>
-    <% } %>
-  <% } %>
-</div>
-
-<!-- ── LANDING PAGE ───────────────────────────────────────────── -->
-<% } else if (pg.pageType === 'landing') { %>
-<div style="padding-top:72px;"><!-- nav offset -->
+<!-- ── UNIFIED BLOCK STACK ─────────────────────────────────────── -->
+<div style="<%= _hasHero ? 'padding-top:72px;' : '' %>"><!-- nav offset for hero-led pages -->
 
 <% const _vis = typeof visibility !== 'undefined' && visibility ? visibility : {}; %>
 <% const _visMap = { hero:'hero', text:null, split:null, cta:null, cards:'services', faq:null, pricing:'pricing', testimonials:'reviews', stats:null }; %>
-<% (pg.blocks || []).forEach(function(block) { %>
+<% const _fmtDate = d => new Date(d).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}); %>
+<% _blocks.forEach(function(block) { %>
   <% const _vk = _visMap[block.type]; if (_vk && _vis[_vk] === false) return; %>
   <% const f = block.fields || {}; %>
 
@@ -414,10 +339,67 @@
       </div>
     </div>
   </section>
+
+  <% } else if (block.type === 'html') { %>
+  <div class="page-content-wrap reveal">
+    <div class="page-content"><%- f.html || '' %></div>
+  </div>
+
+  <% } else if (block.type === 'datalist') { %>
+  <% const d = block._data || { items: [], totalPages: 1, p: 1 }; %>
+  <section class="data-list-wrap">
+    <% if (f.heading) { %><h2 class="lb-heading" style="color:var(--on-surface);text-align:center;margin-bottom:36px;"><%- f.heading %></h2><% } %>
+    <% if (!d.items || d.items.length === 0) { %>
+      <p style="color:var(--slate);text-align:center;padding:60px 0;">No items to display yet.</p>
+    <% } else { %>
+      <div class="data-grid">
+        <% d.items.forEach(function(card) { %>
+          <% if (card.kind === 'modal') { %>
+            <% const gc = (card.raw && card.raw.gallery && card.raw.gallery.length) || (card.image ? 1 : 0); %>
+            <div class="data-card pf-card-clickable" tabindex="0" role="button"
+                 data-portfolio-id="<%= card.raw && card.raw._id %>" aria-label="View <%= card.title %>" style="cursor:pointer;">
+              <% if (card.image) { %>
+                <div style="position:relative;">
+                  <img src="<%= card.image %>" alt="<%= card.title %>" loading="lazy" decoding="async" class="data-card-img">
+                  <% if (gc > 1) { %><span style="position:absolute;top:10px;right:10px;background:rgba(0,0,0,0.7);color:#C9A848;font-size:11px;font-weight:600;letter-spacing:0.5px;padding:3px 8px;border-radius:4px;">◧ <%= gc %></span><% } %>
+                </div>
+              <% } else { %><div class="data-card-img-placeholder"></div><% } %>
+              <div class="data-card-body">
+                <div class="data-card-title"><%= card.title %></div>
+                <% if (card.excerpt) { %><div class="data-card-excerpt"><%= card.excerpt.slice(0,120) %><%= card.excerpt.length > 120 ? '…' : '' %></div><% } %>
+              </div>
+            </div>
+          <% } else { %>
+            <a href="<%= card.href || '#' %>" class="data-card" <%= card.href ? '' : 'onclick="return false"' %>>
+              <% if (card.image) { %><img src="<%= card.image %>" alt="<%= card.title %>" class="data-card-img"><% } else { %><div class="data-card-img-placeholder"></div><% } %>
+              <div class="data-card-body">
+                <% if (card.date) { %><div class="data-card-date"><%= _fmtDate(card.date) %></div><% } %>
+                <div class="data-card-title"><%= card.title %></div>
+                <% if (card.excerpt) { %><div class="data-card-excerpt"><%= card.excerpt.slice(0,120) %><%= card.excerpt.length > 120 ? '…' : '' %></div><% } %>
+                <% if (card.href) { %><div class="data-card-cta">View →</div><% } %>
+              </div>
+            </a>
+          <% } %>
+        <% }); %>
+      </div>
+      <% if (d.paginate && d.totalPages > 1) { %>
+      <nav class="data-pagination" aria-label="Pagination">
+        <a href="<%= pageHref(d.pageParam, d.p - 1) %>" class="data-page-btn <%= d.p <= 1 ? 'disabled' : '' %>">← Prev</a>
+        <% for (let i = 1; i <= d.totalPages; i++) { %>
+          <a href="<%= pageHref(d.pageParam, i) %>" class="data-page-btn <%= i === d.p ? 'active' : '' %>"><%= i %></a>
+        <% } %>
+        <a href="<%= pageHref(d.pageParam, d.p + 1) %>" class="data-page-btn <%= d.p >= d.totalPages ? 'disabled' : '' %>">Next →</a>
+      </nav>
+      <% } %>
+    <% } %>
+  </section>
   <% } %>
 
 <% }); %>
 </div>
+
+<% if (portfolioModalItems && portfolioModalItems.length) { %>
+  <%- include('partials/portfolio-modal', { portfolio: portfolioModalItems }) %>
 <% } %>
 
 <footer>

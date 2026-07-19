@@ -120,7 +120,9 @@ router.post('/tenants/:id/activate', async (req, res) => {
   let expiresAt = null;
   const now = new Date();
   if (plan === 'monthly') expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  else if (plan === 'trial') expiresAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
   else if (plan === '30day') expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  else if (plan === 'quarterly') expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
   else if (plan === '120day') expiresAt = new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000);
   else if (plan === 'annual') expiresAt = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
   // lifetime = null (no expiry)
@@ -151,7 +153,9 @@ router.post('/tenants/:id/change-plan', async (req, res) => {
   let expiresAt = null;
   const now = new Date();
   if (plan === 'monthly') expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  else if (plan === 'trial') expiresAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
   else if (plan === '30day') expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  else if (plan === 'quarterly') expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
   else if (plan === '120day') expiresAt = new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000);
   else if (plan === 'annual') expiresAt = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
 

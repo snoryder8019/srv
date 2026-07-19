@@ -13,7 +13,7 @@
     <div class="alert alert-error"><%= error %></div>
   <% } %>
 
-  <form method="POST" action="<%= c ? `/admin/clients/${c._id}` : '/admin/clients' %>">
+  <form method="POST" action="<%= c ? `/admin/clients/${c._id}` : '/admin/clients' %>" data-guard data-guard-label="Saving">
     <div class="card">
       <div class="card-title">Client Information</div>
       <div class="form-grid">
@@ -51,7 +51,14 @@
         </div>
         <div class="form-field span-2">
           <label>Notes</label>
-          <textarea name="notes" placeholder="Internal notes about this client..."><%= c?.notes || '' %></textarea>
+          <% if (Array.isArray(c?.notes)) { %>
+            <%# This client has a structured notes log — editing it here would flatten it. %>
+            <div style="padding:10px 12px;border:1px dashed var(--border);border-radius:3px;font-size:0.82rem;color:var(--slate);">
+              This client has <%= c.notes.length %> logged note<%= c.notes.length === 1 ? '' : 's' %>. Manage them in the client's <a href="/admin/clients/<%= c._id %>?tab=notes" style="color:var(--navy);">Notes tab</a>.
+            </div>
+          <% } else { %>
+            <textarea name="notes" placeholder="Internal notes about this client..."><%= c?.notes || '' %></textarea>
+          <% } %>
         </div>
       </div>
     </div>

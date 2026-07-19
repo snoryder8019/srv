@@ -155,6 +155,7 @@ const FB_LOGIN_SCOPES = [
   'publish_video',                 // ← Facebook Live (create live_videos)
   'business_management', 'read_insights',
   'instagram_basic', 'instagram_content_publish', 'instagram_manage_comments',
+  'instagram_manage_insights',     // ← IG reach/views/interactions (was missing → analytics 0)
 ].join(',');
 
 router.get('/facebook/connect', async (req, res) => {
@@ -328,19 +329,36 @@ router.get('/linkedin/callback', async (req, res) => {
 // Threads rides the SAME Meta app as Facebook/Instagram — it reuses the App ID/
 // Secret saved on the Facebook connection. One click → the Threads user id + a
 // long-lived (60-day) token that the daily cron auto-refreshes from here on.
-const THREADS_SCOPES = 'threads_basic,threads_content_publish';
+// Base scopes are always granted (Standard Access). threads_manage_insights adds
+// views/likes/replies/reposts/quotes + follower count to the analytics tab, but
+// it is NOT available until its Requirements are cleared in the App Dashboard
+// (it won't show "Ready for testing" until then). Requesting an un-granted scope
+// makes the Threads authorize call reject the whole request, so it's opt-in via
+// ?insights=1 (use it only once the permission is ready).
+const THREADS_BASE_SCOPES = 'threads_basic,threads_content_publish';
+const THREADS_INSIGHTS_SCOPE = 'threads_manage_insights';
 
 router.get('/threads/connect', async (req, res) => {
   try {
     const fb = await req.db.collection('social_accounts').findOne({ platform: 'facebook' });
     const creds = fb ? unpackCredentials(fb) : {};
-    if (!creds.appId || !creds.appSecret) {
-      return res.send('Save your Meta App ID & App Secret first under Connections → Facebook Page (Threads shares the same Meta app), then click "Connect with Threads".');
+    // Threads OAuth uses the Threads-specific App ID (App Dashboard → Use cases →
+    // Access the Threads API → Settings), which is NOT the Facebook App ID. Prefer
+    // the dedicated field; only fall back to appId for apps where they coincide.
+    const clientId = creds.threadsAppId || creds.appId;
+    if (!clientId) {
+      return res.send('Add your Threads App ID first under Connections → Facebook Page → "Threads App ID (optional)". Find it in your Meta app: Use cases → Access the Threads API → Settings. It is different from your Facebook App ID.');
     }
+    // Add insights scope only when explicitly requested (?insights=1) AND once
+    // threads_manage_insights is "Ready for testing" in the app — otherwise the
+    // authorize call is rejected for requesting an ungranted scope.
+    const scope = req.query.insights === '1'
+      ? `${THREADS_BASE_SCOPES},${THREADS_INSIGHTS_SCOPE}`
+      : THREADS_BASE_SCOPES;
     const redirectUri = `https://${req.get('host')}/admin/social/threads/callback`;
     const url = 'https://threads.net/oauth/authorize?' + new URLSearchParams({
-      client_id: creds.appId, redirect_uri: redirectUri, response_type: 'code',
-      scope: THREADS_SCOPES, state: 'th',
+      client_id: clientId, redirect_uri: redirectUri, response_type: 'code',
+      scope, state: 'th',
     }).toString();
     res.redirect(url);
   } catch (e) { res.status(500).send('Threads connect error: ' + e.message); }
@@ -352,14 +370,18 @@ router.get('/threads/callback', async (req, res) => {
     if (!req.query.code) return back('Threads connect ' + (req.query.error_description || req.query.error || 'cancelled'));
     const fb = await req.db.collection('social_accounts').findOne({ platform: 'facebook' });
     const creds = fb ? unpackCredentials(fb) : {};
-    if (!creds.appId || !creds.appSecret) return back('Save your Meta App ID & Secret under Facebook first');
+    // Threads token exchange must use the Threads App ID/Secret (fall back to the
+    // Facebook app credentials only when the dedicated ones aren't set).
+    const clientId = creds.threadsAppId || creds.appId;
+    const clientSecret = creds.threadsAppSecret || creds.appSecret;
+    if (!clientId || !clientSecret) return back('Add your Threads App ID & Secret under Facebook first (Use cases → Threads → Settings)');
     const redirectUri = `https://${req.get('host')}/admin/social/threads/callback`;
 
     // 1. code → short-lived Threads token (+ user id)
     const tr = await fetch('https://graph.threads.net/oauth/access_token', {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        client_id: creds.appId, client_secret: creds.appSecret, grant_type: 'authorization_code',
+        client_id: clientId, client_secret: clientSecret, grant_type: 'authorization_code',
         redirect_uri: redirectUri, code: req.query.code,
       }).toString(),
       signal: AbortSignal.timeout(15000),
@@ -372,7 +394,7 @@ router.get('/threads/callback', async (req, res) => {
     let token = tj.access_token, expiresInSec = null;
     try {
       const lr = await fetch('https://graph.threads.net/access_token?' + new URLSearchParams({
-        grant_type: 'th_exchange_token', client_secret: creds.appSecret, access_token: tj.access_token,
+        grant_type: 'th_exchange_token', client_secret: clientSecret, access_token: tj.access_token,
       }).toString(), { signal: AbortSignal.timeout(15000) });
       const lj = await lr.json().catch(() => ({}));
       if (lj.access_token) { token = lj.access_token; expiresInSec = lj.expires_in || null; }

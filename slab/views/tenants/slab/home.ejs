@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<%
+  /**
+   * Slab tenant — custom GLITCH landing page.
+   * Rendered by routes/index.js GET / when design.home_source resolves to
+   * this file (home_source = 'custom', or 'auto' with the file present).
+   *
+   * Everything is driven off the brand DESIGN TOKENS so it repaints per-tenant:
+   *   design.color_*  → palette      design.font_*  → type
+   *   copy.*          → section copy  brand.*        → identity/contact
+   *
+   * The tokens are re-declared here (mirroring partials/landing-styles) so this
+   * page is fully self-contained and doesn't inherit the standard layout CSS.
+   */
+  const d = (typeof design !== 'undefined' && design) ? design : {};
+  const c = (typeof copy   !== 'undefined' && copy)   ? copy   : {};
+  const b = (typeof brand  !== 'undefined' && brand)  ? brand  : {};
+  const vis = (typeof visibility !== 'undefined' && visibility) ? visibility : {};
+  const logoUrl = (typeof logos !== 'undefined' && logos) ? (logos.logo_white || logos.logo_primary || logos.logo_icon || '') : '';
+
+  const brandName = b.name || c.hero_heading || 'STUDIO';
+  const authUrl   = (typeof centralAuthUrl !== 'undefined' && centralAuthUrl) ? centralAuthUrl : '/admin';
+  const startUrl  = 'https://slab.madladslab.com/start';   // primary CTA destination
+
+  // Marquee items — brand services, else a sensible default set.
+  let ticker = [];
+  if (Array.isArray(b.services) && b.services.length) ticker = b.services.slice(0, 8).map(s => (s && s.name) ? s.name : String(s));
+  else if (typeof b.services === 'string' && b.services.trim()) ticker = b.services.split(',').map(s => s.trim());
+  if (!ticker.length) ticker = ['Design', 'Build', 'Launch', 'Scale', 'Own Every Byte'];
+
+  // Services cards — copy first, brand.services second, fallback last.
+  const svc = [];
+  for (let i = 1; i <= 3; i++) {
+    const t = c['service' + i + '_title'];
+    const ds = c['service' + i + '_desc'];
+    if (t || ds) svc.push({ n: String(i).padStart(2, '0'), t: t || '', d: ds || '' });
+  }
+  if (!svc.length) {
+    (ticker.slice(0, 3)).forEach((t, i) => svc.push({ n: String(i + 1).padStart(2, '0'), t, d: '' }));
+  }
+
+  // YouTube auto-feed (hydrated in routes/index.js) + curated feature showcase.
+  const vids  = (typeof youtube  !== 'undefined' && youtube && Array.isArray(youtube.videos)) ? youtube.videos : [];
+  const feats = (typeof features !== 'undefined' && Array.isArray(features)) ? features : [];
+  const STAGES = [
+    { key: 'stable',       label: 'Stable' },
+    { key: 'beta',         label: 'Beta' },
+    { key: 'experimental', label: 'Experimental' },
+  ];
+%>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= brandName %></title>
+  <%- include('../../partials/font-vars', { design: d }) %>
+  <style>
+    :root {
+      /* ── Brand palette (design tokens) ── */
+      --primary:      <%= d.color_primary      || '#0F1B30' %>;
+      --primary-deep: <%= d.color_primary_deep || '#0A1220' %>;
+      --primary-mid:  <%= d.color_primary_mid  || '#2E4270' %>;
+      --accent:       <%= d.color_accent       || '#C9A848' %>;
+      --accent-light: <%= d.color_accent_light || '#E8D08A' %>;
+      --accent-2:     <%= d.color_accent_2     || d.color_accent || '#00E5D0' %>;
+      --bg:           <%= d.color_primary_deep || '#0A1220' %>;
+      --ink:          <%= d.color_white        || '#FDFCFA' %>;
+      --muted:        color-mix(in srgb, var(--ink) 55%, transparent);
+      --line:         color-mix(in srgb, var(--ink) 14%, transparent);
+      --font-heading: '<%= d.font_heading || "Space Grotesk" %>', 'Space Grotesk', sans-serif;
+      --font-body:    '<%= d.font_body    || "Jost" %>', 'Jost', sans-serif;
+      /* Glitch channel offsets — magenta + cyan pulled from brand accents */
+      --glitch-a: color-mix(in srgb, var(--accent) 90%, #ff003c);
+      --glitch-b: var(--accent-2);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font-body);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    ::selection { background: var(--accent); color: var(--primary-deep); }
+    a { color: inherit; text-decoration: none; }
+
+    /* ── Global scanlines + grain over the whole page ── */
+    body::before {
+      content: ''; position: fixed; inset: 0; z-index: 9998; pointer-events: none;
+      background: repeating-linear-gradient(0deg,
+        rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px,
+        rgba(0,0,0,0.18) 3px, rgba(0,0,0,0) 4px);
+      mix-blend-mode: multiply; opacity: 0.55;
+    }
+    body::after {
+      content: ''; position: fixed; inset: -50%; z-index: 9997; pointer-events: none;
+      opacity: 0.045;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      animation: grain 0.7s steps(3) infinite;
+    }
+    @keyframes grain {
+      0%,100%{transform:translate(0,0)} 25%{transform:translate(-4%,2%)}
+      50%{transform:translate(3%,-3%)} 75%{transform:translate(-2%,4%)}
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 22px clamp(20px, 5vw, 56px);
+      backdrop-filter: blur(10px);
+      background: color-mix(in srgb, var(--bg) 72%, transparent);
+      border-bottom: 1px solid var(--line);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-family: var(--font-heading);
+      font-weight: 700; font-size: 1.15rem; letter-spacing: 0.14em; text-transform: uppercase; }
+    .brand img { height: 30px; width: auto; }
+    .brand .dot { color: var(--accent); }
+    .nav-cta {
+      font-family: var(--font-heading); font-size: 0.72rem; font-weight: 600;
+      letter-spacing: 0.2em; text-transform: uppercase; padding: 11px 22px;
+      border: 1px solid var(--accent); color: var(--accent);
+      transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+    }
+    .nav-cta:hover { background: var(--accent); color: var(--primary-deep);
+      box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 55%, transparent); }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh; display: flex; flex-direction: column; justify-content: center;
+      padding: 140px clamp(20px, 6vw, 90px) 80px; position: relative; overflow: hidden;
+    }
+    .hero-grid {
+      position: absolute; inset: 0; z-index: 0; opacity: 0.5;
+      background-image:
+        linear-gradient(color-mix(in srgb, var(--accent) 12%, transparent) 1px, transparent 1px),
+        linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent) 1px, transparent 1px);
+      background-size: 64px 64px;
+      mask-image: radial-gradient(circle at 30% 40%, #000 0%, transparent 70%);
+      -webkit-mask-image: radial-gradient(circle at 30% 40%, #000 0%, transparent 70%);
+    }
+    .hero-glow {
+      position: absolute; z-index: 0; top: -20%; right: -10%; width: 60vw; height: 60vw;
+      background: radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, transparent) 0%, transparent 60%);
+      pointer-events: none; animation: drift 22s ease-in-out infinite alternate;
+    }
+    @keyframes drift { to { transform: translate(-8%, 6%) scale(1.15); } }
+
+    .hero-inner { position: relative; z-index: 2; max-width: 1000px; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 12px;
+      font-family: var(--font-heading); font-size: 0.74rem; font-weight: 600;
+      letter-spacing: 0.32em; text-transform: uppercase; color: var(--accent);
+      margin-bottom: 28px;
+    }
+    .eyebrow::before { content: ''; width: 40px; height: 1px; background: var(--accent); }
+    .eyebrow .live { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-2);
+      box-shadow: 0 0 12px var(--accent-2); animation: blink 2.4s steps(2) infinite; }
+    @keyframes blink { 50% { opacity: 0.2; } }
+
+    .glitch {
+      font-family: var(--font-heading); font-weight: 700; line-height: 0.92;
+      font-size: clamp(3.2rem, 11vw, 10rem); text-transform: uppercase;
+      letter-spacing: -0.02em; position: relative; color: var(--ink);
+      margin-bottom: 30px; word-break: break-word;
+    }
+    .glitch em { font-style: normal; color: var(--accent); }
+    .glitch[data-text]::before, .glitch[data-text]::after {
+      content: attr(data-text); position: absolute; inset: 0;
+      clip-path: inset(0 0 0 0);
+    }
+    /* Slow, smoothly-interpolated chromatic drift. A soft ease curve (not steps)
+       keeps the color channels sliding fluidly; long durations + offset phases
+       so the two layers never sync into a visible loop. */
+    .glitch[data-text]::before { color: var(--glitch-a); left: 2px;
+      animation: glitchA 8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
+      mix-blend-mode: screen; }
+    .glitch[data-text]::after  { color: var(--glitch-b); left: -2px;
+      animation: glitchB 11s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
+      mix-blend-mode: screen; }
+    @keyframes glitchA {
+      0%   { clip-path: inset(18% 0 62% 0); transform: translateX(-1px); }
+      50%  { clip-path: inset(48% 0 34% 0); transform: translateX(1px); }
+      100% { clip-path: inset(66% 0 14% 0); transform: translateX(-1px); }
+    }
+    @keyframes glitchB {
+      0%   { clip-path: inset(70% 0 12% 0); transform: translateX(1px); }
+      50%  { clip-path: inset(36% 0 44% 0); transform: translateX(-1px); }
+      100% { clip-path: inset(10% 0 74% 0); transform: translateX(1px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .glitch::before, .glitch::after, body::after, .hero-glow { animation: none; }
+    }
+
+    .hero-sub { max-width: 520px; font-size: clamp(1rem, 1.4vw, 1.15rem);
+      color: var(--muted); line-height: 1.8; margin-bottom: 40px; }
+    .btns { display: flex; gap: 16px; flex-wrap: wrap; }
+    .btn {
+      font-family: var(--font-heading); font-size: 0.78rem; font-weight: 600;
+      letter-spacing: 0.16em; text-transform: uppercase; padding: 16px 34px;
+      transition: transform 0.15s, box-shadow 0.2s, background 0.2s, color 0.2s;
+      position: relative; clip-path: polygon(0 0, 100% 0, 100% 72%, 94% 100%, 0 100%);
+    }
+    .btn-primary { background: var(--accent); color: var(--primary-deep); }
+    .btn-primary:hover { transform: translate(-2px,-2px);
+      box-shadow: 6px 6px 0 var(--accent-2), 0 0 30px color-mix(in srgb,var(--accent) 50%,transparent); }
+    .btn-ghost { border: 1px solid var(--line); color: var(--ink); }
+    .btn-ghost:hover { border-color: var(--accent-2); color: var(--accent-2);
+      transform: translate(-2px,-2px); }
+
+    .hero-badge { position: absolute; right: clamp(20px,6vw,90px); bottom: 60px; z-index: 2;
+      font-family: var(--font-heading); font-size: 0.7rem; letter-spacing: 0.2em;
+      text-transform: uppercase; color: var(--muted); writing-mode: vertical-rl;
+      display: flex; align-items: center; gap: 10px; }
+    .hero-badge::before { content:''; width:1px; height:60px; background: var(--accent); }
+    @media (max-width: 720px){ .hero-badge{ display:none; } }
+
+    /* ── MARQUEE ── */
+    .marquee { border-block: 1px solid var(--line); background: var(--primary-deep);
+      overflow: hidden; padding: 18px 0; position: relative; }
+    .marquee-track { display: inline-flex; gap: 0; white-space: nowrap;
+      animation: scroll 26s linear infinite; }
+    .marquee:hover .marquee-track { animation-play-state: paused; }
+    .marquee-track span { font-family: var(--font-heading); font-weight: 700;
+      font-size: clamp(1.4rem, 3vw, 2.4rem); text-transform: uppercase;
+      letter-spacing: 0.04em; padding: 0 32px; color: var(--ink);
+      display: inline-flex; align-items: center; gap: 32px; }
+    .marquee-track span::after { content: '◆'; color: var(--accent); font-size: 0.7em; }
+    .marquee-track .hollow { color: transparent; -webkit-text-stroke: 1px var(--accent); }
+    @keyframes scroll { to { transform: translateX(-50%); } }
+
+    /* ── SECTION shell ── */
+    section.block { padding: clamp(70px, 10vw, 130px) clamp(20px, 6vw, 90px); position: relative; }
+    .sec-label { font-family: var(--font-heading); font-size: 0.74rem; font-weight: 600;
+      letter-spacing: 0.3em; text-transform: uppercase; color: var(--accent);
+      display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .sec-label::before { content: '//'; color: var(--accent-2); }
+    .sec-title { font-family: var(--font-heading); font-weight: 700;
+      font-size: clamp(2rem, 5vw, 3.6rem); line-height: 1.05; text-transform: uppercase;
+      letter-spacing: -0.01em; margin-bottom: 56px; }
+    .sec-title em { font-style: normal; color: var(--accent); }
+
+    /* ── SERVICES ── */
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2px;
+      background: var(--line); border: 1px solid var(--line); }
+    .card { background: var(--bg); padding: 42px 34px; position: relative;
+      transition: background 0.25s; overflow: hidden; }
+    .card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px;
+      background: var(--accent); transform: scaleX(0); transform-origin: left;
+      transition: transform 0.3s; }
+    .card:hover { background: var(--primary-deep); }
+    .card:hover::before { transform: scaleX(1); }
+    .card .num { font-family: var(--font-heading); font-size: 0.85rem; font-weight: 700;
+      letter-spacing: 0.2em; color: var(--accent-2); margin-bottom: 26px; }
+    .card h3 { font-family: var(--font-heading); font-weight: 700; font-size: 1.5rem;
+      text-transform: uppercase; letter-spacing: 0.01em; margin-bottom: 14px; }
+    .card p { color: var(--muted); line-height: 1.7; font-size: 0.95rem; }
+    .card:hover h3 { color: var(--accent); }
+
+    /* ── VIDEOS (YouTube auto-feed) ── */
+    .videos { background: var(--primary-deep); }
+    .vid-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+    .vid { position: relative; border: 1px solid var(--line); background: #000; overflow: hidden;
+      cursor: pointer; aspect-ratio: 16/9; }
+    .vid img { width: 100%; height: 100%; object-fit: cover; display: block;
+      filter: grayscale(0.35) contrast(1.05); transition: filter 0.3s, transform 0.5s; }
+    .vid:hover img { filter: grayscale(0) contrast(1); transform: scale(1.05); }
+    .vid::after { /* scanline tint per card */
+      content: ''; position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(180deg, transparent 55%, color-mix(in srgb, var(--primary-deep) 92%, transparent) 100%); }
+    .vid .play { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; }
+    .vid .play span { width: 60px; height: 60px; display: grid; place-items: center;
+      background: color-mix(in srgb, var(--accent) 90%, transparent); color: var(--primary-deep);
+      clip-path: polygon(0 0,100% 0,100% 72%,86% 100%,0 100%); transition: transform 0.2s, box-shadow 0.2s; }
+    .vid:hover .play span { transform: scale(1.1); box-shadow: 0 0 26px color-mix(in srgb,var(--accent) 60%,transparent); }
+    .vid .play span::before { content: '▶'; font-size: 1.2rem; margin-left: 3px; }
+    .vid .vtitle { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; padding: 14px 16px;
+      font-family: var(--font-heading); font-size: 0.82rem; font-weight: 600; line-height: 1.3;
+      color: var(--ink); text-shadow: 0 1px 8px rgba(0,0,0,0.8);
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .vid.playing img, .vid.playing .play, .vid.playing::after, .vid.playing .vtitle { display: none; }
+    .vid.playing iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+    /* ── FEATURE SHOWCASE (stable / beta / experimental) ── */
+    .feat-stage { margin-bottom: 44px; }
+    .feat-stage:last-child { margin-bottom: 0; }
+    .feat-stage-head { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+    .feat-stage-head h3 { font-family: var(--font-heading); font-weight: 700; font-size: 1.1rem;
+      text-transform: uppercase; letter-spacing: 0.14em; }
+    .feat-stage-head .rule { flex: 1; height: 1px; background: var(--line); }
+    .badge { font-family: var(--font-heading); font-size: 0.6rem; font-weight: 700;
+      letter-spacing: 0.16em; text-transform: uppercase; padding: 4px 9px; white-space: nowrap;
+      clip-path: polygon(0 0,100% 0,100% 68%,90% 100%,0 100%); }
+    .badge.stable       { background: var(--accent);   color: var(--primary-deep); }
+    .badge.beta         { background: var(--accent-2);  color: var(--primary-deep); }
+    .badge.experimental { background: transparent; color: var(--accent-2);
+      border: 1px solid var(--accent-2); }
+    .feat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 2px;
+      background: var(--line); border: 1px solid var(--line); }
+    .feat { background: var(--bg); padding: 20px 22px; transition: background 0.2s; }
+    .feat:hover { background: var(--primary-deep); }
+    .feat .ft { font-family: var(--font-heading); font-weight: 600; font-size: 1rem;
+      letter-spacing: 0.01em; margin-bottom: 4px; }
+    .feat:hover .ft { color: var(--accent); }
+    .feat .fs { font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+    .feat .fb { color: var(--muted); font-size: 0.86rem; line-height: 1.55; margin-top: 8px; }
+
+    /* ── CTA / CONTACT ── */
+    .cta { text-align: center; border-top: 1px solid var(--line);
+      background:
+        radial-gradient(circle at 50% 120%, color-mix(in srgb, var(--accent) 20%, transparent) 0%, transparent 55%),
+        var(--bg); }
+    .cta .glitch { font-size: clamp(2.4rem, 8vw, 6rem); margin-inline: auto; }
+    .cta .btns { justify-content: center; margin-top: 36px; }
+    .contact-meta { display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
+      margin-top: 54px; font-family: var(--font-heading); font-size: 0.8rem;
+      letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+    .contact-meta a:hover { color: var(--accent); }
+    .contact-meta span { color: var(--accent); margin-right: 10px; }
+
+    /* ── FOOTER ── */
+    footer { padding: 44px clamp(20px,6vw,90px); border-top: 1px solid var(--line);
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+      gap: 16px; font-family: var(--font-heading); font-size: 0.72rem;
+      letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+    footer a:hover { color: var(--accent); }
+    footer .foot-brand { color: var(--ink); }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/" class="brand">
+      <% if (logoUrl) { %><img src="<%= logoUrl %>" alt="<%= brandName %>"><% } %>
+      <span><%= brandName %><span class="dot">.</span></span>
+    </a>
+    <a href="<%= startUrl %>" class="nav-cta"><%= c.hero_cta_primary || 'Get Started' %></a>
+  </nav>
+
+  <!-- ── HERO ── -->
+  <header class="hero">
+    <div class="hero-grid"></div>
+    <div class="hero-glow"></div>
+    <div class="hero-inner">
+      <div class="eyebrow"><span class="live"></span><%= c.hero_eyebrow || b.tagline || 'System Online' %></div>
+      <%
+        const heading = c.hero_heading || brandName;
+        const headingEm = c.hero_heading_em || '';
+      %>
+      <h1 class="glitch" data-text="<%= (heading + ' ' + headingEm).trim() %>">
+        <%= heading %><% if (headingEm) { %> <em><%= headingEm %></em><% } %>
+      </h1>
+      <p class="hero-sub"><%= c.hero_sub || b.description || 'We design, build, and ship digital experiences that refuse to blend in.' %></p>
+      <div class="btns">
+        <a href="<%= startUrl %>" class="btn btn-primary"><%= c.hero_cta_primary || 'Start a Project' %></a>
+        <% if (c.hero_cta_secondary) { %>
+          <a href="<%= c.hero_cta_secondary_link || '#services' %>" class="btn btn-ghost"><%= c.hero_cta_secondary %></a>
+        <% } else { %>
+          <a href="#services" class="btn btn-ghost">Our Work</a>
+        <% } %>
+      </div>
+    </div>
+    <div class="hero-badge"><%= c.hero_badge || (b.location || 'Est. Now') %></div>
+  </header>
+
+  <!-- ── MARQUEE ── -->
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+      <% for (let k = 0; k < 2; k++) { %>
+        <span>
+          <% ticker.forEach((t, i) => { %><%= t %><% }) %>
+        </span>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- ── SERVICES ── -->
+  <% if (vis.services !== false) { %>
+  <section class="block" id="services">
+    <div class="sec-label"><%= c.services_label || 'What We Do' %></div>
+    <h2 class="sec-title"><%= c.services_heading || 'Core' %> <em><%= c.services_heading_em || 'Services' %></em></h2>
+    <div class="cards">
+      <% svc.forEach(s => { %>
+        <div class="card">
+          <div class="num"><%= s.n %> /</div>
+          <h3><%= s.t || 'Untitled' %></h3>
+          <% if (s.d) { %><p><%= s.d %></p><% } %>
+        </div>
+      <% }) %>
+    </div>
+  </section>
+  <% } %>
+
+  <!-- ── VIDEOS (auto-feed from YouTube channel) ── -->
+  <% if (vids.length && vis.videos !== false) { %>
+  <section class="block videos" id="videos">
+    <div class="sec-label"><%= c.videos_label || 'Watch' %></div>
+    <h2 class="sec-title"><%= c.videos_heading || 'Latest' %> <em><%= c.videos_heading_em || 'Videos' %></em></h2>
+    <div class="vid-grid">
+      <% vids.forEach(v => { %>
+        <div class="vid" data-vid="<%= v.id %>" role="button" tabindex="0" aria-label="Play: <%= v.title %>">
+          <img src="<%= v.thumb %>" alt="<%= v.title %>" loading="lazy">
+          <div class="play"><span></span></div>
+          <div class="vtitle"><%= v.title %></div>
+        </div>
+      <% }) %>
+    </div>
+  </section>
+  <% } %>
+
+  <!-- ── FEATURE SHOWCASE — every feature, by stage ── -->
+  <% if (feats.length) { %>
+  <section class="block" id="features">
+    <div class="sec-label"><%= c.features_label || 'The Platform' %></div>
+    <h2 class="sec-title"><%= c.features_heading || 'Every' %> <em><%= c.features_heading_em || 'Feature' %></em></h2>
+    <% STAGES.forEach(stage => {
+         const group = feats.filter(f => f.stage === stage.key);
+         if (!group.length) return; %>
+      <div class="feat-stage">
+        <div class="feat-stage-head">
+          <h3><%= stage.label %></h3>
+          <span class="badge <%= stage.key %>"><%= stage.label %></span>
+          <span class="rule"></span>
+          <span class="fs" style="color:var(--muted);font-size:0.7rem;letter-spacing:0.14em;"><%= group.length %></span>
+        </div>
+        <div class="feat-grid">
+          <% group.forEach(f => { %>
+            <div class="feat">
+              <div class="ft"><%= f.title %></div>
+              <% if (f.blurb) { %><div class="fb"><%= f.blurb %></div>
+              <% } else if (f.section) { %><div class="fs"><%= f.section %></div><% } %>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    <% }) %>
+  </section>
+  <% } %>
+
+  <!-- ── CTA / CONTACT ── -->
+  <section class="block cta" id="contact">
+    <div class="sec-label" style="justify-content:center;"><%= c.contact_eyebrow || "Let's Talk" %></div>
+    <%
+      const cHead = c.contact_heading || 'Build Something';
+      const cEm   = c.contact_heading_em || 'Loud';
+    %>
+    <h2 class="glitch" data-text="<%= (cHead + ' ' + cEm).trim() %>"><%= cHead %> <em><%= cEm %></em></h2>
+    <div class="btns">
+      <a href="<%= startUrl %>" class="btn btn-primary"><%= c.contact_btn || 'Get In Touch' %></a>
+    </div>
+    <div class="contact-meta">
+      <% if (b.email)    { %><a href="mailto:<%= b.email %>"><span>@</span><%= b.email %></a><% } %>
+      <% if (b.phone)    { %><a href="tel:<%= b.phone %>"><span>#</span><%= b.phone %></a><% } %>
+      <% if (b.location) { %><div><span>⌖</span><%= b.location %></div><% } %>
+    </div>
+  </section>
+
+  <!-- ── FOOTER ── -->
+  <footer>
+    <div class="foot-brand"><%= brandName %> © <span id="yr"></span></div>
+    <div>
+      <% if (vis.admin_link !== false) { %><a href="<%= authUrl %>">Admin</a> &nbsp;/&nbsp; <% } %>
+      <span>Own Every Byte</span>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById('yr').textContent = new Date().getFullYear();
+
+    // Click/keyboard a video card → swap the thumbnail for an inline player.
+    // Loading the iframe only on demand keeps the landing page light.
+    function playVideo(el) {
+      if (el.classList.contains('playing')) return;
+      var id = el.getAttribute('data-vid');
+      if (!id) return;
+      var f = document.createElement('iframe');
+      f.src = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1&rel=0';
+      f.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+      f.setAttribute('allowfullscreen', '');
+      f.setAttribute('title', 'YouTube video player');
+      el.appendChild(f);
+      el.classList.add('playing');
+    }
+    document.querySelectorAll('.vid').forEach(function (el) {
+      el.addEventListener('click', function () { playVideo(el); });
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); playVideo(el); }
+      });
+    });
+  </script>
+<% if (typeof chatbotEnabled !== 'undefined' && chatbotEnabled) { %><script src="/js/supportBubble.js?v=<%= Date.now() %>" defer></script><% } %>
+</body>
+</html>

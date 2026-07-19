@@ -1,0 +1,168 @@
+<%#
+  sLab Network — US presence map.
+
+  Expects `map` from plugins/networkMap.js:
+    { width, height, states[], pins[], byState{}, max, stats{}, plotPeople, hasInternational }
+
+  Pure inline SVG + vanilla JS to match the rest of /network: no CDN, no map
+  tiles, no API key, nothing to rate-limit. State paths and pin x/y are all
+  pre-projected into this exact viewBox by scripts/gen-us-geo.mjs.
+
+  Pins are grouped per kind so the legend can toggle whole layers with one class
+  flip rather than touching every node.
+-%>
+<%
+  const m = map || {};
+  const MS = m.stats || {};
+  const shade = (n) => {              // 0 → base fill, max → strongest gold wash
+    if (!n || !m.max) return 0;
+    return Math.min(1, 0.18 + 0.82 * (n / m.max));
+  };
+  const KINDS = [
+    { key: 'brand',    label: 'Brands',   cls: 'k-brand' },
+    { key: 'delegate', label: 'Delegates', cls: 'k-deleg' },
+    { key: 'waitlist', label: 'Waitlist',  cls: 'k-wait'  },
+  ];
+%>
+<section id="map">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>The network, on the ground</h2>
+      <span class="count">
+        <%= MS.plotted || 0 %> plotted across <%= MS.states || 0 %> state<%= (MS.states === 1 ? '' : 's') %>
+      </span>
+    </div>
+
+    <% if (!(m.pins || []).length) { %>
+      <div class="empty">
+        Nobody's placeable on the map yet. Brands set <strong>Location</strong> under
+        <strong>Admin &rarr; Settings</strong>; delegates set city &amp; state in their panel.
+      </div>
+    <% } else { %>
+
+    <div class="map-shell">
+      <div class="map-legend">
+        <% KINDS.forEach(function(k){ %>
+          <button type="button" class="lg <%= k.cls %> on" data-kind="<%= k.key %>" onclick="mapToggle(this)" aria-pressed="true">
+            <span class="dot"></span><%= k.label %><b><%= MS[k.key] || 0 %></b>
+          </button>
+        <% }) %>
+      </div>
+
+      <div class="map-frame">
+        <svg viewBox="0 0 <%= m.width %> <%= m.height %>" class="usmap" role="img"
+             aria-label="Map of the United States showing sLab Network members by state">
+          <g class="states">
+            <% (m.states || []).forEach(function(s){
+                 const t = (m.byState || {})[s.abbr];
+                 const n = t ? t.total : 0; %>
+              <path d="<%= s.d %>"
+                    class="st<%= n ? ' has' : '' %>"
+                    style="<%= n ? 'fill:rgba(201,168,72,' + shade(n).toFixed(3) + ')' : '' %>"
+                    data-abbr="<%= s.abbr %>"
+                    data-name="<%= s.name %>"
+                    data-n="<%= n %>"
+                    data-brand="<%= t ? t.brand : 0 %>"
+                    data-delegate="<%= t ? t.delegate : 0 %>"
+                    data-waitlist="<%= t ? t.waitlist : 0 %>"><title><%= s.name %><%= n ? ' — ' + n : '' %></title></path>
+            <% }) %>
+          </g>
+          <g class="pins">
+            <% KINDS.forEach(function(k){ %>
+              <g class="layer <%= k.cls %>" data-kind="<%= k.key %>">
+                <% (m.pins || []).filter(p => p.kind === k.key).forEach(function(p){ %>
+                  <% if (p.url) { %><a href="<%= p.url %>" target="_blank" rel="noopener"><% } %>
+                  <circle class="pin" cx="<%= p.x %>" cy="<%= p.y %>" r="<%= k.key === 'brand' ? 5 : 3.4 %>"
+                          data-label="<%= p.label %>"
+                          data-sub="<%= p.sub %>"
+                          data-place="<%= p.place %>"
+                          data-approx="<%= p.precision === 'state' ? '1' : '' %>"
+                          tabindex="0"><title><%= p.label %> — <%= p.place %></title></circle>
+                  <% if (p.url) { %></a><% } %>
+                <% }) %>
+              </g>
+            <% }) %>
+          </g>
+        </svg>
+        <div class="map-tip" id="map-tip" hidden></div>
+      </div>
+
+      <p class="map-note">
+        <% if (m.plotPeople) { %>
+          Brands are shown by name; delegates and waitlist members appear as
+          anonymous dots &mdash; location only, never a name or email.
+        <% } %>
+        <% if (MS.unknown) { %>
+          <%= MS.unknown %> <%= MS.unknown === 1 ? 'member has' : 'members have' %> no location set and
+          <%= MS.unknown === 1 ? 'is' : 'are' %> not plotted.
+        <% } %>
+        <% if (m.hasInternational) { %>
+          <b><%= MS.international %></b> outside the US &mdash; a world view is coming.
+        <% } %>
+      </p>
+    </div>
+    <% } %>
+  </div>
+</section>
+
+<script>
+  // Layer toggles — flip a class on the <g>, CSS does the rest.
+  function mapToggle(btn){
+    var on = btn.classList.toggle('on');
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    var g = document.querySelector('.pins .layer[data-kind="' + btn.dataset.kind + '"]');
+    if (g) g.classList.toggle('off', !on);
+  }
+
+  // One delegated hover/focus handler for pins AND states — thousands of nodes,
+  // two listeners.
+  (function(){
+    var frame = document.querySelector('#map .map-frame');
+    var tip = document.getElementById('map-tip');
+    if (!frame || !tip) return;
+
+    function show(html, evt){
+      tip.innerHTML = html;
+      tip.hidden = false;
+      var r = frame.getBoundingClientRect();
+      var x = evt.clientX - r.left, y = evt.clientY - r.top;
+      // Flip before the tooltip runs off the right edge / off the top.
+      tip.style.left = Math.min(x + 14, r.width - tip.offsetWidth - 6) + 'px';
+      tip.style.top  = Math.max(y - tip.offsetHeight - 10, 4) + 'px';
+    }
+    function hide(){ tip.hidden = true; }
+
+    var esc = function(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' })[c];
+    }); };
+
+    frame.addEventListener('mousemove', function(e){
+      var pin = e.target.closest('.pin');
+      if (pin){
+        var h = '<b>' + esc(pin.dataset.label) + '</b>';
+        if (pin.dataset.sub) h += '<i>' + esc(pin.dataset.sub) + '</i>';
+        h += '<span>' + esc(pin.dataset.place) + (pin.dataset.approx ? ' &middot; approx.' : '') + '</span>';
+        return show(h, e);
+      }
+      var st = e.target.closest('.st');
+      if (st && st.dataset.n !== '0'){
+        var d = st.dataset;
+        var bits = [];
+        if (+d.brand)    bits.push(d.brand + ' brand' + (+d.brand === 1 ? '' : 's'));
+        if (+d.delegate) bits.push(d.delegate + ' delegate' + (+d.delegate === 1 ? '' : 's'));
+        if (+d.waitlist) bits.push(d.waitlist + ' on the waitlist');
+        return show('<b>' + esc(d.name) + '</b><span>' + bits.join(' &middot; ') + '</span>', e);
+      }
+      hide();
+    });
+    frame.addEventListener('mouseleave', hide);
+    frame.addEventListener('focusin', function(e){
+      var pin = e.target.closest('.pin');
+      if (!pin) return;
+      var b = pin.getBoundingClientRect();
+      show('<b>' + esc(pin.dataset.label) + '</b><span>' + esc(pin.dataset.place) + '</span>',
+           { clientX: b.left + b.width / 2, clientY: b.top });
+    });
+    frame.addEventListener('focusout', hide);
+  })();
+</script>

@@ -11,6 +11,22 @@ const POST_HOURS = [9, 13, 18];
 
 function dayKey(dt) { return `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`; }
 
+// Stagger a multi-platform post across the calendar: one scheduled doc per
+// network, each at its own pre-computed slot — so all the networks don't fire
+// at the same single time. One platform → one doc. `base` carries the shared
+// fields (body, mediaUrls, format …). Slots run short? later networks reuse the
+// last slot rather than dropping the post.
+export function staggerByPlatform(base, platforms, slots) {
+  const list = (platforms && platforms.length) ? platforms : [null];
+  const times = slots && slots.length ? slots : [null];
+  return list.map((p, i) => ({
+    ...base,
+    platforms: p ? [p] : [],
+    status: 'scheduled',
+    scheduledAt: times[i] || times[times.length - 1] || null,
+  }));
+}
+
 // Suggest `count` future slots. Packs each day's posting hours (with spacing)
 // before moving to the next day — so a batch fills morning/midday/evening rather
 // than trickling one-per-day down the calendar. Skips hours already scheduled.

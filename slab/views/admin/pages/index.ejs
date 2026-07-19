@@ -44,9 +44,16 @@
               <td style="font-weight:500;"><%= pg.title %></td>
               <td style="font-size:0.82rem;color:var(--slate);">/<%= pg.slug %></td>
               <td>
-                <% const ptLabels = {'content':'Content','data-list':'Data List','landing':'Landing'}; %>
+                <%
+                  // Pages are now unified block stacks. Summarize composition:
+                  // block count, plus a marker for any piped-in data lists.
+                  let _n = (pg.blocks && pg.blocks.length) || 0;
+                  if (!_n && pg.pageType === 'data-list') _n = 1;     // legacy, un-migrated
+                  if (!_n && pg.content) _n = 1;                       // legacy content
+                  const _hasList = (pg.blocks || []).some(b => b && b.type === 'datalist') || pg.pageType === 'data-list';
+                %>
                 <span class="badge badge-draft" style="background:rgba(46,66,112,0.1);color:#2E4270;">
-                  <%= ptLabels[pg.pageType || 'content'] || pg.pageType %>
+                  <%= _n %> block<%= _n === 1 ? '' : 's' %><%= _hasList ? ' · list' : '' %>
                 </span>
               </td>
               <td>
@@ -63,7 +70,7 @@
                   <a href="/<%= pg.slug %>" target="_blank" class="btn btn-ghost btn-sm" style="margin-right:6px;">View</a>
                 <% } %>
                 <a href="/admin/pages/<%= pg._id %>/edit" class="btn btn-ghost btn-sm" style="margin-right:6px;">Edit</a>
-                <form method="POST" action="/admin/pages/<%= pg._id %>/delete" style="display:inline;" onsubmit="return confirm('Delete this page?')">
+                <form method="POST" action="/admin/pages/<%= pg._id %>/delete" data-guard="button" style="display:inline;" onsubmit="return confirm('Delete this page?')">
                   <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                 </form>
               </td>

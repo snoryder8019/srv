@@ -1,5 +1,6 @@
 import express from 'express';
 import { execSync } from 'child_process';
+import { randomBytes } from 'crypto';
 import { getSlabDb } from '../../plugins/mongo.js';
 import { encrypt, decrypt } from '../../plugins/crypto.js';
 import { bustTenantCache } from '../../middleware/tenant.js';
@@ -7,6 +8,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../../config/config.js';
 import { logActivity } from '../../plugins/activityLog.js';
 import { PLATFORM_LIST, maskAccount } from '../../plugins/socialPublish.js';
+import { toggleableFunctions, toggleableFunctionKeys } from '../../plugins/featureRegistry.js';
 import { buildAuthUrl, exchangeCode, isOAuthProvider, EMAIL_OAUTH_PROVIDERS } from '../../plugins/emailOAuth.js';
 import { notifyAdmin } from '../../plugins/notify.js';
 
@@ -44,6 +46,16 @@ const PUBLIC_FIELDS = [
   'gmailOAuthUser', 'outlookOAuthUser',
   'customDomain',
   'chatbotEnabled',
+  // sLab Network — opt-in backlink exchange + cross-tenant content syndication.
+  // Master switch joins the network (directory listing + footer backlink); the
+  // per-module flags choose what content this tenant contributes.
+  'networkOptIn',    // master: join the sLab Network
+  'networkJobs',     // syndicate open job postings to /network
+  'networkPress',    // syndicate press releases to /network
+  'networkVideo',    // syndicate YouTube channel uploads to /network
+  'networkMarket',   // syndicate marketplace listings to /network
+  'networkContent',  // syndicate blog posts + newsletter issues to /network
+  'networkFollow',   // let hub visitors subscribe to this brand's newsletter
 ];
 
 // Brand profile fields stored in tenant.brand (drives all agent prompts)
@@ -104,7 +116,13 @@ router.get('/', async (req, res) => {
   settings.domain = tenant.domain;
   settings.status = tenant.status;
   settings.plan = tenant.meta?.plan || 'free';
-  settings.customDomain = tenant.meta?.customDomain || '';
+  settings.customDomain = tenant.meta?.customDomain || tenant.public?.customDomain || '';
+  // Custom domain requires an active paid plan (trial/preview must subscribe first).
+  settings.customDomainPaidRequired = !(
+    tenant.status === 'active' &&
+    ['monthly', 'quarterly', 'annual', 'lifetime'].includes(tenant.meta?.plan) &&
+    !tenant.meta?.isTrial
+  );
   settings.contactEmail = tenant.meta?.contactEmail || '';
   settings.ownerEmail = tenant.meta?.ownerEmail || '';
 
@@ -187,6 +205,8 @@ router.get('/', async (req, res) => {
     user: req.adminUser,
     page: 'settings',
     settings,
+    toggleableFunctions: toggleableFunctions(),
+    disabledFunctions: (tenant.public?.disabledFunctions || '').split(',').map((x) => x.trim()).filter(Boolean),
     brandProfile,
     socialPlatforms,
     socialStatus,
@@ -223,13 +243,63 @@ router.post('/', async (req, res) => {
     }
   }
 
+  // Custom domain is a paid feature — gate it behind an active paid plan.
+  // Free-trial and preview tenants may configure everything else, but must
+  // subscribe before pointing a custom domain (try free → pay → add domain).
+  let customDomainBlocked = false;
+  if (updates['public.customDomain']) {
+    const plan = tenant.meta?.plan;
+    const isPaidPlan = ['monthly', 'quarterly', 'annual', 'lifetime'].includes(plan);
+    const isPaid = tenant.status === 'active' && isPaidPlan && !tenant.meta?.isTrial;
+    // Allow clearing the field regardless; only block setting a new custom domain.
+    if (!isPaid && updates['public.customDomain'] !== '') {
+      delete updates['public.customDomain'];
+      customDomainBlocked = true;
+    }
+  }
+
   // Chatbot toggle — checkbox posts nothing when off, so normalize explicitly.
   updates['public.chatbotEnabled'] =
     (req.body.chatbotEnabled === 'on' || req.body.chatbotEnabled === 'true') ? 'true' : 'false';
 
+  // sLab Network toggles — checkboxes post nothing when off, so normalize each
+  // to a 'true'/'false' string (same precedent as chatbotEnabled). Only touch
+  // them when the Network form section was actually submitted, so saving an
+  // unrelated section (which won't include the marker) can't silently opt a
+  // tenant out. The hidden `networkForm` marker is emitted by that section only.
+  if (req.body.networkForm !== undefined) {
+    const asBool = (v) => (v === 'on' || v === 'true') ? 'true' : 'false';
+    updates['public.networkOptIn'] = asBool(req.body.networkOptIn);
+    // Per-module syndication only makes sense once you've joined; force off when
+    // the master switch is off so a stale sub-toggle can't leak content.
+    const joined = updates['public.networkOptIn'] === 'true';
+    updates['public.networkJobs']  = joined ? asBool(req.body.networkJobs)  : 'false';
+    updates['public.networkPress'] = joined ? asBool(req.body.networkPress) : 'false';
+    updates['public.networkVideo'] = joined ? asBool(req.body.networkVideo) : 'false';
+    updates['public.networkMarket'] = joined ? asBool(req.body.networkMarket) : 'false';
+    updates['public.networkContent'] = joined ? asBool(req.body.networkContent) : 'false';
+    updates['public.networkFollow'] = joined ? asBool(req.body.networkFollow) : 'false';
+  }
+
+  // Slab Functions — per-tenant sidebar tool visibility. Only enabled tools post
+  // fn_<key>='on'; any toggleable tool NOT posted is treated as switched off.
+  if (req.body.functionsForm !== undefined) {
+    const toggleable = toggleableFunctionKeys();
+    const disabled = toggleable.filter((k) => req.body[`fn_${k}`] !== 'on');
+    updates['public.disabledFunctions'] = disabled.join(',');
+  }
+
   // Contact form recipient (where landing-page /contact submissions are emailed)
   if (req.body.contactEmail !== undefined) {
     updates['meta.contactEmail'] = req.body.contactEmail.trim().toLowerCase();
+  }
+
+  // Owner (billing + notification) email. This single field is read live by every
+  // owner-facing email (invoices, booking alerts, onboarding), so editing it here
+  // hydrates globally. Only the billing/contact address — not the login identity.
+  if (req.body.ownerEmail !== undefined) {
+    const oe = req.body.ownerEmail.trim().toLowerCase();
+    if (oe && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(oe)) updates['meta.ownerEmail'] = oe;
   }
 
   // Process secret fields — only update if not the masked placeholder
@@ -289,7 +359,7 @@ router.post('/', async (req, res) => {
       details: { fieldsUpdated: changedFields },
       ip: req.ip,
     });
-    res.redirect('/admin/settings?saved=1');
+    res.redirect('/admin/settings?saved=1' + (customDomainBlocked ? '&domainLocked=1' : ''));
   } catch (err) {
     console.error('[settings] save error:', err);
     logActivity({
@@ -459,6 +529,16 @@ router.post('/email/oauth/:provider/disconnect', async (req, res) => {
 });
 
 // ── Check DNS records (SPF, DKIM, DMARC, MX) ─────────────────────────────
+// --- Zoho DNS constants (shared by the checker & the auto-creator) ---------
+// Previously the checker probed DKIM at `zmail._domainkey` while the auto-
+// creator published `zb._domainkey`, and the SPF check required
+// `include:zoho.com` while the live root domain uses `include:zohomail.com`.
+// Both mismatches made Check DNS report false negatives, so both settings now
+// live here and the two code paths read from the same source of truth.
+const ZOHO_SPF_INCLUDES = ['zohomail.com', 'zoho.com']; // accept either alias when verifying
+const ZOHO_SPF_INCLUDE  = ZOHO_SPF_INCLUDES[0];         // canonical one we write (matches root domain)
+const DKIM_SELECTORS    = ['zmail', 'zb', 'default'];   // selectors we may have published across the fleet
+
 router.post('/check-dns', async (req, res) => {
   try {
     const { resolveTxt, resolveMx } = await import('dns/promises');
@@ -475,12 +555,12 @@ router.post('/check-dns', async (req, res) => {
       const txtRecords = await resolveTxt(domain);
       const spfRecord = txtRecords.flat().find(r => r.startsWith('v=spf1'));
       if (spfRecord) {
-        const hasZoho = /include:zoho\.com/i.test(spfRecord);
+        const hasZoho = ZOHO_SPF_INCLUDES.some(inc => new RegExp('include:' + inc.replace(/\./g, '\\.'), 'i').test(spfRecord));
         results.spf = {
           found: true,
           value: spfRecord,
           valid: hasZoho,
-          message: hasZoho ? 'SPF includes Zoho' : 'SPF found but missing include:zoho.com',
+          message: hasZoho ? 'SPF includes Zoho' : `SPF found but no Zoho include (${ZOHO_SPF_INCLUDES.join(' or ')})`,
         };
       } else {
         results.spf = { found: false, valid: false, message: 'No SPF record found' };
@@ -489,18 +569,24 @@ router.post('/check-dns', async (req, res) => {
       results.spf = { found: false, valid: false, message: 'No TXT records found' };
     }
 
-    // DKIM — check zmail._domainkey.domain
-    try {
-      const dkimRecords = await resolveTxt(`zmail._domainkey.${domain}`);
-      const dkimValue = dkimRecords.flat().join('');
-      results.dkim = {
-        found: true,
-        valid: dkimValue.includes('v=DKIM1'),
-        value: dkimValue.substring(0, 80) + '…',
-        message: dkimValue.includes('v=DKIM1') ? 'DKIM configured' : 'DKIM record found but may be invalid',
-      };
-    } catch {
-      results.dkim = { found: false, valid: false, message: 'No DKIM record at zmail._domainkey' };
+    // DKIM — probe every selector we might publish (a manual Zoho TXT key,
+    // or an auto-created CNAME) and report the first valid hit, so the result
+    // matches however this specific domain was actually set up.
+    results.dkim = { found: false, valid: false, message: `No DKIM key found (checked selectors: ${DKIM_SELECTORS.join(', ')})` };
+    for (const sel of DKIM_SELECTORS) {
+      try {
+        const dkimRecords = await resolveTxt(`${sel}._domainkey.${domain}`);
+        const dkimValue = dkimRecords.flat().join('');
+        const valid = dkimValue.includes('v=DKIM1');
+        results.dkim = {
+          found: true,
+          valid,
+          selector: sel,
+          value: dkimValue.substring(0, 80) + '…',
+          message: valid ? `DKIM configured (selector: ${sel})` : `Record at ${sel}._domainkey found but missing v=DKIM1`,
+        };
+        if (valid) break; // stop at the first good key; keep scanning past invalid ones
+      } catch { /* selector not published -- try the next */ }
     }
 
     // DMARC — check _dmarc.domain
@@ -593,7 +679,7 @@ router.post('/auto-create-dns', async (req, res) => {
           body: JSON.stringify({
             type: 'TXT',
             name: subdomain,
-            target: 'v=spf1 include:zoho.com ~all',
+            target: `v=spf1 include:${ZOHO_SPF_INCLUDE} ~all`,
             ttl_sec: 300,
           }),
         }
@@ -752,6 +838,100 @@ router.post('/setup-request', async (req, res) => {
   }).catch(e => console.error('[setup-request] notify failed:', e.message));
 
   res.json({ ok: true });
+});
+
+// ── Custom API Keys (tenant-defined credential vault) ───────────────────────
+// A tenant stores arbitrary named API keys/secrets here, encrypted with the same
+// AES-256-GCM as provider secrets. Values are surfaced decrypted on
+// req.tenant.customKeys (middleware/tenant.js) so any connector can read one by
+// name — e.g. getTenantKey(req.tenant, 'indeed_publisher_key').
+
+// Normalize a key name to a safe, stable lookup handle.
+function normalizeKeyName(v) {
+  return String(v || '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60);
+}
+
+// Read a decrypted custom key by name off the resolved tenant (for connectors).
+// Returns the value, '' if unset on the entry, or undefined if no such key.
+export function getTenantKey(tenant, name) {
+  const hit = (tenant?.customKeys || []).find((k) => k.name === normalizeKeyName(name));
+  return hit ? hit.value : undefined;
+}
+
+// List page.
+router.get('/keys', (req, res) => {
+  const tenant = req.tenant;
+  if (!tenant) return res.redirect('/admin');
+  const keys = (tenant.customKeys || []).map((k) => ({
+    id: k.id, name: k.name, note: k.note || '',
+    masked: k.value == null ? '(decrypt error)' : ('••••••••' + String(k.value).slice(-4)),
+    broken: k.value == null,
+    createdAt: k.createdAt, updatedAt: k.updatedAt,
+  })).sort((a, b) => a.name.localeCompare(b.name));
+  res.render('admin/settings/keys', {
+    user: req.adminUser, page: 'settings', title: 'API Keys', keys,
+    msg: req.query.msg, err: req.query.err,
+  });
+});
+
+// Add or update a key (upsert by name).
+router.post('/keys', async (req, res) => {
+  const tenant = req.tenant;
+  if (!tenant) return res.redirect('/admin');
+  const name = normalizeKeyName(req.body.name);
+  const value = (req.body.value || '').trim();
+  const note = (req.body.note || '').trim().slice(0, 200);
+  if (!name) return res.redirect('/admin/settings/keys?err=name');
+  if (!value) return res.redirect('/admin/settings/keys?err=value');
+
+  const slab = getSlabDb();
+  const canonicalDomain = tenant.wildcardDomain || tenant.domain;
+  try {
+    const doc = await slab.collection('tenants').findOne({ domain: canonicalDomain }, { projection: { customKeys: 1 } });
+    const list = Array.isArray(doc?.customKeys) ? doc.customKeys : [];
+    const now = new Date();
+    const existing = list.find((k) => k.name === name);
+    if (existing) {
+      existing.value = encrypt(value);
+      existing.note = note;
+      existing.updatedAt = now;
+    } else {
+      list.push({ id: randomBytes(8).toString('hex'), name, note, value: encrypt(value), createdAt: now, updatedAt: now });
+    }
+    const result = await slab.collection('tenants').updateOne(
+      { domain: canonicalDomain }, { $set: { customKeys: list, updatedAt: now } });
+    if (result.matchedCount === 0) throw new Error(`No tenant matched "${canonicalDomain}"`);
+    for (const d of [canonicalDomain, tenant.domain, tenant.customDomain, tenant.meta?.customDomain]) if (d) bustTenantCache(d);
+    logActivity({
+      category: 'settings', action: 'custom_key_saved',
+      tenantDomain: tenant.domain, tenantId: tenant._id, status: 'success',
+      actor: { email: req.adminUser?.email, role: 'admin' },
+      details: { key: name, isUpdate: !!existing }, ip: req.ip,
+    });
+    res.redirect(`/admin/settings/keys?msg=${existing ? 'updated' : 'added'}`);
+  } catch (err) {
+    console.error('[settings/keys] save error:', err);
+    res.redirect('/admin/settings/keys?err=save');
+  }
+});
+
+// Delete a key by id.
+router.post('/keys/:id/delete', async (req, res) => {
+  const tenant = req.tenant;
+  if (!tenant) return res.redirect('/admin');
+  const slab = getSlabDb();
+  const canonicalDomain = tenant.wildcardDomain || tenant.domain;
+  try {
+    const doc = await slab.collection('tenants').findOne({ domain: canonicalDomain }, { projection: { customKeys: 1 } });
+    const list = (Array.isArray(doc?.customKeys) ? doc.customKeys : []).filter((k) => k.id !== req.params.id);
+    await slab.collection('tenants').updateOne(
+      { domain: canonicalDomain }, { $set: { customKeys: list, updatedAt: new Date() } });
+    for (const d of [canonicalDomain, tenant.domain, tenant.customDomain, tenant.meta?.customDomain]) if (d) bustTenantCache(d);
+    res.redirect('/admin/settings/keys?msg=deleted');
+  } catch (err) {
+    console.error('[settings/keys] delete error:', err);
+    res.redirect('/admin/settings/keys?err=save');
+  }
 });
 
 export default router;

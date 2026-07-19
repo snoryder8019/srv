@@ -488,6 +488,8 @@ export const PLATFORMS = {
       { key: 'pageAccessToken', label: 'Page Access Token', secret: true, placeholder: 'long-lived page token' },
       { key: 'appId', label: 'App ID (optional)', secret: false, optional: true, placeholder: 'for token tools & data-deletion' },
       { key: 'appSecret', label: 'App Secret (optional)', secret: true, optional: true, placeholder: 'enables data-deletion signature check' },
+      { key: 'threadsAppId', label: 'Threads App ID (optional)', secret: false, optional: true, placeholder: 'from Use cases → Threads → Settings (differs from App ID)' },
+      { key: 'threadsAppSecret', label: 'Threads App Secret (optional)', secret: true, optional: true, placeholder: 'Threads-specific secret for the Connect-with-Threads flow' },
     ],
     setup: 'Create an app at developers.facebook.com → add the "Facebook Login" + "Pages" products. Generate a Page access token with `pages_manage_posts` and `pages_read_engagement` scopes (use Graph API Explorer, then exchange for a long-lived token). Page ID is on your Page → About.',
     portal: 'https://developers.facebook.com/apps/',
@@ -540,7 +542,7 @@ export const PLATFORMS = {
     name: 'Instagram',
     icon: '📷',
     color: '#E4405F',
-    caps: { text: true, link: false, media: true },
+    caps: { text: true, link: false, media: true, carousel: true, story: true },
     requiresMedia: true,
     fields: [
       { key: 'igUserId', label: 'IG User ID', secret: false, placeholder: '178414...' },
@@ -556,35 +558,90 @@ export const PLATFORMS = {
     },
     async publish({ post, creds }) {
       if (!creds.igUserId || !creds.accessToken) throw new Error('Missing IG user id or token');
-      let img = (post.mediaUrls || [])[0];
-      if (!img) throw new Error('Instagram requires an image or video — attach a public media URL');
-      const isVid = isVideoUrl(img);
       const G = 'https://graph.facebook.com/v21.0';
+      const token = creds.accessToken;
+      const media = (post.mediaUrls || []).filter(Boolean);
+      if (!media.length) throw new Error('Instagram requires an image or video — attach a public media URL');
       const caption = [post.body, post.link].filter(Boolean).join('\n\n');
-      // Instagram rejects non-JPEG stills — transcode PNG/WebP to JPEG first.
-      if (!isVid) img = await ensureJpegForMeta(img);
-      // 1. create container — video posts go up as REELS with a video_url.
-      const containerBody = isVid
-        ? { media_type: 'REELS', video_url: img, caption, access_token: creds.accessToken }
-        : { image_url: img, caption, access_token: creds.accessToken };
-      const cr = await fetch(`${G}/${creds.igUserId}/media`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(containerBody),
-        signal: AbortSignal.timeout(25000),
-      });
-      const cj = await cr.json().catch(() => ({}));
-      if (!cr.ok || !cj.id) throw metaError(cj, cr.status, 'container');
-      // 1b. Meta processes BOTH image and video containers asynchronously — publishing
-      // before status_code=FINISHED fails with "Media ID is not available" (2207027).
-      // Videos can take minutes; images are usually a few seconds, so poll faster.
-      await pollMetaContainer(
-        `${G}/${cj.id}?fields=status_code&access_token=${encodeURIComponent(creds.accessToken)}`,
-        'status_code',
-        isVid ? {} : { timeoutMs: 60000, intervalMs: 3000, firstDelayMs: 1500 },
-      );
-      // 2. publish container (retries the transient not-ready race, 2207027)
-      const pj = await metaPublishRetry(`${G}/${creds.igUserId}/media_publish`, { creation_id: cj.id, access_token: creds.accessToken });
-      return { id: pj.id };
+
+      // Create ONE media container and wait until Meta finishes processing it.
+      // `kind` selects the container flavour: standalone feed post ('single'),
+      // a carousel child ('carouselItem'), or a story frame ('story'). Meta
+      // processes BOTH image and video containers asynchronously — publishing
+      // before status_code=FINISHED fails with "Media ID is not available"
+      // (2207027) — so every container is polled here before it's used.
+      const makeContainer = async (rawUrl, kind = 'single') => {
+        const isVid = isVideoUrl(rawUrl);
+        // Instagram rejects non-JPEG stills — transcode PNG/WebP to JPEG first.
+        const url = isVid ? rawUrl : await ensureJpegForMeta(rawUrl);
+        const body = { access_token: token };
+        if (kind === 'story') {
+          body.media_type = 'STORIES';
+          if (isVid) body.video_url = url; else body.image_url = url;
+        } else if (kind === 'carouselItem') {
+          body.is_carousel_item = true;
+          // Carousel video items use media_type=VIDEO (not REELS).
+          if (isVid) { body.media_type = 'VIDEO'; body.video_url = url; } else body.image_url = url;
+        } else {
+          // Standalone feed post: single video → REELS; the caption rides here.
+          if (isVid) { body.media_type = 'REELS'; body.video_url = url; } else body.image_url = url;
+          body.caption = caption;
+        }
+        const cr = await fetch(`${G}/${creds.igUserId}/media`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body), signal: AbortSignal.timeout(25000),
+        });
+        const cj = await cr.json().catch(() => ({}));
+        if (!cr.ok || !cj.id) throw metaError(cj, cr.status, 'container');
+        // Videos can take minutes; images are usually a few seconds, so poll faster.
+        await pollMetaContainer(
+          `${G}/${cj.id}?fields=status_code&access_token=${encodeURIComponent(token)}`,
+          'status_code',
+          isVid ? {} : { timeoutMs: 60000, intervalMs: 3000, firstDelayMs: 1500 },
+        );
+        return cj.id;
+      };
+      // publish container (retries the transient not-ready race, 2207027)
+      const publishContainer = async (creationId) => {
+        const pj = await metaPublishRetry(`${G}/${creds.igUserId}/media_publish`, { creation_id: creationId, access_token: token });
+        return { id: pj.id };
+      };
+
+      // ── Carousel: 2–10 child containers → parent(media_type=CAROUSEL) → publish.
+      // Caption lives on the parent only; `children` is a COMMA-SEPARATED STRING.
+      if (post.format === 'carousel') {
+        const items = media.slice(0, 10);
+        if (items.length < 2) throw new Error('An Instagram carousel needs at least 2 items');
+        const childIds = [];
+        for (const u of items) childIds.push(await makeContainer(u, 'carouselItem'));
+        const pr = await fetch(`${G}/${creds.igUserId}/media`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ media_type: 'CAROUSEL', children: childIds.join(','), caption, access_token: token }),
+          signal: AbortSignal.timeout(25000),
+        });
+        const pj = await pr.json().catch(() => ({}));
+        if (!pr.ok || !pj.id) throw metaError(pj, pr.status, 'carousel container');
+        await pollMetaContainer(
+          `${G}/${pj.id}?fields=status_code&access_token=${encodeURIComponent(token)}`,
+          'status_code', { timeoutMs: 60000, intervalMs: 3000, firstDelayMs: 1500 },
+        );
+        return await publishContainer(pj.id);
+      }
+
+      // ── Story: each media item is its own story frame, published in order.
+      // (Stories count toward IG's 25-publishes/24h bucket — one per frame.)
+      if (post.format === 'story') {
+        const frames = media.slice(0, 10);
+        let firstId = null;
+        for (const u of frames) {
+          const r = await publishContainer(await makeContainer(u, 'story'));
+          if (!firstId) firstId = r.id;
+        }
+        return { id: firstId };
+      }
+
+      // ── Single feed post (default, unchanged behaviour).
+      return await publishContainer(await makeContainer(media[0], 'single'));
     },
   },
 
@@ -749,7 +806,7 @@ export const PLATFORMS = {
     name: 'Threads',
     icon: '@',
     color: '#000000',
-    caps: { text: true, link: true, media: true },
+    caps: { text: true, link: true, media: true, carousel: true },
     fields: [
       { key: 'userId', label: 'Threads User ID', secret: false, placeholder: 'numeric Threads user id' },
       { key: 'accessToken', label: 'Access Token', secret: true, placeholder: 'Threads Graph API token' },
@@ -766,6 +823,46 @@ export const PLATFORMS = {
       if (!creds.userId || !creds.accessToken) throw new Error('Missing Threads user id or token');
       const T = 'https://graph.threads.net/v1.0';
       const text = [post.body, post.link].filter(Boolean).join('\n\n');
+
+      // ── Carousel: 2–10 child containers → parent(media_type=CAROUSEL) → publish.
+      // Text rides on the parent only; `children` is a comma-separated string.
+      if (post.format === 'carousel') {
+        const items = (post.mediaUrls || []).filter(Boolean).slice(0, 10);
+        if (items.length < 2) throw new Error('A Threads carousel needs at least 2 items');
+        const childIds = [];
+        for (const u of items) {
+          const vid = isVideoUrl(u);
+          const p = new URLSearchParams({ access_token: creds.accessToken, is_carousel_item: 'true' });
+          if (vid) { p.set('media_type', 'VIDEO'); p.set('video_url', u); }
+          else { p.set('media_type', 'IMAGE'); p.set('image_url', u); }
+          const ccr = await fetch(`${T}/${creds.userId}/threads`, {
+            method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: p.toString(), signal: AbortSignal.timeout(25000),
+          });
+          const ccj = await ccr.json().catch(() => ({}));
+          if (!ccr.ok || !ccj.id) throw metaError(ccj, ccr.status, 'container');
+          // Video children process asynchronously — wait until FINISHED.
+          if (vid) await pollMetaContainer(`${T}/${ccj.id}?fields=status&access_token=${encodeURIComponent(creds.accessToken)}`, 'status');
+          childIds.push(ccj.id);
+        }
+        const pp = new URLSearchParams({ access_token: creds.accessToken, media_type: 'CAROUSEL', children: childIds.join(',') });
+        if (text) pp.set('text', text);
+        const pcr = await fetch(`${T}/${creds.userId}/threads`, {
+          method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: pp.toString(), signal: AbortSignal.timeout(25000),
+        });
+        const pcj = await pcr.json().catch(() => ({}));
+        if (!pcr.ok || !pcj.id) throw metaError(pcj, pcr.status, 'carousel container');
+        const cpr = await fetch(`${T}/${creds.userId}/threads_publish`, {
+          method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ creation_id: pcj.id, access_token: creds.accessToken }).toString(),
+          signal: AbortSignal.timeout(25000),
+        });
+        const cpj = await cpr.json().catch(() => ({}));
+        if (!cpr.ok || !cpj.id) throw metaError(cpj, cpr.status, 'publish');
+        return { id: cpj.id };
+      }
+
       const img = (post.mediaUrls || [])[0];
       const isVid = isVideoUrl(img);
       // 1. create media container
@@ -1023,8 +1120,13 @@ export function packCredentials(platformKey, body, existing = {}) {
     if (raw === undefined) continue;
     const val = String(raw).trim();
     if (f.secret) {
-      if (val && !val.startsWith('••••')) secrets[f.key] = encrypt(val);
-      else if (val === '') delete secrets[f.key];
+      // "Leave blank to keep": a stored secret is NEVER overwritten or deleted by
+      // an empty field or by a value made only of mask glyphs (the UI shows dots
+      // as a placeholder and users sometimes retype them — •, ·, ● in either
+      // Unicode form). Only a real, non-mask value updates the encrypted secret.
+      // Removal is done via Disconnect, not by blanking a field.
+      const isMaskOnly = val === '' || /^[•·●∙・]+$/.test(val);
+      if (!isMaskOnly) secrets[f.key] = encrypt(val);
     } else {
       credentials[f.key] = val;
     }
@@ -1155,6 +1257,17 @@ export async function verifyPlatform(platformKey, account) {
   }
 }
 
+// Does this platform support the given post format ('single' | 'carousel' | 'story')?
+// 'single' (or unset) is always supported; carousel/story are gated on caps so the
+// compose UI and the publish path only ever offer a format to platforms that can do it.
+export function platformSupportsFormat(platformKey, format) {
+  if (!format || format === 'single') return true;
+  const caps = PLATFORMS[platformKey]?.caps || {};
+  if (format === 'carousel') return !!caps.carousel;
+  if (format === 'story') return !!caps.story;
+  return false;
+}
+
 // Publish one post to one platform. Returns { platform, ok, id?, url?, error?, at }.
 export async function publishToPlatform(platformKey, post, account) {
   const def = PLATFORMS[platformKey];
@@ -1162,6 +1275,9 @@ export async function publishToPlatform(platformKey, post, account) {
   if (!def) return { platform: platformKey, ok: false, error: 'Unknown platform', at };
   if (def.comingSoon || typeof def.publish !== 'function') {
     return { platform: platformKey, ok: false, error: `${def.name} publishing is not available yet`, at };
+  }
+  if (post.format && post.format !== 'single' && !platformSupportsFormat(platformKey, post.format)) {
+    return { platform: platformKey, ok: false, error: `${def.name} does not support ${post.format} posts`, at };
   }
   if (!account || account.enabled === false) {
     return { platform: platformKey, ok: false, error: 'Account not connected', at };

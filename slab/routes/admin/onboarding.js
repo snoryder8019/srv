@@ -97,7 +97,7 @@ router.post('/agent/suggest', express.json(), async (req, res) => {
     const parsed = await runTool('suggest_onboarding_fields', {
       prompt: req.body.prompt || 'Suggest onboarding form fields for this business',
       brandContext,
-    });
+    }, { db: req.db, tenant: req.tenant });
     res.json({
       success: true,
       message: parsed.message || 'Fields suggested',
@@ -351,7 +351,7 @@ router.post('/:id/agent', express.json(), async (req, res) => {
       formName: form?.name || '',
       formDesc: form?.description || '',
       brandContext,
-    });
+    }, { db: req.db, tenant: req.tenant });
     res.json({
       success: true,
       message: parsed.message || 'Fields suggested',

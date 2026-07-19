@@ -1,0 +1,448 @@
+<%- include('../partials/head', { title: e.engagementNumber + ' — ' + (c.name || 'Client') }) %>
+<%- include('../partials/sidebar', { page: 'clients', user }) %>
+
+<style>
+.wrap { padding:20px 24px; max-width:1100px; }
+.grid { display:grid; grid-template-columns:1fr 340px; gap:20px; align-items:start; }
+@media(max-width:980px){ .grid{grid-template-columns:1fr;} }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:18px 20px; margin-bottom:16px; }
+.card h2 { font-size:12px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:0 0 12px; }
+label { display:block; font-size:11px; color:var(--slate); margin:10px 0 3px; }
+input, select, textarea { width:100%; padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; font-family:inherit; box-sizing:border-box; }
+textarea { min-height:80px; resize:vertical; }
+.frozen { opacity:.75; }
+.frozen-note { background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.4); border-radius:6px; padding:9px 13px; font-size:12px; color:#b45309; margin-bottom:14px; }
+.flash { padding:9px 14px; border-radius:6px; font-size:12px; font-weight:600; margin-bottom:14px; }
+.flash-ok { background:rgba(16,185,129,.1); color:#10b981; border:1px solid rgba(16,185,129,.3); }
+.flash-err { background:rgba(239,68,68,.08); color:#ef4444; border:1px solid rgba(239,68,68,.3); }
+.st { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:3px 10px; border-radius:10px; }
+.st-draft { background:rgba(107,115,128,.12); color:var(--slate); }
+.st-sent,.st-viewed { background:rgba(14,165,233,.1); color:#0ea5e9; }
+.st-revision_requested { background:rgba(249,115,22,.12); color:#f97316; }
+.st-signed { background:rgba(234,179,8,.14); color:#ca8a04; }
+.st-acknowledged { background:rgba(16,185,129,.12); color:#10b981; }
+.st-declined,.st-void { background:rgba(239,68,68,.1); color:#ef4444; }
+.st-expired { background:rgba(245,158,11,.14); color:#b45309; }
+
+/* Agent bar */
+.agent-bar { background:rgba(201,168,72,.06); border:1px solid rgba(201,168,72,.35); border-radius:8px; padding:12px 14px; margin-bottom:14px; }
+.agent-bar .row { display:flex; gap:8px; align-items:center; }
+.agent-bar input { flex:1; }
+.agent-msg { font-size:11px; color:var(--slate); margin-top:7px; min-height:14px; }
+.agent-msg.err { color:#ef4444; }
+
+/* Terms clause rows */
+.clause { border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:8px; background:var(--bg); }
+.clause .c-head { display:flex; gap:8px; align-items:center; margin-bottom:6px; }
+.clause .c-head input { font-weight:700; }
+.clause textarea { min-height:56px; font-size:12px; background:var(--surface); }
+.c-del { background:none; border:none; color:#e74c3c; cursor:pointer; font-size:14px; padding:0 4px; flex-shrink:0; }
+.c-move { background:none; border:none; color:var(--slate); cursor:pointer; font-size:12px; padding:0 3px; flex-shrink:0; }
+
+/* Packages — materialized editor */
+.tpl-picker { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+.tpl-picker select { flex:1; }
+.pkg-block { border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin-bottom:10px; }
+.pkg-head { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.opt-block { border-left:3px solid var(--gold); padding:10px 12px; margin:8px 0; background:var(--bg); border-radius:0 6px 6px 0; }
+.opt-head { display:flex; gap:8px; align-items:center; margin-bottom:6px; }
+.item-row { display:flex; gap:6px; align-items:center; padding:4px 0; }
+.item-row input[type=text] { flex:1; font-size:12px; }
+.item-row input[type=number] { width:92px; font-size:12px; }
+.item-row select { width:100px; font-size:11px; }
+.add-svc { display:flex; gap:6px; margin-top:6px; }
+.add-svc select { flex:1; font-size:11px; }
+.rec-lbl { display:flex; gap:4px; align-items:center; font-size:10px; white-space:nowrap; margin:0; color:var(--text); }
+.rec-lbl input { width:auto; }
+
+.tl { border-left:2px solid var(--border); margin-left:6px; padding-left:16px; }
+.tl-item { position:relative; padding:6px 0 10px; font-size:12px; color:var(--text); }
+.tl-item::before { content:''; position:absolute; left:-21px; top:11px; width:8px; height:8px; border-radius:50%; background:var(--gold); }
+.tl-meta { font-size:10px; color:var(--slate); }
+.note-item { border-left:3px solid var(--border); padding:7px 11px; margin-bottom:8px; font-size:12px; }
+.note-item.client { border-color:var(--gold); }
+.note-item.revision_request { border-color:#f97316; }
+.note-item.internal { border-style:dashed; }
+.note-meta { font-size:10px; color:var(--slate); margin-bottom:2px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.tag-int { background:rgba(107,115,128,.14); color:var(--slate); font-size:9px; font-weight:800; padding:1px 6px; border-radius:8px; text-transform:uppercase; }
+.tag-shared { background:rgba(16,185,129,.12); color:#10b981; font-size:9px; font-weight:800; padding:1px 6px; border-radius:8px; text-transform:uppercase; }
+.tag-notified { background:rgba(14,165,233,.12); color:#0ea5e9; font-size:9px; font-weight:800; padding:1px 6px; border-radius:8px; text-transform:uppercase; }
+.big-act { width:100%; padding:12px; border:none; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer; margin-bottom:8px; font-family:inherit; }
+.act-gold { background:var(--gold); color:#1C2B4A; }
+.act-ghost { background:var(--bg); color:var(--text); border:1px solid var(--border); }
+.act-danger { background:rgba(239,68,68,.1); color:#ef4444; border:1px solid rgba(239,68,68,.35); }
+.url-box { font-size:11px; word-break:break-all; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px 10px; color:var(--slate); }
+</style>
+
+<div class="topbar">
+  <div class="topbar-title">✍️ <%= e.engagementNumber %> <span class="st st-<%= e.status %>" style="margin-left:8px;"><%= e.status.replace('_',' ') %></span></div>
+  <div class="topbar-actions">
+    <a class="btn btn-ghost" href="/admin/clients/<%= c._id %>?tab=engagements">‹ <%= c.name || 'Client' %></a>
+    <a class="btn btn-ghost" href="/admin/engagements">Catalog</a>
+  </div>
+</div>
+
+<div class="wrap">
+  <% if (qs.success) { %><div class="flash flash-ok"><%= qs.success %></div><% } %>
+  <% if (qs.error) { %><div class="flash flash-err"><%= qs.error %></div><% } %>
+
+  <div class="grid">
+    <div>
+      <% const isDraft = e.status === 'draft'; %>
+      <% if (!isDraft) { %>
+      <div class="frozen-note">🔒 Sent <%= e.sentAt ? new Date(e.sentAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '' %> to <%= e.sentTo %> — this document is frozen. To change terms: Duplicate → edit → Void this one → send the new letter.</div>
+      <% } %>
+
+      <% if (isDraft) { %>
+      <!-- Agent — drafts intro text and term clauses into the fixed layout -->
+      <div class="agent-bar">
+        <div class="row">
+          <input id="agentInstruction" placeholder="Tell the agent what you want… e.g. 'friendly intro referencing their bakery goals' or 'add a hosting clause'">
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <button type="button" class="btn btn-gold" onclick="runAgent('intro', this)">✦ Draft Intro</button>
+          <button type="button" class="btn btn-gold" onclick="runAgent('terms', this)">✦ Draft Terms</button>
+          <span class="agent-msg" id="agentMsg" style="margin:0 0 0 4px;"></span>
+        </div>
+      </div>
+      <% } %>
+
+      <form method="POST" action="/admin/clients/<%= c._id %>/engagements/<%= e._id %>" class="card <%= isDraft ? '' : 'frozen' %>" id="letterForm">
+        <h2>Letter</h2>
+        <label>Title</label>
+        <input name="title" id="f_title" value="<%= e.title %>" <%= isDraft ? '' : 'disabled' %>>
+        <label>Valid until (accept-by date — enforced at signing)</label>
+        <input name="validUntil" type="date" value="<%= e.validUntil ? new Date(e.validUntil).toISOString().slice(0,10) : '' %>" <%= isDraft ? '' : 'disabled' %>>
+        <label>Introduction (plain text — the letter layout formats it)</label>
+        <textarea name="intro" id="f_intro" placeholder="Dear …&#10;&#10;A couple of warm, specific paragraphs. Blank line = new paragraph." <%= isDraft ? '' : 'disabled' %>><%= e.intro %></textarea>
+
+        <h2 style="margin-top:18px;">Packages</h2>
+        <% if (isDraft) { %>
+        <div class="tpl-picker">
+          <select id="tplSelect">
+            <option value="">— Add a package from your builder —</option>
+            <% templates.forEach((t, i) => { %><option value="<%= i %>"><%= t.name %></option><% }) %>
+          </select>
+          <button type="button" class="btn btn-gold" onclick="addTemplate()">Add</button>
+        </div>
+        <% if (!templates.length) { %>
+        <div style="font-size:12px;color:var(--slate);margin-bottom:10px;">No package templates yet — build them once in the <a href="/admin/engagements" style="color:var(--gold);">catalog</a>, then call on them here.</div>
+        <% } %>
+        <div id="pkgBuilder"></div>
+        <input type="hidden" name="packagesJson" id="packagesJson">
+        <% } else { %>
+          <% (e.packages || []).forEach(pkg => { %>
+          <div class="pkg-block">
+            <strong style="font-size:13px;"><%= pkg.label %></strong> <span style="font-size:10px;color:var(--slate);">(<%= pkg.selectMode %>)</span>
+            <% (pkg.options || []).forEach(opt => { %>
+            <div class="opt-block">
+              <div style="font-size:13px;font-weight:600;"><%= opt.name %><%= opt.recommended ? ' ★' : '' %> <span style="color:var(--gold);float:right;"><%= opt.total > 0 ? '$' + opt.total.toFixed(2) : '' %></span></div>
+              <% (opt.items || []).forEach(i => { %>
+                <div style="font-size:11px;color:var(--slate);"><%= i.name %> — <%= priceLabel(i.pricing) %><%= i.timeframe && timeframeLabel(i.timeframe) ? ' · ' + timeframeLabel(i.timeframe) : '' %></div>
+              <% }) %>
+              <% const chosen = (e.selections?.[pkg.key] || []).includes(opt.key); %>
+              <% if (chosen) { %><div style="font-size:10px;font-weight:800;color:#10b981;margin-top:3px;">✓ CLIENT SELECTED</div><% } %>
+            </div>
+            <% }) %>
+          </div>
+          <% }) %>
+        <% } %>
+
+        <h2 style="margin-top:18px;">Terms</h2>
+        <% if (isDraft) { %>
+        <div id="clauses"></div>
+        <button type="button" class="btn btn-ghost" onclick="addClause()">+ Add Clause</button>
+        <input type="hidden" name="termsJson" id="termsJson">
+        <div style="margin-top:16px;">
+          <button type="submit" class="btn btn-gold" onclick="serializeAll()">Save Draft</button>
+        </div>
+        <% } else { %>
+          <ol style="margin:0; padding-left:18px;">
+          <% (e.termsSections || []).forEach(s => { %>
+            <li style="margin-bottom:8px;"><strong style="font-size:12px;"><%= s.heading %></strong><div style="font-size:12px;color:var(--slate);white-space:pre-line;"><%= s.body %></div></li>
+          <% }) %>
+          </ol>
+        <% } %>
+      </form>
+
+      <!-- Notes & revision requests -->
+      <div class="card">
+        <h2>Notes & Requests</h2>
+        <% (e.notes || []).slice().reverse().forEach(n => { %>
+        <div class="note-item <%= n.author %> <%= n.kind %> <%= n.visibility === 'internal' ? 'internal' : '' %>">
+          <div class="note-meta">
+            <span><%= n.authorName %> · <%= new Date(n.createdAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) %></span>
+            <% if (n.kind === 'revision_request') { %><span class="tag-int" style="background:rgba(249,115,22,.12);color:#f97316;">Revision Request</span><% } %>
+            <% if (n.kind === 'renewal_request') { %><span class="tag-int" style="background:rgba(245,158,11,.14);color:#b45309;">Renewal Request</span><% } %>
+            <% if (n.author === 'admin') { %>
+              <span class="<%= n.visibility === 'shared' ? 'tag-shared' : 'tag-int' %>"><%= n.visibility %></span>
+              <% if (n.notify?.sent) { %><span class="tag-notified">emailed</span><% } %>
+              <% if (n.visibility === 'internal') { %>
+              <form method="POST" action="/admin/clients/<%= c._id %>/engagements/<%= e._id %>/notes/<%= n._id %>/share" style="display:inline;">
+                <label style="display:inline;font-size:10px;margin:0;"><input type="checkbox" name="notify" style="width:auto;"> email client</label>
+                <button class="btn btn-ghost" style="font-size:10px;padding:1px 8px;" type="submit">Share</button>
+              </form>
+              <% } %>
+            <% } %>
+          </div>
+          <%= n.body %>
+        </div>
+        <% }) %>
+        <form method="POST" action="/admin/clients/<%= c._id %>/engagements/<%= e._id %>/notes">
+          <textarea name="body" placeholder="Add a note… (internal by default)"></textarea>
+          <div style="display:flex;gap:10px;align-items:center;margin-top:8px;">
+            <label style="display:flex;gap:6px;align-items:center;font-size:11px;margin:0;"><input type="checkbox" name="visibility" value="shared" style="width:auto;"> visible to client (locks note)</label>
+            <button class="btn btn-gold" type="submit" style="margin-left:auto;">Add Note</button>
+          </div>
+        </form>
+      </div>
+
+      <%- include('../partials/clientNotesPanel', { cnCid: String(c._id), cnName: (c.name || c.company || c.email || 'Client'), cnNotes: clientNotes }) %>
+    </div>
+
+    <!-- Right rail -->
+    <div>
+      <div class="card">
+        <h2>Actions</h2>
+        <% if (isDraft) { %>
+          <form method="POST" action="/admin/clients/<%= c._id %>/engagements/<%= e._id %>/send" onsubmit="return confirm('Send to <%= c.email %>? This freezes the document.');">
+            <button class="big-act act-gold" type="submit" <%= c.email ? '' : 'disabled title="Client has no email"' %>>Send to Client</button>
+          </form>
+          <form method="POST" action="/admin/clients/<%= c._id %>/engagements/<%= e._id %>/delete" onsubmit="return confirm('Delete this draft?');">
+            <button class="big-act act-danger" type="submit">Delete Draft</button>
+          </form>
+        <% } else { %>
+          <div class="url-box" style="margin-bottom:10px;"><%= publicUrl %></div>
+          <% if (e.status === 'signed') { %>
+            <form method="POST" action="/admin/clients/<%= c._id %>/engagements/<%= e._id %>/acknowledge" onsubmit="return confirm('Send the confirmation email and mark this engagement acknowledged?');">
+              <button class="big-act act-gold" type="submit">✓ Confirm Receipt & Engage Services</button>
+            </form>
+          <% } %>
+          <% if (['signed','acknowledged'].includes(e.status) && !(e.invoiceIds || []).length) { %>
+            <form method="POST" action="/admin/clients/<%= c._id %>/engagements/<%= e._id %>/to-invoice">
+              <button class="big-act act-ghost" type="submit">Draft Invoice(s) from Selections</button>
+            </form>
+          <% } %>
+          <% if ((e.invoiceIds || []).length) { %>
+            <a class="big-act act-ghost" style="display:block;text-align:center;text-decoration:none;box-sizing:border-box;" href="/admin/clients/<%= c._id %>?tab=invoices">View Drafted Invoices (<%= e.invoiceIds.length %>)</a>
+          <% } %>
+          <form method="POST" action="/admin/clients/<%= c._id %>/engagements/<%= e._id %>/duplicate">
+            <button class="big-act act-ghost" type="submit">Duplicate as New Draft</button>
+          </form>
+          <% if (!['void','declined','acknowledged'].includes(e.status)) { %>
+          <form method="POST" action="/admin/clients/<%= c._id %>/engagements/<%= e._id %>/void" onsubmit="return confirm('Void this letter? The public link goes dead-read-only.');">
+            <button class="big-act act-danger" type="submit">Void</button>
+          </form>
+          <% } %>
+        <% } %>
+      </div>
+
+      <% if (['signed','acknowledged'].includes(e.status)) { %>
+      <div class="card">
+        <h2>W-9</h2>
+        <% if (e.w9?.releasedAt) { %>
+          <div style="font-size:12px;color:#10b981;">✓ Released <%= new Date(e.w9.releasedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) %> · <%= e.w9.revision %></div>
+        <% } else { %>
+          <% if (e.w9?.requestedAt) { %>
+            <div style="font-size:12px;color:#f97316;margin-bottom:8px;">⚠ Requested by <%= e.w9.requestedBy %> on <%= new Date(e.w9.requestedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) %> — waiting on you.</div>
+          <% } else { %>
+            <div style="font-size:12px;color:var(--slate);margin-bottom:8px;">Not requested. You can release proactively.</div>
+          <% } %>
+          <form method="POST" action="/admin/clients/<%= c._id %>/engagements/<%= e._id %>/w9/release" enctype="multipart/form-data">
+            <label>W-9 PDF</label>
+            <input type="file" name="w9file" accept="application/pdf" required>
+            <label>Revision on the form</label>
+            <input name="revision" placeholder="Rev. March 2024" value="Rev. March 2024">
+            <button class="big-act act-gold" type="submit" style="margin-top:10px;" onclick="return confirm('Release your W-9 to this client\'s portal? This is tracked.');">Release W-9</button>
+          </form>
+        <% } %>
+      </div>
+      <% } %>
+
+      <% if (e.signature) { %>
+      <div class="card">
+        <h2>Signature</h2>
+        <div style="font-size:14px;font-weight:600;"><%= e.signature.typedName %></div>
+        <div style="font-size:11px;color:var(--slate);line-height:1.7;">
+          <%= e.signature.title || '' %><br>
+          <%= new Date(e.signature.signedAt).toLocaleString() %><br>
+          IP: <%= e.signature.ip %><br>
+          <span style="word-break:break-all;">Hash: <%= e.signature.documentHash %></span>
+        </div>
+      </div>
+      <% } %>
+
+      <div class="card">
+        <h2>Timeline</h2>
+        <div class="tl">
+          <div class="tl-item">Created <div class="tl-meta"><%= new Date(e.createdAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) %></div></div>
+          <% (e.auditLog || []).forEach(ev => { %>
+          <div class="tl-item"><%= ev.event.replace(/_/g,' ') %>
+            <div class="tl-meta"><%= new Date(ev.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) %><%= ev.ip ? ' · ' + ev.ip : '' %></div>
+          </div>
+          <% }) %>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<% if (e.status === 'draft') { %>
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+const TEMPLATES = <%- JSON.stringify(templates) %>;
+const SERVICES  = <%- JSON.stringify(services.map(s => ({
+  id: String(s._id), name: s.name, blurb: s.blurb || '', deliverables: s.deliverables || [],
+  pricing: { model: s.pricing?.model || 'one-time', amount: Number(s.pricing?.amount || 0) },
+  timeframe: s.timeframe || null, price: priceLabel(s.pricing),
+}))) %>;
+let PKGS    = <%- JSON.stringify(e.draftPackages || []) %>;
+let CLAUSES = <%- JSON.stringify(e.termsSections || []) %>;
+
+function slug(s){ return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'x'; }
+function esc(s){ const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML.replace(/"/g,'&quot;'); }
+
+// ── Packages: call on templates, edit the letter's own copy ───────────────
+function addTemplate() {
+  const i = document.getElementById('tplSelect').value;
+  if (i === '') return;
+  const t = JSON.parse(JSON.stringify(TEMPLATES[Number(i)]));  // deep copy — letter owns it
+  PKGS.push({
+    key: slug(t.label) + '-' + (PKGS.length + 1),
+    label: t.label, selectMode: t.selectMode,
+    options: t.options.map(o => ({ key: o.key, name: o.name, recommended: o.recommended, recommendedNote: o.recommendedNote, items: o.items })),
+  });
+  renderPkgs();
+}
+
+function svcItem(id) {
+  const s = SERVICES.find(x => x.id === id);
+  if (!s) return null;
+  return { serviceId: s.id, name: s.name, blurb: s.blurb, deliverables: s.deliverables,
+           pricing: { model: s.pricing.model, amount: s.pricing.amount }, timeframe: s.timeframe };
+}
+
+function renderPkgs() {
+  const host = document.getElementById('pkgBuilder');
+  host.innerHTML = '';
+  PKGS.forEach((pkg, pi) => {
+    const div = document.createElement('div');
+    div.className = 'pkg-block';
+    div.innerHTML = `
+      <div class="pkg-head">
+        <input value="${esc(pkg.label)}" oninput="PKGS[${pi}].label=this.value">
+        <select onchange="PKGS[${pi}].selectMode=this.value" style="width:120px;">
+          <option value="one" ${pkg.selectMode==='one'?'selected':''}>Pick one</option>
+          <option value="many" ${pkg.selectMode==='many'?'selected':''}>Pick any</option>
+          <option value="required" ${pkg.selectMode==='required'?'selected':''}>Required</option>
+        </select>
+        <button type="button" class="c-del" title="Remove package" onclick="PKGS.splice(${pi},1);renderPkgs()">✕</button>
+      </div>
+      <div id="opts-${pi}"></div>
+      <button type="button" class="btn btn-ghost" style="font-size:11px;margin-top:4px;" onclick="PKGS[${pi}].options.push({key:'opt-'+(PKGS[${pi}].options.length+1),name:'',recommended:false,recommendedNote:'',items:[]});renderPkgs()">+ Option</button>
+    `;
+    host.appendChild(div);
+    const optsHost = div.querySelector('#opts-' + pi);
+    (pkg.options || []).forEach((opt, oi) => {
+      const total = (opt.items||[]).filter(i=>i.pricing.model==='one-time').reduce((s,i)=>s+Number(i.pricing.amount||0),0);
+      const od = document.createElement('div');
+      od.className = 'opt-block';
+      od.innerHTML = `
+        <div class="opt-head">
+          <input value="${esc(opt.name)}" placeholder="Option name" oninput="PKGS[${pi}].options[${oi}].name=this.value">
+          <label class="rec-lbl"><input type="checkbox" ${opt.recommended?'checked':''} onchange="PKGS[${pi}].options[${oi}].recommended=this.checked"> ★</label>
+          <span style="font-size:11px;color:var(--gold);white-space:nowrap;">${total > 0 ? '$'+total.toFixed(2) : ''}</span>
+          <button type="button" class="c-del" title="Remove option" onclick="PKGS[${pi}].options.splice(${oi},1);renderPkgs()">✕</button>
+        </div>
+        <input value="${esc(opt.recommendedNote)}" placeholder="Why recommended (shown to client)" style="margin-bottom:6px;font-size:11px;" oninput="PKGS[${pi}].options[${oi}].recommendedNote=this.value">
+        <div id="items-${pi}-${oi}"></div>
+        <div class="add-svc">
+          <select id="addsvc-${pi}-${oi}"><option value="">+ add a service to this option…</option>${SERVICES.map(s=>`<option value="${s.id}">${esc(s.name)} · ${esc(s.price)}</option>`).join('')}</select>
+          <button type="button" class="btn btn-ghost" style="font-size:11px;" onclick="addSvc(${pi},${oi})">Add</button>
+        </div>
+      `;
+      optsHost.appendChild(od);
+      const itemsHost = od.querySelector(`#items-${pi}-${oi}`);
+      (opt.items || []).forEach((item, ii) => {
+        const ir = document.createElement('div');
+        ir.className = 'item-row';
+        ir.innerHTML = `
+          <input type="text" value="${esc(item.name)}" oninput="PKGS[${pi}].options[${oi}].items[${ii}].name=this.value">
+          <input type="number" step="0.01" min="0" value="${Number(item.pricing?.amount||0)}" title="Per-letter price — the catalog is untouched" onchange="PKGS[${pi}].options[${oi}].items[${ii}].pricing.amount=parseFloat(this.value)||0;renderPkgs()">
+          <select onchange="PKGS[${pi}].options[${oi}].items[${ii}].pricing.model=this.value;renderPkgs()">
+            ${['one-time','monthly','annual','hourly','quote'].map(m=>`<option value="${m}" ${item.pricing?.model===m?'selected':''}>${m}</option>`).join('')}
+          </select>
+          <button type="button" class="c-del" title="Remove item" onclick="PKGS[${pi}].options[${oi}].items.splice(${ii},1);renderPkgs()">✕</button>
+        `;
+        itemsHost.appendChild(ir);
+      });
+    });
+  });
+}
+function addSvc(pi, oi) {
+  const sel = document.getElementById(`addsvc-${pi}-${oi}`);
+  const item = svcItem(sel.value);
+  if (item) { PKGS[pi].options[oi].items.push(item); renderPkgs(); }
+}
+
+// ── Terms: clause rows feeding the fixed layout ───────────────────────────
+function renderClauses() {
+  const host = document.getElementById('clauses');
+  host.innerHTML = '';
+  CLAUSES.forEach((cl, i) => {
+    const d = document.createElement('div');
+    d.className = 'clause';
+    d.innerHTML = `
+      <div class="c-head">
+        <span style="font-size:11px;color:var(--slate);flex-shrink:0;">${i+1}.</span>
+        <input value="${esc(cl.heading)}" placeholder="Clause heading" oninput="CLAUSES[${i}].heading=this.value">
+        <button type="button" class="c-move" title="Move up" onclick="moveClause(${i},-1)">▲</button>
+        <button type="button" class="c-move" title="Move down" onclick="moveClause(${i},1)">▼</button>
+        <button type="button" class="c-del" title="Remove clause" onclick="CLAUSES.splice(${i},1);renderClauses()">✕</button>
+      </div>
+      <textarea placeholder="Plain text — line breaks respected" oninput="CLAUSES[${i}].body=this.value">${cl.body ?? ''}</textarea>
+    `;
+    host.appendChild(d);
+  });
+}
+function addClause(){ CLAUSES.push({ heading: '', body: '' }); renderClauses(); }
+function moveClause(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= CLAUSES.length) return;
+  [CLAUSES[i], CLAUSES[j]] = [CLAUSES[j], CLAUSES[i]];
+  renderClauses();
+}
+
+function serializeAll() {
+  document.getElementById('packagesJson').value = JSON.stringify(PKGS);
+  document.getElementById('termsJson').value = JSON.stringify(CLAUSES.filter(c => c.heading.trim() && c.body.trim()));
+}
+
+// ── Agent ─────────────────────────────────────────────────────────────────
+async function runAgent(target, btn) {
+  const msg = document.getElementById('agentMsg');
+  msg.className = 'agent-msg'; msg.textContent = target === 'intro' ? 'Drafting intro…' : 'Drafting terms…';
+  btn.disabled = true;
+  try {
+    const r = await fetch('/admin/clients/<%= c._id %>/engagements/<%= e._id %>/agent', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target,
+        instruction: document.getElementById('agentInstruction').value,
+        draft: { intro: document.getElementById('f_intro').value, termsSections: CLAUSES, packages: PKGS },
+      }),
+    });
+    const data = await r.json();
+    if (data.error) { msg.className = 'agent-msg err'; msg.textContent = data.error; return; }
+    if (data.fill?.intro) document.getElementById('f_intro').value = data.fill.intro;
+    if (data.fill?.termsSections) { CLAUSES = data.fill.termsSections; renderClauses(); }
+    msg.textContent = data.message || 'Done — review and save.';
+  } catch (e) {
+    msg.className = 'agent-msg err'; msg.textContent = 'Agent request failed.';
+  } finally { btn.disabled = false; }
+}
+
+renderPkgs();
+renderClauses();
+</script>
+<% } %>

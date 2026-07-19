@@ -16,7 +16,8 @@
 
   <div class="card">
     <p style="font-size:0.85rem;color:var(--slate);margin-bottom:20px;line-height:1.6;">Describe your issue or request below. Our platform team will review it and get back to you.</p>
-    <form method="POST" action="/admin/tickets" enctype="multipart/form-data">
+    <form method="POST" action="/admin/tickets" enctype="multipart/form-data" id="ticketForm">
+      <input type="hidden" name="debugData" id="ticketDebugData">
       <div class="form-grid" style="margin-bottom:20px;">
         <div class="form-field span-2">
           <label>Subject *</label>
@@ -64,5 +65,33 @@
 </div>
 
 </div><!-- layout -->
+<script>
+  // Passive system snapshot — attaches page context to every request so the
+  // platform team (and AI diagnose) aren't looking at a blind ticket. No server
+  // logs here (that's the global bug button); just what the browser knows.
+  (function () {
+    var errs = [];
+    window.addEventListener('error', function (e) {
+      errs.push((e.message || 'error') + (e.filename ? ' @ ' + e.filename + ':' + (e.lineno || '?') : ''));
+      if (errs.length > 20) errs.shift();
+    });
+    var form = document.getElementById('ticketForm');
+    if (!form) return;
+    form.addEventListener('submit', function () {
+      try {
+        document.getElementById('ticketDebugData').value = JSON.stringify({
+          capturedAt: new Date().toISOString(),
+          source: 'admin-request-form',
+          currentUrl: window.location.href,
+          fromPage: document.referrer || null,
+          userAgent: navigator.userAgent,
+          screenSize: screen.width + 'x' + screen.height,
+          viewport: window.innerWidth + 'x' + window.innerHeight,
+          consoleErrors: errs.slice(),
+        });
+      } catch (e) { /* never block submit on snapshot */ }
+    });
+  })();
+</script>
 </body>
 </html>

@@ -33,6 +33,15 @@ const SOURCES = {
     }),
     isPublic: (doc) => doc.status === 'published',
   },
+  jobs: {
+    coll: 'jobs',
+    toLink: (doc) => ({
+      collection: 'jobs', docId: doc._id, slug: doc.slug,
+      contentType: null, title: doc.title,
+      image: '',
+    }),
+    isPublic: (doc) => doc.status === 'open',
+  },
 };
 
 router.post('/link', async (req, res) => {

@@ -1,0 +1,110 @@
+<%- include('../partials/head', { title: 'Marketplace' }) %>
+<%- include('../partials/sidebar', { page: 'marketplace', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Marketplace</div>
+  <div class="topbar-actions">
+    <a href="/marketplace" target="_blank" class="btn btn-ghost btn-sm">View Public Page</a>
+    <a href="/admin/marketplace/new" class="btn btn-navy btn-sm">New Listing</a>
+  </div>
+</div>
+
+<div class="content">
+  <% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <!-- Network syndication hint -->
+  <% if (networkOn && networkMarketOn) { %>
+  <div class="alert alert-success" style="background:rgba(201,168,72,0.08);border-color:rgba(201,168,72,0.3);color:var(--badge-accent);">
+    Your active listings are syndicating to the <a href="https://slab.madladslab.com/network" target="_blank" style="color:inherit;text-decoration:underline;">sLab Network</a>. Turn a single listing off with its "Network" toggle when editing.
+  </div>
+  <% } else { %>
+  <div class="alert alert-error" style="background:rgba(107,115,128,0.08);border-color:var(--border);color:var(--slate);">
+    Listings show on your own site now. To also feature them on the cross-tenant <a href="https://slab.madladslab.com/network" target="_blank" style="color:var(--navy);text-decoration:underline;">sLab Network</a>, enable it under <a href="/admin/settings#network" style="color:var(--navy);text-decoration:underline;">Settings → sLab Network</a>.
+  </div>
+  <% } %>
+
+  <div class="stat-grid" style="margin-bottom:18px;">
+    <div class="stat-card"><div class="stat-value"><%= counts.all %></div><div class="stat-label">Listings</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--success);"><%= counts.active||0 %></div><div class="stat-label">Active</div></div>
+    <div class="stat-card"><div class="stat-value"><%= counts.draft||0 %></div><div class="stat-label">Draft</div></div>
+    <div class="stat-card"><div class="stat-value"><%= listings.filter(function(l){return l.featured;}).length %></div><div class="stat-label">Featured</div></div>
+  </div>
+
+  <!-- Status filter tabs -->
+  <div class="tabs" style="margin-bottom:20px;">
+    <a href="#" class="tab-link active" data-filter="all" onclick="filterStatus(event,'all')">All <span class="text-slate">(<%= counts.all %>)</span></a>
+    <a href="#" class="tab-link" data-filter="active" onclick="filterStatus(event,'active')">Active <span class="text-slate">(<%= counts.active || 0 %>)</span></a>
+    <a href="#" class="tab-link" data-filter="draft" onclick="filterStatus(event,'draft')">Draft <span class="text-slate">(<%= counts.draft || 0 %>)</span></a>
+    <a href="#" class="tab-link" data-filter="sold" onclick="filterStatus(event,'sold')">Sold <span class="text-slate">(<%= counts.sold || 0 %>)</span></a>
+    <a href="#" class="tab-link" data-filter="archived" onclick="filterStatus(event,'archived')">Archived <span class="text-slate">(<%= counts.archived || 0 %>)</span></a>
+  </div>
+
+  <% if (!listings.length) { %>
+    <div class="empty"><div class="empty-icon">&#128722;</div><p>No listings yet. <a href="/admin/marketplace/new" style="color:var(--navy);">Create your first listing</a>.</p></div>
+  <% } else { %>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th></th><th>Title</th><th>Type</th><th>Category</th><th style="text-align:right;">Price</th><th>Status</th><th>Network</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% for (const l of listings) {
+             const badgeClass = { active:'badge-active', draft:'badge-draft', sold:'badge-paid', archived:'badge-inactive' }[l.status] || 'badge-draft';
+        %>
+        <tr data-status="<%= l.status %>">
+          <td style="width:56px;">
+            <% if (l.imageUrl) { %>
+              <img src="<%= l.imageUrl %>" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:4px;border:1px solid var(--border);">
+            <% } else { %>
+              <div style="width:44px;height:44px;border-radius:4px;background:var(--ivory);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--slate);">&#128722;</div>
+            <% } %>
+          </td>
+          <td>
+            <span style="font-weight:500;"><%= l.title %></span>
+            <% if (l.featured) { %><span class="badge badge-featured" style="font-size:0.58rem;margin-left:6px;">Featured</span><% } %>
+          </td>
+          <td style="font-size:0.8rem;text-transform:capitalize;color:var(--slate);"><%= l.kind %></td>
+          <td style="font-size:0.82rem;color:var(--slate);"><%= l.category || '—' %></td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums;"><%= formatPrice(l) %></td>
+          <td><span class="badge <%= badgeClass %>" style="font-size:0.62rem;"><%= MARKET_STATUS_LABELS[l.status] || l.status %></span></td>
+          <td style="font-size:0.72rem;color:<%= l.networkShare === false ? 'var(--slate)' : 'var(--success)' %>;"><%= l.networkShare === false ? 'Off' : 'On' %></td>
+          <td style="white-space:nowrap;text-align:right;">
+            <% if (l.status === 'active') { %>
+            <a href="/marketplace/<%= l.slug %>" target="_blank" class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;">View</a>
+            <% } %>
+            <% if (l.status !== 'active') { %>
+            <form method="POST" action="/admin/marketplace/<%= l._id %>/status" data-guard="button" style="display:inline;">
+              <input type="hidden" name="status" value="active">
+              <button class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;color:var(--success);">Activate</button>
+            </form>
+            <% } else { %>
+            <form method="POST" action="/admin/marketplace/<%= l._id %>/status" data-guard="button" style="display:inline;">
+              <input type="hidden" name="status" value="sold">
+              <button class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;">Mark Sold</button>
+            </form>
+            <% } %>
+            <a href="/admin/marketplace/<%= l._id %>/edit" class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;">Edit</a>
+            <form method="POST" action="/admin/marketplace/<%= l._id %>/delete" data-guard="button" style="display:inline;" onsubmit="return confirm('Delete this listing? This cannot be undone.')">
+              <button class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;color:var(--danger);">Delete</button>
+            </form>
+          </td>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</div>
+
+<script>
+function filterStatus(e, status) {
+  e.preventDefault();
+  document.querySelectorAll('.tab-link[data-filter]').forEach(function(t){ t.classList.toggle('active', t.dataset.filter === status); });
+  document.querySelectorAll('tbody tr[data-status]').forEach(function(row){
+    row.style.display = (status === 'all' || row.dataset.status === status) ? '' : 'none';
+  });
+}
+</script>
+
+</div></div></body></html>

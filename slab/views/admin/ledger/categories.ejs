@@ -1,0 +1,128 @@
+<%- include('../partials/head', { title: 'GL Categories' }) %>
+<%- include('../partials/sidebar', { page: 'ledger-categories', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">GL Categories</div>
+  <div class="topbar-actions">
+    <form method="POST" action="/admin/ledger/categories/resequence" style="margin:0;" onsubmit="return confirm('Renumber all GL codes sequentially within each type (2xxx liability, 4xxx income, 5xxx COGS/labor/fixed, 6xxx expense)?');">
+      <button class="btn btn-ghost btn-sm" title="Make all account numbers sequential within each type">&#8635; Renumber codes</button>
+    </form>
+    <a href="/admin/ledger" class="btn btn-ghost btn-sm">P&amp;L</a>
+  </div>
+</div>
+
+<div class="content" data-agent-scope="bookkeeping" data-agent-kind="agent" data-agent-title="Categories" data-agent-suggest="Suggest a category I&#39;m missing|Which categories go unused?|Group these into a cleaner chart of accounts|Rename a category more clearly">
+  <%- include('_tabs', { active: 'categories' }) %>
+  <% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <p class="text-slate" style="margin-bottom:20px;font-size:0.88rem;">
+    Your chart of accounts. Each category has a <strong>type</strong> (income, cost of goods, or operating expense) that places it on the P&amp;L, and a free-form <strong>group</strong> so you can cluster related accounts (e.g. "Facilities", "Marketing").
+  </p>
+
+  <!-- Add category -->
+  <div class="card" style="margin-bottom:24px;">
+    <div class="card-title">Add Category</div>
+    <form data-guard method="POST" action="/admin/ledger/categories">
+      <div class="form-grid cols-3">
+        <div class="form-field">
+          <label>Name</label>
+          <input type="text" name="name" placeholder="e.g. Software & Subscriptions" required>
+        </div>
+        <div class="form-field">
+          <label>Type</label>
+          <select name="type" required>
+            <% for (const t of GL_TYPES) { %><option value="<%= t %>"><%= GL_TYPE_LABELS[t] %></option><% } %>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Group</label>
+          <input type="text" name="group" placeholder="e.g. Operating" list="groupList">
+          <datalist id="groupList">
+            <% const groups = [...new Set(categories.map(c => c.group).filter(Boolean))]; %>
+            <% for (const g of groups) { %><option value="<%= g %>"></option><% } %>
+          </datalist>
+        </div>
+        <div class="form-field">
+          <label>GL Code (optional)</label>
+          <input type="text" name="code" placeholder="auto (next in sequence)">
+        </div>
+      </div>
+      <div style="margin-top:16px;text-align:right;">
+        <button type="submit" class="btn btn-navy">Add Category</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Category tables by type -->
+  <% for (const t of GL_TYPES) { const rows = byType[t]; %>
+  <div class="flex-between" style="margin-bottom:12px;">
+    <h3 style="font-family:var(--font-heading);font-weight:400;font-size:1.2rem;"><%= GL_TYPE_LABELS[t] %></h3>
+  </div>
+  <div class="table-wrap" style="margin-bottom:28px;">
+    <table>
+      <thead>
+        <tr><th>Code</th><th>Name</th><th>Group</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% if (!rows.length) { %><tr><td colspan="5" style="color:var(--slate);font-style:italic;">None yet.</td></tr><% } %>
+        <% for (const c of rows) { %>
+        <tr style="<%= c.archived ? 'opacity:0.5;' : '' %>">
+          <td style="font-family:monospace;font-size:0.78rem;color:var(--slate);"><%= c.code || '—' %></td>
+          <td style="font-weight:500;"><%= c.name %></td>
+          <td style="font-size:0.82rem;color:var(--slate);"><%= c.group || '—' %></td>
+          <td><% if (c.archived) { %><span class="badge badge-inactive" style="font-size:0.6rem;">Archived</span><% } else { %><span class="badge badge-active" style="font-size:0.6rem;">Active</span><% } %></td>
+          <td style="white-space:nowrap;text-align:right;">
+            <button class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;"
+              onclick='openEdit(<%- JSON.stringify({ id: c._id.toString(), name: c.name, type: c.type, group: c.group || "", code: c.code || "", archived: !!c.archived }) %>)'>Edit</button>
+            <% if (c.archived) { %>
+            <form data-guard="button" method="POST" action="/admin/ledger/categories/<%= c._id %>" style="display:inline;">
+              <input type="hidden" name="archived" value="0">
+              <button class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;color:var(--success);">Restore</button>
+            </form>
+            <% } %>
+            <form data-guard="button" method="POST" action="/admin/ledger/categories/<%= c._id %>/delete" style="display:inline;" onsubmit="return confirm('Delete this category? If it has entries it will be archived instead.')">
+              <button class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;color:var(--danger);">Delete</button>
+            </form>
+          </td>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</div>
+
+<!-- Edit modal -->
+<div id="editModal" style="display:none;position:fixed;inset:0;background:rgba(15,27,48,0.5);z-index:500;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border-radius:6px;padding:28px;max-width:440px;width:90%;">
+    <div style="font-family:var(--font-heading);font-size:1.3rem;margin-bottom:16px;">Edit Category</div>
+    <form data-guard id="editForm" method="POST">
+      <div class="form-field" style="margin-bottom:12px;"><label>Name</label><input type="text" name="name" id="editName" required></div>
+      <div class="form-field" style="margin-bottom:12px;"><label>Type</label>
+        <select name="type" id="editType"><% for (const t of GL_TYPES) { %><option value="<%= t %>"><%= GL_TYPE_LABELS[t] %></option><% } %></select>
+      </div>
+      <div class="form-field" style="margin-bottom:12px;"><label>Group</label><input type="text" name="group" id="editGroup"></div>
+      <div class="form-field" style="margin-bottom:16px;"><label>GL Code</label><input type="text" name="code" id="editCode"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('editModal').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-navy btn-sm">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openEdit(c) {
+  const f = document.getElementById('editForm');
+  f.action = '/admin/ledger/categories/' + c.id;
+  document.getElementById('editName').value = c.name;
+  document.getElementById('editType').value = c.type;
+  document.getElementById('editGroup').value = c.group;
+  document.getElementById('editCode').value = c.code;
+  document.getElementById('editModal').style.display = 'flex';
+}
+document.getElementById('editModal').addEventListener('click', function(e){ if (e.target === this) this.style.display='none'; });
+</script>
+
+</div></div></body></html>

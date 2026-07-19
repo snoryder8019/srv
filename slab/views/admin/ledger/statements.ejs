@@ -1,0 +1,453 @@
+<%- include('../partials/head', { title: 'Statement Scanner' }) %>
+<%- include('../partials/sidebar', { page: 'ledger', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Finance</div>
+  <div class="topbar-actions">
+    <a href="/admin/ledger/entries" class="btn btn-ghost btn-sm">Go to Ledger</a>
+  </div>
+</div>
+
+<div class="content">
+  <%- include('_tabs', { active: 'statements' }) %>
+
+  <% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <!-- Uploader -->
+  <div class="scan-hero card">
+    <div class="scan-hero-copy">
+      <div class="scan-kicker">AI Statement Reader</div>
+      <h2 class="scan-title">Drop a bank statement, we list the lines, you pick the business ones.</h2>
+      <p class="text-slate" style="font-size:0.82rem;margin:0;">Upload a statement PDF (e.g. Wells Fargo). We read every transaction and list it below. <strong>Nothing posts to your books until you assign it to an account.</strong> Any line you leave alone stays private &mdash; it never touches the business ledger.</p>
+    </div>
+    <form data-guard class="scan-drop" method="POST" action="/admin/ledger/statements" enctype="multipart/form-data" id="stmtForm">
+      <label class="dropzone" id="dropzone">
+        <input type="file" name="statement" accept="application/pdf" required id="fileInput" hidden>
+        <div class="dz-icon">&#128179;</div>
+        <div class="dz-main" id="dzMain">Tap to choose or drop a statement PDF</div>
+        <div class="dz-sub text-slate">PDF only &middot; up to 25MB &middot; stored privately</div>
+      </label>
+      <button type="submit" class="btn btn-navy" id="stmtBtn" disabled>Read Statement</button>
+    </form>
+  </div>
+
+  <!-- Supported statement formats (platform-curated) -->
+  <% if (statementFormats && statementFormats.length) { %>
+  <details class="fmt-list" style="margin-top:14px;">
+    <summary class="text-slate" style="cursor:pointer;font-size:0.78rem;">Supported statement formats <span class="pill" style="background:var(--slate);"><%= statementFormats.filter(function(f){return f.keyed;}).length %> keyed</span></summary>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;">
+      <% statementFormats.forEach(function(f){ %>
+        <span class="badge <%= f.keyed ? 'badge-active' : 'badge-draft' %>" style="<%= f.keyed ? '' : 'background:rgba(201,168,72,0.16);color:var(--gold);' %>">
+          <% if (f.keyed) { %>&#10003; <%= f.label %><% } else { %>&#9888; <%= f.label %> (not yet keyed)<% } %>
+        </span>
+      <% }) %>
+    </div>
+    <p class="text-slate" style="font-size:0.72rem;margin:10px 0 0;">Any bank not listed — or listed as “not yet keyed” — still works: it's read generically and you review every line. Upload one and use <strong>Request format support</strong> to have its format keyed in.</p>
+  </details>
+  <% } %>
+
+  <!-- Pending statements -->
+  <div class="flex-between" style="margin:26px 0 12px;">
+    <h3 class="section-h">Awaiting review <span class="pill"><%= pending.length %></span></h3>
+  </div>
+
+  <% if (!pending.length) { %>
+    <div class="empty"><div class="empty-icon">&#128179;</div><p>No statements waiting. Uploaded statements land here for line-by-line review.</p></div>
+  <% } else { %>
+    <% pending.forEach(function(st){
+         const period = (st.periodStart || st.periodEnd)
+           ? [st.periodStart, st.periodEnd].map(function(d){ return d ? new Date(d).toLocaleDateString('en-US') : '?'; }).join(' – ')
+           : '';
+         const lines = st.lineItems || [];
+    %>
+    <div class="stmt-card card">
+      <div class="stmt-head">
+        <div>
+          <div class="stmt-title">
+            <%= st.bank || 'Statement' %><% if (st.accountLast4) { %> <span class="text-slate">••••<%= st.accountLast4 %></span><% } %>
+          </div>
+          <div class="stmt-meta text-slate">
+            <% if (period) { %><%= period %> &middot; <% } %><%= lines.length %> line<%= lines.length === 1 ? '' : 's' %>
+            &middot; <a href="/admin/ledger/statements/<%= st._id %>/file" target="_blank">open PDF</a>
+          </div>
+          <div class="fmt-flag" style="margin-top:8px;">
+            <% if (st.keyed) { %>
+              <span class="badge badge-active" title="We have a validated format for this bank">&#10003; Keyed: <%= st.formatLabel %></span>
+            <% } else { %>
+              <span class="badge badge-draft" style="background:rgba(201,168,72,0.16);color:var(--gold);" title="<%= st.formatLabel ? 'Recognized but not yet keyed' : 'No saved format for this bank' %>">
+                &#9888; <%= st.formatLabel ? st.formatLabel + ' — not yet keyed' : 'Unrecognized format' %>
+              </span>
+              <% if (st.formatTicketNumber) { %>
+                <span class="text-slate" style="font-size:0.72rem;">Requested (<%= st.formatTicketNumber %>)</span>
+              <% } else { %>
+                <button type="submit" form="reqfmt-<%= st._id %>" class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:3px 9px;">Request format support</button>
+              <% } %>
+            <% } %>
+            <% if (st.formatOverridden) { %><span class="text-slate" style="font-size:0.66rem;">(set by hand)</span><% } %>
+            <!-- Correct the bank if auto-detect misfired (e.g. PayPal read as Wells Fargo) -->
+            <% if (typeof statementFormats !== 'undefined' && statementFormats.length) { %>
+            <form method="POST" action="/admin/ledger/statements/<%= st._id %>/set-format" style="display:inline-flex;gap:4px;align-items:center;margin-left:6px;vertical-align:middle;">
+              <select name="formatKey" style="max-width:150px;font-size:0.72rem;padding:2px 5px;border:1px solid var(--border);border-radius:5px;background:var(--surface);">
+                <option value="">Wrong bank? Set…</option>
+                <% statementFormats.forEach(function(f){ %><option value="<%= f.key %>" <%= st.formatKey === f.key ? 'selected' : '' %>><%= f.label %></option><% }) %>
+                <option value="" <%= (!st.formatKey && st.formatOverridden) ? 'selected' : '' %>>Other / unrecognized</option>
+              </select>
+              <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.62rem;padding:2px 7px;">Set</button>
+            </form>
+            <% } %>
+          </div>
+          <form id="reqfmt-<%= st._id %>" method="POST" action="/admin/ledger/statements/<%= st._id %>/request-format" style="display:none;"></form>
+        </div>
+        <div class="stmt-head-actions">
+          <form method="POST" action="/admin/ledger/statements/<%= st._id %>/done">
+            <button class="btn btn-ghost btn-sm" title="Move to Recently handled — you can reopen it later">Done reviewing</button>
+          </form>
+          <form method="POST" action="/admin/ledger/statements/<%= st._id %>/archive" onsubmit="return confirm('Archive this statement? Nothing will be posted.');">
+            <button class="btn btn-ghost btn-sm" title="Keep private — post nothing">Archive (all private)</button>
+          </form>
+          <form method="POST" action="/admin/ledger/statements/<%= st._id %>/delete" onsubmit="return confirm('Move this statement to Trash? You can restore it from the Trash section below.');">
+            <button class="btn btn-ghost btn-sm" style="color:var(--danger);">&#128465; Delete</button>
+          </form>
+        </div>
+      </div>
+
+      <% if (st.aiNote) { %><div class="ai-note"><%= st.aiNote %></div><% } %>
+
+      <% if (!lines.length) { %>
+        <div class="empty" style="padding:20px;"><p>No lines were auto-read. Open the PDF and add them on the Ledger tab, or delete this.</p></div>
+      <% } else { %>
+      <form data-guard method="POST" action="/admin/ledger/statements/<%= st._id %>/post" class="stmt-review">
+        <%
+          // Reusable GL <option> list builder for the category selects.
+          function catOptions(selectedId){
+            var html = '<option value="">— account —</option>';
+            ['income','cogs','labor','fixed','expense','liability'].forEach(function(tp){
+              var opts = categories.filter(function(c){ return c.type === tp; });
+              if (!opts.length) return;
+              html += '<optgroup label="' + tp.toUpperCase() + '">';
+              opts.forEach(function(c){
+                var sel = String(selectedId) === String(c._id) ? ' selected' : '';
+                html += '<option value="' + c._id + '"' + sel + '>' + c.name + '</option>';
+              });
+              html += '</optgroup>';
+            });
+            return html;
+          }
+        %>
+        <div class="table-wrap">
+          <table class="stmt-table">
+            <thead>
+              <tr>
+                <th style="width:120px;">Date</th><th>Description</th><th style="width:110px;text-align:right;">Amount</th>
+                <th style="width:88px;">Flow</th><th style="width:120px;">Charge?</th><th style="width:170px;">GL Account</th><th style="width:36px;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% lines.forEach(function(l){
+                   const dstr = l.date ? l.date : '';
+                   const isBiz = l.disposition === 'business';
+                   const isAlloc = l.disposition === 'allocate';
+                   const needsCat = isBiz || isAlloc;
+              %>
+              <% if (l.posted) { %>
+              <tr class="stmt-row posted <%= l.direction %>">
+                <td class="nowrap"><%= dstr || '—' %></td>
+                <td class="desc"><%= l.description || '—' %> <span class="badge badge-active" style="margin-left:6px;">posted</span></td>
+                <td style="text-align:right;" class="nowrap"><%= money(l.amount || 0) %></td>
+                <td><span class="flow flow-<%= l.direction %>"><%= l.direction === 'credit' ? 'in' : 'out' %></span></td>
+                <td colspan="3" class="text-slate" style="font-size:0.78rem;">Locked · charged</td>
+              </tr>
+              <% } else { %>
+              <tr class="stmt-row edit-row <%= l.direction %> <%= l.autoSuggested ? 'auto-suggested' : '' %>">
+                <td><input type="date" name="date_<%= l.lid %>" value="<%= dstr %>" class="cell-in"></td>
+                <td>
+                  <input type="text" name="desc_<%= l.lid %>" value="<%= l.description || '' %>" class="cell-in" placeholder="Description">
+                  <% if (l.autoSuggested) { %><span class="auto-badge" title="Auto-marked from how you've categorized this merchant before">&#10024; learned</span><% } %>
+                </td>
+                <td><input type="number" step="0.01" min="0" name="amt_<%= l.lid %>" value="<%= l.amount || '' %>" class="cell-in amt-in" placeholder="0.00"></td>
+                <td>
+                  <select name="dir_<%= l.lid %>" class="cell-in">
+                    <option value="debit" <%= l.direction === 'credit' ? '' : 'selected' %>>out (debit)</option>
+                    <option value="credit" <%= l.direction === 'credit' ? 'selected' : '' %>>in (credit)</option>
+                  </select>
+                </td>
+                <td>
+                  <select name="disp_<%= l.lid %>" class="cell-in disp-select" data-lid="<%= l.lid %>">
+                    <option value="private" <%= needsCat ? '' : 'selected' %>>Private</option>
+                    <option value="business" <%= isBiz ? 'selected' : '' %>>Business (full)</option>
+                    <option value="allocate" <%= isAlloc ? 'selected' : '' %>>Allocate %</option>
+                  </select>
+                </td>
+                <td>
+                  <select name="cat_<%= l.lid %>" class="cell-in cat-select <%= needsCat ? '' : 'dim' %>" data-lid="<%= l.lid %>"><%- catOptions(l.categoryId) %></select>
+                  <input type="hidden" name="tags_<%= l.lid %>" value="<%= (l.tags || []).join(',') %>">
+                  <div class="alloc-wrap" data-lid="<%= l.lid %>" style="<%= isAlloc ? '' : 'display:none;' %>margin-top:4px;display:flex;align-items:center;gap:5px;">
+                    <input type="number" name="pct_<%= l.lid %>" value="<%= isAlloc && l.allocPct != null ? l.allocPct : '' %>" min="0" max="100" step="0.01" placeholder="% to biz" class="cell-in pct-in" data-lid="<%= l.lid %>" style="width:78px;">
+                    <span class="alloc-preview text-slate" data-lid="<%= l.lid %>" style="font-size:0.7rem;white-space:nowrap;"></span>
+                  </div>
+                </td>
+                <td style="text-align:center;">
+                  <label class="del-box" title="Delete this line on save">
+                    <input type="checkbox" name="del_<%= l.lid %>" value="1"> &#128465;
+                  </label>
+                </td>
+              </tr>
+              <% } %>
+              <% }) %>
+            </tbody>
+            <tbody id="addrows-<%= st._id %>">
+              <!-- manually-added lines land here (newdate[] / newdesc[] / newamt[] …) -->
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin:10px 0;">
+          <button type="button" class="btn btn-ghost btn-sm add-line-btn" data-stmt="<%= st._id %>">+ Add a missing transaction</button>
+        </div>
+
+        <div class="stmt-actions">
+          <div class="text-slate" style="font-size:0.76rem;">
+            Amounts are editable — verify each one. Set a line <em>Business (full)</em>, or <em>Allocate %</em> to charge only part to the books (e.g. a $2,000 mortgage → 50% to Rent, rest stays private). Leave personal lines <em>Private</em>; delete junk rows with &#128465;.
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button type="submit" formaction="/admin/ledger/statements/<%= st._id %>/review" formnovalidate class="btn btn-ghost btn-sm">Save review</button>
+            <button type="submit" class="btn btn-navy btn-sm">&#10003; Post assigned lines</button>
+          </div>
+        </div>
+      </form>
+
+      <template id="addtpl-<%= st._id %>">
+        <tr class="stmt-row edit-row added">
+          <td><input type="date" name="newdate[]" class="cell-in"></td>
+          <td><input type="text" name="newdesc[]" class="cell-in" placeholder="Description"></td>
+          <td><input type="number" step="0.01" min="0" name="newamt[]" class="cell-in amt-in" placeholder="0.00"></td>
+          <td>
+            <select name="newdir[]" class="cell-in">
+              <option value="debit" selected>out (debit)</option>
+              <option value="credit">in (credit)</option>
+            </select>
+          </td>
+          <td>
+            <select name="newdisp[]" class="cell-in disp-select">
+              <option value="private" selected>Private</option>
+              <option value="business">Business (full)</option>
+              <option value="allocate">Allocate %</option>
+            </select>
+          </td>
+          <td>
+            <select name="newcat[]" class="cell-in cat-select dim"><%- catOptions('') %></select>
+            <div class="alloc-wrap" style="display:none;margin-top:4px;align-items:center;gap:5px;">
+              <input type="number" name="newpct[]" min="0" max="100" step="0.01" placeholder="% to biz" class="cell-in pct-in" style="width:78px;">
+              <span class="alloc-preview text-slate" style="font-size:0.7rem;white-space:nowrap;"></span>
+            </div>
+          </td>
+          <td style="text-align:center;"><button type="button" class="rm-row" title="Remove this row">&times;</button></td>
+        </tr>
+      </template>
+      <% } %>
+    </div>
+    <% }) %>
+  <% } %>
+
+  <!-- Recently handled -->
+  <% if (recent.length) { %>
+  <h3 class="section-h" style="margin:28px 0 12px;">Recently handled</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Bank</th><th>Period</th><th>Handled</th><th style="text-align:right;">Lines</th><th>Result</th><th>Reviewed by</th><th></th></tr></thead>
+      <tbody>
+        <% recent.forEach(function(st){
+             const period = st.periodEnd ? new Date(st.periodEnd).toLocaleDateString('en-US') : '—';
+             const handledAt = st.reviewedAt || st.updatedAt;
+             const handled = handledAt ? new Date(handledAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+        %>
+        <tr>
+          <td><%= st.bank || 'Statement' %><% if (st.accountLast4) { %> ••••<%= st.accountLast4 %><% } %></td>
+          <td><%= period %></td>
+          <td style="white-space:nowrap;font-size:0.8rem;"><%= handled %></td>
+          <td style="text-align:right;"><%= st.lineCount || (st.lineItems || []).length %></td>
+          <td><span class="badge <%= st.status === 'posted' ? 'badge-active' : 'badge-inactive' %>" style="text-transform:capitalize;"><%= st.status %></span></td>
+          <td class="text-slate" style="font-size:0.8rem;"><%= st.reviewedBy || '' %></td>
+          <td style="text-align:right;white-space:nowrap;">
+            <form method="POST" action="/admin/ledger/statements/<%= st._id %>/reopen" style="display:inline;margin:0;" title="Reopen to review and post more items">
+              <button class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;">&#8635; Reopen</button>
+            </form>
+            <form method="POST" action="/admin/ledger/statements/<%= st._id %>/delete" style="display:inline;margin:0;" onsubmit="return confirm('Move this statement to Trash?');">
+              <button class="btn btn-ghost btn-sm" style="color:var(--danger);font-size:0.66rem;padding:4px 10px;">&#128465; Delete</button>
+            </form>
+          </td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+
+  <!-- Trash — soft-deleted statements, restorable for accidental deletes -->
+  <% if (trashed && trashed.length) { %>
+  <details class="trash-wrap" style="margin-top:28px;">
+    <summary class="section-h" style="cursor:pointer;">&#128465; Trash <span class="pill" style="background:var(--slate);"><%= trashed.length %></span></summary>
+    <p class="text-slate" style="font-size:0.76rem;margin:8px 0 12px;">Deleted statements live here so accidents are recoverable. <strong>Restore</strong> puts one back; <strong>Delete forever</strong> also removes its stored PDF and can't be undone.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Bank</th><th>Period</th><th style="text-align:right;">Lines</th><th>Was</th><th>Trashed</th><th style="text-align:right;">Actions</th></tr></thead>
+        <tbody>
+          <% trashed.forEach(function(st){
+               const period = st.periodEnd ? new Date(st.periodEnd).toLocaleDateString('en-US') : (st.periodStart ? new Date(st.periodStart).toLocaleDateString('en-US') : '—');
+               const when = st.trashedAt ? new Date(st.trashedAt).toLocaleDateString('en-US') : '';
+          %>
+          <tr>
+            <td>
+              <%= st.bank || 'Statement' %><% if (st.accountLast4) { %> ••••<%= st.accountLast4 %><% } %>
+              <% if (!st.keyed) { %><br><span class="badge badge-draft" style="background:rgba(201,168,72,0.16);color:var(--gold);font-size:0.58rem;">&#9888; <%= st.formatLabel ? 'not keyed' : 'unrecognized' %></span><% } %>
+            </td>
+            <td><%= period %></td>
+            <td style="text-align:right;"><%= st.lineCount || (st.lineItems || []).length %></td>
+            <td style="text-transform:capitalize;font-size:0.78rem;color:var(--slate);"><%= st.prevStatus || 'pending' %></td>
+            <td class="text-slate" style="font-size:0.78rem;"><%= when %><% if (st.trashedBy) { %> · <%= st.trashedBy %><% } %></td>
+            <td style="text-align:right;white-space:nowrap;">
+              <form method="POST" action="/admin/ledger/statements/<%= st._id %>/restore" style="display:inline;margin:0;" title="Put it back exactly as it was (re-posts its ledger lines)">
+                <button class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;">&#8630; Restore</button>
+              </form>
+              <form method="POST" action="/admin/ledger/statements/<%= st._id %>/retry" style="display:inline;margin:0;" title="Clear its ledger lines and bring it back to review to fix &amp; re-post">
+                <button class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;color:var(--navy);">&#8635; Restore &amp; retry</button>
+              </form>
+              <form method="POST" action="/admin/ledger/statements/<%= st._id %>/purge" style="display:inline;margin:0;" onsubmit="return confirm('Permanently delete this statement and its stored PDF? This cannot be undone.');">
+                <button class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;color:var(--danger);">Delete forever</button>
+              </form>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </details>
+  <% } %>
+</div>
+
+<style>
+  .section-h{font-size:0.95rem;font-weight:600;color:var(--navy);margin:0;display:flex;align-items:center;gap:8px;}
+  .pill{display:inline-block;font-size:0.66rem;font-weight:700;background:var(--navy);color:#fff;border-radius:20px;padding:1px 9px;}
+  .scan-hero{display:flex;gap:24px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:linear-gradient(135deg,rgba(28,43,74,0.03),rgba(201,168,72,0.05));}
+  .scan-hero-copy{flex:1;min-width:260px;}
+  .scan-kicker{font-size:0.62rem;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);margin-bottom:6px;}
+  .scan-title{font-family:var(--font-heading,serif);font-size:1.35rem;font-weight:500;color:var(--navy);margin:0 0 8px;line-height:1.18;}
+  .scan-drop{display:flex;flex-direction:column;gap:10px;min-width:260px;flex:1;}
+  .dropzone{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:2px dashed var(--border);border-radius:10px;padding:22px;cursor:pointer;text-align:center;transition:border-color .15s,background .15s;background:var(--surface);}
+  .dropzone.drag{border-color:var(--gold);background:rgba(201,168,72,0.06);}
+  .dropzone.has-file{border-color:var(--success);background:rgba(21,128,61,0.05);}
+  .dz-icon{font-size:1.6rem;}
+  .dz-main{font-weight:500;font-size:0.86rem;color:var(--navy);}
+  .dz-sub{font-size:0.7rem;}
+  .stmt-card{padding:16px;margin-bottom:18px;}
+  .stmt-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
+  .stmt-title{font-weight:600;color:var(--navy);font-size:1rem;}
+  .stmt-meta{font-size:0.78rem;margin-top:2px;}
+  .stmt-head-actions{display:flex;gap:6px;}
+  .stmt-head-actions form{margin:0;}
+  .ai-note{font-size:0.76rem;color:var(--slate);background:var(--ivory);border-radius:6px;padding:8px 10px;margin-bottom:10px;}
+  .stmt-table{width:100%;font-size:0.82rem;}
+  .stmt-table th{font-size:0.68rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--slate);text-align:left;}
+  .stmt-table td{vertical-align:middle;}
+  .stmt-table .desc{max-width:320px;}
+  .stmt-row.posted{opacity:0.6;}
+  .nowrap{white-space:nowrap;}
+  .flow{display:inline-block;font-size:0.64rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;border-radius:4px;padding:1px 6px;}
+  .flow-debit{background:rgba(190,40,40,0.1);color:#b91c1c;}
+  .flow-credit{background:rgba(21,128,61,0.1);color:#15803d;}
+  .disp-select,.cat-select{width:100%;min-width:110px;padding:4px 6px;font-size:0.8rem;}
+  .cat-select.dim{opacity:0.4;pointer-events:none;}
+  .pct-in{text-align:right;}
+  .cell-in{width:100%;padding:4px 6px;font-size:0.8rem;border:1px solid var(--border);border-radius:5px;background:var(--surface);}
+  .cell-in.amt-in{text-align:right;font-variant-numeric:tabular-nums;}
+  .edit-row td{padding:4px 6px;}
+  .stmt-row.added{background:rgba(201,168,72,0.06);}
+  .stmt-row.auto-suggested{background:rgba(201,168,72,0.1);}
+  .stmt-row.auto-suggested .cat-select{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold);}
+  .auto-badge{display:inline-block;margin-left:6px;font-size:0.58rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;background:rgba(201,168,72,0.2);color:var(--gold);border-radius:3px;padding:1px 5px;vertical-align:middle;}
+  .del-box{cursor:pointer;font-size:0.9rem;opacity:0.6;}
+  .del-box:hover{opacity:1;}
+  .del-box input{vertical-align:middle;}
+  .rm-row{background:none;border:none;cursor:pointer;font-size:1.1rem;line-height:1;color:var(--danger);}
+  .add-line-btn{border-style:dashed;}
+  .stmt-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px;}
+  @media print { .scan-hero, .topbar-actions, .stmt-actions, .stmt-head-actions, .add-line-btn { display:none !important; } }
+</style>
+
+<script>
+(function(){
+  // uploader
+  var input = document.getElementById('fileInput');
+  var zone = document.getElementById('dropzone');
+  var main = document.getElementById('dzMain');
+  var btn = document.getElementById('stmtBtn');
+  function refresh(){
+    if (input.files && input.files.length){
+      main.textContent = input.files[0].name;
+      zone.classList.add('has-file'); btn.disabled = false;
+    } else { btn.disabled = true; zone.classList.remove('has-file'); }
+  }
+  input.addEventListener('change', refresh);
+  ['dragover','dragenter'].forEach(function(e){ zone.addEventListener(e, function(ev){ ev.preventDefault(); zone.classList.add('drag'); }); });
+  ['dragleave','drop'].forEach(function(e){ zone.addEventListener(e, function(ev){ ev.preventDefault(); zone.classList.remove('drag'); }); });
+  zone.addEventListener('drop', function(ev){ if (ev.dataTransfer.files.length){ input.files = ev.dataTransfer.files; refresh(); } });
+  document.getElementById('stmtForm').addEventListener('submit', function(){ btn.disabled = true; btn.textContent = 'Reading statement…'; });
+
+  function fmtMoney(n){ return '$' + (Math.round(n*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  // Update the "$ to business / remainder private" preview for an allocate row.
+  function updateAllocPreview(row){
+    var wrap = row.querySelector('.alloc-wrap'); if (!wrap) return;
+    var prev = row.querySelector('.alloc-preview');
+    var amtEl = row.querySelector('.amt-in');
+    var pctEl = row.querySelector('.pct-in');
+    if (!prev || !amtEl || !pctEl) return;
+    var amt = parseFloat(amtEl.value) || 0;
+    var pct = Math.min(100, Math.max(0, parseFloat(pctEl.value) || 0));
+    var biz = amt * pct / 100;
+    prev.textContent = biz ? (fmtMoney(biz) + ' to business · ' + fmtMoney(amt - biz) + ' private') : '';
+  }
+
+  // Disposition drives the account picker + the allocate controls. Delegated so it
+  // also covers rows added after load.
+  document.addEventListener('change', function(ev){
+    var sel = ev.target;
+    if (!sel.classList || !sel.classList.contains('disp-select')) return;
+    var row = sel.closest('tr'); if (!row) return;
+    var cat = row.querySelector('.cat-select');
+    var wrap = row.querySelector('.alloc-wrap');
+    var needsCat = sel.value === 'business' || sel.value === 'allocate';
+    if (cat){ cat.classList.toggle('dim', !needsCat); if (!needsCat) cat.value = ''; }
+    if (wrap){ wrap.style.display = sel.value === 'allocate' ? 'flex' : 'none'; }
+    if (sel.value === 'allocate') updateAllocPreview(row);
+  });
+  // Live preview as amount or % changes.
+  document.addEventListener('input', function(ev){
+    var t = ev.target;
+    if (t.classList && (t.classList.contains('pct-in') || t.classList.contains('amt-in'))){
+      var row = t.closest('tr'); if (row) updateAllocPreview(row);
+    }
+  });
+  // Initial previews for lines already saved as allocate.
+  document.querySelectorAll('tr').forEach(function(row){
+    var sel = row.querySelector('.disp-select');
+    if (sel && sel.value === 'allocate') updateAllocPreview(row);
+  });
+
+  // Add / remove manual transaction rows.
+  document.addEventListener('click', function(ev){
+    var add = ev.target.closest && ev.target.closest('.add-line-btn');
+    if (add){
+      var sid = add.getAttribute('data-stmt');
+      var tpl = document.getElementById('addtpl-' + sid);
+      var body = document.getElementById('addrows-' + sid);
+      if (tpl && body){ body.appendChild(tpl.content.cloneNode(true)); }
+      return;
+    }
+    var rm = ev.target.closest && ev.target.closest('.rm-row');
+    if (rm){ var tr = rm.closest('tr'); if (tr) tr.remove(); }
+  });
+})();
+</script>
+
+</div></div></body></html>

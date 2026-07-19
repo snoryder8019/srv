@@ -24,6 +24,7 @@
 import { callLLM, webSearch, runTool } from './agentMcp.js';
 import { loadBrandContext } from './brandContext.js';
 import { assertDepartmentAllowed } from './agentAudience.js';
+import { getAgentConfig, getTenantDefault } from './agentRegistry.js';
 
 // ── Routing (mirrors ROUTING_PROMPT in masterAgent.js) ───────────────────────
 export const ROUTING_PROMPT = `You are a routing assistant for a business admin panel.
@@ -31,7 +32,7 @@ Analyze the user's request and determine which department should handle it.
 
 Output ONLY raw JSON — no prose, no fences:
 {
-  "department": "blog" | "copy" | "section" | "page" | "design" | "asset" | "email" | "social" | "print" | "invoice" | "outreach" | "research" | "onboarding" | "navigate" | "assist",
+  "department": "blog" | "copy" | "section" | "page" | "theme" | "typography" | "visibility" | "design" | "asset" | "email" | "social" | "print" | "invoice" | "outreach" | "research" | "onboarding" | "navigate" | "assist",
   "task": "concise task description for the specialist",
   "section_type": "text" | "split" | "cta" | "cards" | "faq",
   "page_type": "content" | "landing" | "data-list",
@@ -43,9 +44,18 @@ Department guide:
 - copy: updating site headline/hero/services/about copy
 - section: creating a website section (text, split, cta, cards, faq)
 - page: creating a standalone page (content, landing, data-list)
-- design: changing colors, fonts, layouts, section visibility, theme
+- theme: changing site COLORS / palette (primary, accent, background)
+- typography: changing FONTS (heading or body typeface)
+- visibility: showing or hiding homepage SECTIONS (hero, services, portfolio, about, blog, etc.)
+- design: changing LAYOUT style (portfolio/blog grid vs list) or logo display
 - asset: creating a social-platform graphic/image (the picture itself)
-- social: drafting the text/caption of a social post
+- social: drafting the text/caption of ONE social post
+- social_batch: generate a BATCH of social posts (several at once) / "post about X" / run the social agent
+- carousel: build a multi-slide Instagram/Threads carousel about a topic
+- story: build an Instagram story sequence about a topic
+- social_insights: reporting social analytics/performance (followers, reach, engagement, "how are we doing on social")
+- social_score: score live posts / "what's winning" / decision reliability
+- autopilot: check or change the social Autopilot (cadence, on/off, what it posts about)
 - print: a print piece (flyer, poster, card, sticker, brochure) — even if the user says "design"
 - email: drafting an email marketing campaign/newsletter
 - invoice: creating an invoice / billing a client
@@ -62,9 +72,18 @@ const DEPARTMENT_TOOL = {
   copy:       (task, o) => ['fill_site_copy',         { task, section: 'all', context: o.context, brandContext: o.brand }],
   section:    (task, o) => ['fill_section',           { section_type: o.section_type || 'text', task, context: o.context, brandContext: o.brand }],
   page:       (task, o) => ['write_page',             { title: task, page_type: o.page_type || 'content', task, context: o.context, brandContext: o.brand }],
+  theme:      (task, o) => ['update_theme',           { task, context: o.context, brandContext: o.brand }],
+  typography: (task, o) => ['update_typography',      { task, context: o.context, brandContext: o.brand }],
+  visibility: (task, o) => ['set_section_visibility', { task, context: o.context, brandContext: o.brand }],
   design:     (task, o) => ['update_design',          { task, context: o.context, brandContext: o.brand }],
   asset:      (task, o) => ['generate_social_image',  { prompt: task, context: o.context, brandContext: o.brand }],
   social:     (task, o) => ['write_social_post',      { task, platforms: o.platforms, context: o.context, brandContext: o.brand }],
+  social_batch:    (task, o) => ['generate_social_batch',   { topic: task, platforms: o.platforms }],
+  carousel:        (task, o) => ['build_seamless_carousel', { topic: task }],
+  story:           (task, o) => ['build_story_sequence',    { topic: task }],
+  social_insights: ()       => ['get_social_insights',      { days: 30 }],
+  social_score:    ()       => ['score_live_posts',         {}],
+  autopilot:       ()       => ['get_autopilot_config',     {}],
   print:      (task, o) => ['write_print_copy',       { task, context: o.context, brandContext: o.brand }],
   email:      (task, o) => ['write_campaign',         { task, context: o.context, brandContext: o.brand }],
   invoice:    (task, o) => ['draft_invoice',          { task, context: o.context, brandContext: o.brand }],
@@ -74,14 +93,40 @@ const DEPARTMENT_TOOL = {
 };
 
 // Post-generation destinations (label + where the human goes to review/commit).
+// MCP scope alignment: given an agent's configured tool list (MCP tool names
+// from the chatflow matrix), return the Set of departments it may route to —
+// i.e. departments whose committing tool is in the agent's scope. 'assist' and
+// 'navigate' are always allowed (no mutating tool). Returns null when the agent
+// has no tools configured, meaning "unrestricted" (the audience gate in
+// runDepartment still applies). This is what keeps a scoped support bot from
+// ever reaching, say, the invoice or design tools.
+export function departmentsForTools(tools) {
+  if (!Array.isArray(tools) || tools.length === 0) return null; // unrestricted
+  const wanted = new Set(tools);
+  const set = new Set(['assist', 'navigate']);
+  for (const [dept, build] of Object.entries(DEPARTMENT_TOOL)) {
+    try { const [toolName] = build('', {}); if (wanted.has(toolName)) set.add(dept); } catch { /* skip */ }
+  }
+  return set;
+}
+
 export const DEPT_ACTIONS = {
   blog:       { label: 'Open Blog Editor',     url: '/admin/blog/new' },
   copy:       { label: 'Go to Site Copy',      url: '/admin/copy' },
   section:    { label: 'Go to Sections',       url: '/admin/sections' },
   page:       { label: 'Open Page Editor',     url: '/admin/pages/new' },
+  theme:      { label: 'Go to Design',         url: '/admin/design' },
+  typography: { label: 'Go to Design',         url: '/admin/design' },
+  visibility: { label: 'Go to Design',         url: '/admin/design' },
   design:     { label: 'Go to Design',         url: '/admin/design' },
   asset:      { label: 'Open Asset Center',    url: '/admin/assets' },
   social:     { label: 'Open Social',          url: '/admin/social' },
+  social_batch:    { label: 'Review in Agent Studio', url: '/admin/social?tab=agents' },
+  carousel:        { label: 'Review in Agent Studio', url: '/admin/social?tab=agents' },
+  story:           { label: 'Review in Agent Studio', url: '/admin/social?tab=agents' },
+  social_insights: { label: 'Open Analytics',         url: '/admin/social?tab=analytics' },
+  social_score:    { label: 'Open Agent Studio',      url: '/admin/social?tab=agents' },
+  autopilot:       { label: 'Open Agent Studio',      url: '/admin/social?tab=agents' },
   print:      { label: 'Open Print Studio',    url: '/admin/print-studio' },
   email:      { label: 'Open Email Marketing', url: '/admin/email-marketing' },
   invoice:    { label: 'Open Bookkeeping',     url: '/admin/bookkeeping' },
@@ -107,7 +152,14 @@ export const NAV_MAP = {
 // Thread-context → preferred department (biases routing inside a module's chat).
 export const MODULE_DEPARTMENT = {
   design: 'design', pages: 'page', blog: 'blog', clients: 'research',
-  social: 'social', 'email-marketing': 'email', bookkeeping: 'invoice',
+  social: 'social', 'email-marketing': 'email',
+  assets: 'asset', onboarding: 'onboarding', 'print-studio': 'print',
+  copy: 'copy', layout: 'visibility',
+  // NOTE: 'bookkeeping' intentionally has NO bias. The only finance tool is
+  // draft_invoice, and biasing to it turned analytical asks ("break down our
+  // budget") into invoices. Finance now falls to the conversational path, which
+  // is fed the live ledger/budget via agentViewContext.js. Explicit "draft an
+  // invoice…" still routes to invoice on its own.
 };
 
 const stripToJson = (raw) => {
@@ -143,7 +195,7 @@ export async function routeMessage(message, { contextModule = null, kind = null 
  * Returns { department, message, fill, suggestedBlocks, tool_used, action, navigate }.
  * This is the exact pipeline masterAgent /run-task uses — now callable anywhere.
  */
-export async function runDepartment(db, tenant, { department, task, section_type, page_type, platforms, extraContext = '', audience = 'admin', ctx = {} } = {}) {
+export async function runDepartment(db, tenant, { department, task, section_type, page_type, platforms, extraContext = '', audience = 'admin', engine = '', model = '', ctx = {} } = {}) {
   if (department === 'navigate') {
     const lower = String(task || '').toLowerCase();
     let url = '/admin';
@@ -164,6 +216,17 @@ export async function runDepartment(db, tenant, { department, task, section_type
     throw e;
   }
 
+  // Per-agent override (Agent Control registry): an agent can be turned off, or
+  // pinned to a specific engine/model. Precedence: agent config > thread kind >
+  // platform default. Empty override → inherit the value passed in.
+  const [aCfg, def] = await Promise.all([getAgentConfig(db, department), getTenantDefault(db)]);
+  if (aCfg && aCfg.enabled === false) {
+    return { department: 'assist', message: `The ${department} agent is turned off in Agent Control.`, fill: {}, disabled: true };
+  }
+  // Inheritance chain: agent override > passed-in (thread kind) > tenant default > platform.
+  const effEngine = (aCfg && aCfg.engine) || engine || def.engine || undefined;
+  const effModel = (aCfg && aCfg.model) || model || def.model || undefined;
+
   let research = '';
   try { research = await webSearch(task); } catch { /* non-fatal */ }
   const context = (research ? '\n\nResearch findings:\n' + research : '') + (extraContext || '');
@@ -171,7 +234,9 @@ export async function runDepartment(db, tenant, { department, task, section_type
 
   const build = DEPARTMENT_TOOL[department] || DEPARTMENT_TOOL.copy;
   const [toolName, toolArgs] = build(task, { context, brand, section_type, page_type, platforms });
-  const result = await runTool(toolName, toolArgs);
+  // Pass tenant scope so stateful social tools reach the right DB; brandContext
+  // keeps every tool's output on-brand.
+  const result = await runTool(toolName, toolArgs, { db, tenant, brandContext: brand, engine: effEngine, model: effModel });
 
   return {
     department,
@@ -244,13 +309,15 @@ export async function executeDepartment(db, tenant, { department, fill, section_
     editUrl = '/admin/sections';
 
   } else if (department === 'page') {
-    const { title, metaTitle, metaDesc, content, blocks } = fill;
+    // write_page emits `metaDescription`; accept both spellings so the meta
+    // description isn't silently dropped on Apply.
+    const { title, metaTitle, metaDesc, metaDescription, content, blocks } = fill;
     if (!title) return { ok: false, message: 'Page needs a title.' };
     let slug = _slug(title);
     if (await db.collection('pages').findOne({ slug })) slug = slug + '-' + Date.now();
     const pageType = page_type || 'content';
     const result = await db.collection('pages').insertOne({
-      title, slug, pageType, status: 'draft', metaTitle: metaTitle || title, metaDesc: metaDesc || '',
+      title, slug, pageType, status: 'draft', metaTitle: metaTitle || title, metaDesc: metaDesc || metaDescription || '',
       content: pageType === 'content' ? (content || '') : '',
       blocks: pageType === 'landing' ? (blocks || []) : [],
       dataCollection: pageType === 'data-list' ? 'blog' : '', dataPageSize: 9,
@@ -260,7 +327,10 @@ export async function executeDepartment(db, tenant, { department, fill, section_
     summary = `Created draft page: "${title}" (${pageType}).`;
     editUrl = `/admin/pages/${result.insertedId}/edit`;
 
-  } else if (department === 'design') {
+  } else if (department === 'design' || department === 'theme' || department === 'typography' || department === 'visibility') {
+    // All four design-family departments write the same design collection as
+    // key/value pairs — the split is only about which fields each generator may
+    // emit (see agentMcp handlers); the commit is identical.
     const entries = Object.entries(fill).filter(([, v]) => v && String(v).trim());
     if (!entries.length) return { ok: false, message: 'No design fields to save.' };
     await Promise.all(entries.map(([key, value]) =>

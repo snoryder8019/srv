@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Token Analytics · sLab</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#0a0a0a; color:#e5e5e5; font-family:'Inter',sans-serif; font-size:14px; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; padding:14px 24px; border-bottom:1px solid #1f1f1f; background:#0f0f0f; }
+    .topbar-left { display:flex; align-items:center; gap:10px; }
+    .logo { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:18px; }
+    .logo span { color:#c9a848; }
+    .topbar a { color:#a3a3a3; text-decoration:none; font-size:13px; margin-left:16px; }
+    .topbar a:hover { color:#e5e5e5; }
+    .container { max-width:1100px; margin:0 auto; padding:24px; }
+    .filters { display:flex; gap:8px; margin-bottom:18px; align-items:center; }
+    .filter-btn { padding:5px 12px; border:1px solid #262626; border-radius:6px; color:#a3a3a3; text-decoration:none; font-size:12px; }
+    .filter-btn.active { border-color:#c9a848; color:#c9a848; }
+    .muted { color:#737373; font-size:12px; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:24px; }
+    .stat { background:#141414; border:1px solid #262626; border-radius:8px; padding:14px 16px; }
+    .stat-label { font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#737373; margin-bottom:6px; }
+    .stat-value { font-family:'Space Grotesk',sans-serif; font-size:24px; font-weight:600; }
+    .stat-value.gold { color:#c9a848; } .stat-value.blue { color:#7dd3fc; } .stat-value.green { color:#86efac; }
+    h3 { font-size:13px; font-weight:500; color:#a3a3a3; text-transform:uppercase; letter-spacing:0.05em; margin:26px 0 10px; }
+    table { width:100%; border-collapse:collapse; background:#141414; border:1px solid #262626; border-radius:8px; overflow:hidden; }
+    th, td { text-align:left; padding:9px 14px; font-size:13px; border-bottom:1px solid #1f1f1f; }
+    th { color:#737373; font-weight:500; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; }
+    td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+    tr:last-child td { border-bottom:none; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; }
+    .pill.anthropic { background:#2a1f3d; color:#c4b5fd; }
+    .pill.house { background:#1e3a2f; color:#86efac; }
+    .bars { display:flex; align-items:flex-end; gap:3px; height:80px; padding:10px 0; }
+    .bar { flex:1; background:#c9a848; border-radius:2px 2px 0 0; min-height:2px; opacity:0.8; }
+    .bar:hover { opacity:1; }
+    .empty { text-align:center; color:#525252; padding:40px; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo">mad<span>Labs</span>lab</div>
+      <span class="muted">/ Token Analytics</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/superadmin">&larr; Dashboard</a>
+      <span class="muted"><%= user.email %></span>
+    </div>
+  </div>
+
+  <div class="container">
+    <%
+      const fmt = (n) => (n || 0).toLocaleString('en-US');
+      const kfmt = (n) => { n = n || 0; if (n >= 1e6) return (n/1e6).toFixed(2)+'M'; if (n >= 1e3) return (n/1e3).toFixed(1)+'k'; return String(n); };
+    %>
+    <div class="filters">
+      <span class="muted" style="margin-right:6px;">Window:</span>
+      <a class="filter-btn <%= days===7 ? 'active':'' %>" href="/superadmin/token-analytics?days=7">7d</a>
+      <a class="filter-btn <%= days===30 ? 'active':'' %>" href="/superadmin/token-analytics?days=30">30d</a>
+      <a class="filter-btn <%= days===90 ? 'active':'' %>" href="/superadmin/token-analytics?days=90">90d</a>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Total tokens</div><div class="stat-value gold"><%= kfmt(totals.total) %></div></div>
+      <div class="stat"><div class="stat-label">Input</div><div class="stat-value blue"><%= kfmt(totals.input) %></div></div>
+      <div class="stat"><div class="stat-label">Output</div><div class="stat-value green"><%= kfmt(totals.output) %></div></div>
+      <div class="stat"><div class="stat-label">Cache reads</div><div class="stat-value"><%= kfmt(totals.cacheRead) %></div></div>
+      <div class="stat"><div class="stat-label">Calls</div><div class="stat-value"><%= fmt(totals.calls) %></div></div>
+    </div>
+
+    <% if (!totals.calls) { %>
+      <div class="empty">No LLM calls recorded in this window yet. Usage is captured going forward from when analytics was enabled.</div>
+    <% } else { %>
+
+      <% if (daily.length) { %>
+        <h3>Daily total tokens</h3>
+        <% const maxDay = Math.max(...daily.map(d => d.total || 0), 1); %>
+        <div class="bars">
+          <% daily.forEach(d => { %>
+            <div class="bar" style="height:<%= Math.round((d.total/maxDay)*100) %>%;" title="<%= d._id %>: <%= fmt(d.total) %> tokens, <%= d.calls %> calls"></div>
+          <% }) %>
+        </div>
+      <% } %>
+
+      <h3>By engine</h3>
+      <table>
+        <thead><tr><th>Engine</th><th class="num">Calls</th><th class="num">Total tokens</th></tr></thead>
+        <tbody>
+          <% byEngine.forEach(e => { %>
+          <tr>
+            <td><span class="pill <%= e._id === 'anthropic' ? 'anthropic' : 'house' %>"><%= e._id || '—' %></span></td>
+            <td class="num"><%= fmt(e.calls) %></td>
+            <td class="num"><%= fmt(e.total) %></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+
+      <h3>By model</h3>
+      <table>
+        <thead><tr><th>Model</th><th class="num">Calls</th><th class="num">Input</th><th class="num">Output</th><th class="num">Total</th></tr></thead>
+        <tbody>
+          <% byModel.forEach(m => { %>
+          <tr>
+            <td><%= m._id || '—' %></td>
+            <td class="num"><%= fmt(m.calls) %></td>
+            <td class="num"><%= fmt(m.input) %></td>
+            <td class="num"><%= fmt(m.output) %></td>
+            <td class="num"><%= fmt(m.total) %></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+
+      <h3>By tenant</h3>
+      <table>
+        <thead><tr><th>Tenant</th><th class="num">Calls</th><th class="num">Input</th><th class="num">Output</th><th class="num">Total</th></tr></thead>
+        <tbody>
+          <% byTenant.forEach(t => { %>
+          <tr>
+            <td style="color:#c9a848;"><%= t._id.domain || t._id.db || '(unscoped / platform)' %></td>
+            <td class="num"><%= fmt(t.calls) %></td>
+            <td class="num"><%= fmt(t.input) %></td>
+            <td class="num"><%= fmt(t.output) %></td>
+            <td class="num"><%= fmt(t.total) %></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+
+    <% } %>
+  </div>
+</body>
+</html>

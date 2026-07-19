@@ -69,6 +69,11 @@ export const DESIGN_DEFAULTS = {
   vis_contact:         'true',
   vis_blog:            'false',
   vis_careers:         'false',
+  vis_marketplace:     'false',          // storefront page + nav link (opt-in)
+  marketplace_heading: 'Marketplace',     // public page H1
+  marketplace_sub:     '',                // public page subheading
+  marketplace_columns: '3',               // grid columns: 2 | 3 | 4
+  marketplace_show_price: 'true',          // show price on cards
   vis_videos:          'true',           // YouTube auto-feed section on the landing
   vis_footer:          'true',
   vis_admin_link:      'true',

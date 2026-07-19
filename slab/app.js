@@ -10,7 +10,9 @@ import passport from './plugins/passport.js';
 import { connectDB } from './plugins/mongo.js';
 import { config } from './config/config.js';
 import { resolveTenant } from './middleware/tenant.js';
+import { trackRouteUsage, startRouteUsageFlusher } from './plugins/routeUsage.js';
 import { seoMiddleware } from './middleware/seo.js';
+import { recordServerError, ensureObserveIndexes } from './plugins/observe.js';
 
 import indexRouter from './routes/index.js';
 import seoRouter from './routes/seo.js';
@@ -18,12 +20,16 @@ import authRouter from './routes/auth.js';
 import adminRouter from './routes/admin.js';
 import meetingsRouter from './routes/meetings.js';
 import bookingRouter from './routes/booking.js';
+import careersRouter from './routes/careers.js';
+import marketplacePublicRouter from './routes/marketplace.js';
 import payRouter from './routes/pay.js';
+import engageRouter from './routes/engage.js';
 import webhooksRouter from './routes/webhooks.js';
 import trackingRouter from './routes/tracking.js';
 import onboardingRouter from './routes/onboarding.js';
 import superadminRouter from './routes/superadmin.js';
 import delegatesRouter from './routes/delegates.js';
+import networkRouter from './routes/network.js';
 import ticketApiRouter from './routes/ticketApi.js';
 import formsRouter from './routes/forms.js';
 import agentRouter from './routes/agent.js';
@@ -95,6 +101,10 @@ app.use('/vendor/onnxruntime-web', express.static(path.join(__dirname, 'node_mod
 // ── Tenant resolution — sets req.tenant, req.db, res.locals.brand ───────────
 app.use(resolveTenant);
 
+// ── Route-usage tracking — records per-tenant endpoint hits for the superadmin
+// usage dashboard (drives "build for what's actually used"). Buffered + flushed.
+app.use(trackRouteUsage);
+
 // ── SEO / AEO / GEO / AAO — sets res.locals.seo and SEO headers ─────────────
 app.use(seoMiddleware);
 
@@ -111,10 +121,12 @@ app.use((req, res, next) => {
 });
 
 connectDB();
+startRouteUsageFlusher();
 
 app.use('/start', onboardingRouter);
 app.use('/superadmin', superadminRouter);
 app.use('/delegates', delegatesRouter);
+app.use('/network', networkRouter);
 // REMOVED: Huginn unwired
 // app.use('/huginn/mcp', huginnMcpRouter);
 // app.use('/huginn', huginnWebhookRouter);
@@ -159,7 +171,10 @@ app.use('/api/tickets', ticketApiRouter);
 app.use('/t', trackingRouter);
 app.use('/meeting', meetingsRouter);
 app.use('/book', bookingRouter);
+app.use('/careers', careersRouter);
+app.use('/marketplace', marketplacePublicRouter);
 app.use('/pay', payRouter);
+app.use('/engage', engageRouter);
 app.use('/webhooks', webhooksRouter);
 app.use('/forms', formsRouter);
 app.use('/captcha', captchaRouter);
@@ -171,8 +186,32 @@ app.use('/admin', adminRouter);
 app.use((req, res) => res.status(404).send('Not found'));
 
 app.use((err, req, res, next) => {
+  // Malformed request URIs (bot/scanner probes with bad percent-encoding, e.g.
+  // "..%C0%AF..%C0%AF.env") throw a URIError with status 400 during param
+  // decoding. Log a one-liner instead of a full stack trace, then 400.
+  if (err instanceof URIError || err.status === 400) {
+    console.warn(`[bad-request] ${req.method} ${req.originalUrl} — ${err.message}`);
+    return res.status(400).send('Bad request');
+  }
   console.error(err);
+  recordServerError({ err, req, kind: 'server' });   // best-effort, queryable in /superadmin/errors
   res.status(err.status || 500).send(err.message || 'Server error');
 });
+
+// Process-level traps — capture crashes that never reach the Express handler.
+// Log only; do not exit (systemd would restart, but a single bad promise
+// shouldn't take the whole app down during the testing phase).
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+  recordServerError({ err: reason instanceof Error ? reason : new Error(String(reason)), kind: 'unhandledRejection' });
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+  recordServerError({ err, kind: 'uncaughtException' });
+});
+
+// Build the TTL/query indexes for the observability feeds once the DB is up
+// (connectDB runs from bin/www after this module loads).
+setTimeout(() => { ensureObserveIndexes(); }, 8000);
 
 export default app;

@@ -84,8 +84,19 @@ function parsePlatforms(raw) {
   const arr = Array.isArray(raw) ? raw : (raw ? [raw] : []);
   return arr.map(String).filter(p => PLATFORMS[p] && !PLATFORMS[p].comingSoon && !PLATFORMS[p].connectOnly);
 }
-function parseMedia(raw) {
-  return (raw || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean).slice(0, 4);
+// Post format discriminator. 'single' = one feed post (today's behaviour);
+// 'carousel'/'story' fan a post's ordered mediaUrls into a multi-frame publish
+// on the platforms that support it (see platformSupportsFormat).
+const POST_FORMATS = new Set(['single', 'carousel', 'story']);
+function parseFormat(raw) {
+  const f = String(raw || 'single').trim();
+  return POST_FORMATS.has(f) ? f : 'single';
+}
+
+// A single post keeps the conservative 4-item floor (the common denominator across
+// multi-image platforms); carousels/stories allow up to Meta's 10-frame ceiling.
+function parseMedia(raw, max = 4) {
+  return (raw || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean).slice(0, max);
 }
 
 // Publish a post in the BACKGROUND and finalize its status. Video publishes
@@ -130,5 +141,5 @@ async function loadAccountMap(db) {
 export {
   AUTO_TOKEN_PLATFORMS, tryAutoUpgrade, linkInstagramFromFacebook,
   imageUpload, MEDIA_MIME_RE, mediaUpload, POST_STATUSES,
-  wantsJson, parsePlatforms, parseMedia, publishPostBackground, loadAccountMap,
+  wantsJson, parsePlatforms, parseFormat, parseMedia, publishPostBackground, loadAccountMap,
 };

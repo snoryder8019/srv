@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import QRCode from 'qrcode';
@@ -11,6 +12,7 @@ import { shareTargetPath, shareUrlFor, mintShareToken } from '../plugins/shareLi
 import { DESIGN_DEFAULTS } from './admin/design.js';
 import { CARD_TEMPLATES, CARD_SCHEMES, resolveScheme, normalizeCard } from '../plugins/cardConfig.js';
 import { SERVICES, INFRA_SERVICES } from '../plugins/serviceRegistry.js';
+import { recordClientError } from '../plugins/observe.js';
 
 // Static projection of the platform stack for the "Server Harmony" orbit shown in
 // the homepage About section. Built once at import — no live status/fs/tmux probing
@@ -33,6 +35,7 @@ function harmonyFor(req) {
 import { enrichDesignContrast } from '../plugins/colorContrast.js';
 import { config } from '../config/config.js';
 import { notifyAdmin } from '../plugins/notify.js';
+import { chatBroadcast, adminAlert } from '../plugins/chatSocket.js';
 import { normalizeEmail } from '../plugins/emailNormalize.js';
 import { checkGlobalSpam } from '../plugins/globalSpam.js';
 import { passedCaptcha } from '../plugins/captcha.js';
@@ -40,6 +43,7 @@ import { captureLead } from '../plugins/subscribe.js';
 import { getPublicSocialLinks } from '../plugins/socialPublish.js';
 import { buildRssFeed, buildAtomFeed } from '../plugins/feeds.js';
 import { applyPipes } from '../plugins/pipes.js';
+import { runSource, synthesizeLegacyBlocks } from '../plugins/pageSources.js';
 import { fetchChannelUploads } from '../plugins/youtube.js';
 import { FEATURES } from '../plugins/featureRegistry.js';
 
@@ -462,6 +466,332 @@ router.get('/sitemap.xml', async (req, res) => {
 });
 
 // ── Contact form submission ────────────────────────────────────────────────
+// ── Public support chat — the guest-facing ✦ concierge ────────────────────────
+// assist-only: brand-aware Q&A + lead nudge. NO mutating tools (it only informs
+// and invites contact), ephemeral (client-held short history — nothing
+// persisted), rate-limited, and gated by the tenant chatbot toggle + the Support
+// agent in the matrix. Uses the matrix Support config (engine/model/greeting).
+const supportLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, max: 30,
+  standardHeaders: true, legacyHeaders: false,
+  message: { ok: false, reply: 'You’re sending messages quickly — give it a moment and try again.' },
+});
+// Polling is frequent by nature (every few seconds while the bubble is open), so
+// it gets its own generous window rather than sharing the send limiter.
+const supportPollLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 90,
+  standardHeaders: true, legacyHeaders: false,
+  message: { ok: false, messages: [] },
+});
+
+// Map a stored chat message to what a guest may see, tagging its source so the
+// widget renders it correctly: 'me' (visitor) · 'ai' · 'staff' (a human) ·
+// 'notice' (the green join/leave line). Anything else (contactSaved, honeypot
+// notes) is hidden from the guest.
+function guestView(m) {
+  const meta = m.meta || {};
+  if (m.authorType === 'system') {
+    if (meta.event === 'admin-join' || meta.event === 'admin-leave') {
+      return { id: String(m._id), at: m.createdAt, kind: 'notice', event: meta.event, body: m.body || '' };
+    }
+    return null;
+  }
+  if (m.authorType === 'agent') return { id: String(m._id), at: m.createdAt, kind: 'ai', name: m.authorName || 'Assistant', body: m.body || '' };
+  if (m.authorType === 'user') {
+    if (m.authorId) return { id: String(m._id), at: m.createdAt, kind: 'staff', name: m.authorName || 'Team', body: m.body || '' };
+    return { id: String(m._id), at: m.createdAt, kind: 'me', body: m.body || '' };
+  }
+  return null;
+}
+const SUPPORT_THREAD_FILTER = (sid) => ({ kind: 'support', 'context.module': 'support', 'context.refId': sid, status: { $ne: 'archived' } });
+
+// Chat-style contact harvest: pull an email (+ name/phone if present) out of what
+// a visitor typed, so the support bot can capture a lead conversationally instead
+// of forcing a form. Returns null when there's no email to anchor on.
+const SB_EMAIL_RE = /[^\s@<>()]{1,80}@[^\s@<>()]{1,80}\.[a-z]{2,24}/i;
+const SB_PHONE_RE = /\+?\d[\d\-().\s]{7,}\d/;
+function harvestContact(text, history) {
+  const emailM = String(text || '').match(SB_EMAIL_RE);
+  if (!emailM) return null;
+  const email = emailM[0].toLowerCase();
+  let phone = '';
+  const phoneM = String(text || '').replace(SB_EMAIL_RE, '').match(SB_PHONE_RE);
+  if (phoneM && (phoneM[0].replace(/\D/g, '').length >= 10)) phone = phoneM[0].trim().slice(0, 40);
+  // Name: an explicit "I'm X" / "my name is X" anywhere in the conversation wins;
+  // otherwise the leading capitalized words of this message (email/phone stripped).
+  let name = '';
+  const joined = [...(history || []).map((m) => m && m.content), text].filter(Boolean).join('  ');
+  // Case-insensitive trigger, but the captured name must be Capitalized — that
+  // filters false hits like "i am looking for…" while catching "Im Sarah".
+  const nm = joined.match(/(?:[Mm]y name is|[Ii] am|[Ii]'?[Mm]|[Tt]his is|[Ii]t'?s|[Nn]ame'?s?:?)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/);
+  if (nm) name = nm[1].trim();
+  if (!name) {
+    const rest = String(text || '').replace(SB_EMAIL_RE, '').replace(SB_PHONE_RE, '').replace(/[,;:|]/g, ' ').trim();
+    const words = rest.split(/\s+/).filter(Boolean);
+    if (words.length && words.length <= 3 && /^[A-Za-z][A-Za-z'.-]{1,}$/.test(words[0]) && words.join('').length <= 40) {
+      name = words.slice(0, 3).join(' ');
+    }
+  }
+  return { email, phone, name: name.slice(0, 120) };
+}
+
+// Alert the tenant when a visitor leaves contact / a CTA in the support chat: a
+// platform event + an email to the tenant's configured recipient (their own
+// mailbox when connected, else the platform mailbox). Fire-and-forget; mirrors
+// the contact-form forwarder. (In-panel flash will hang off the socket presence
+// layer once that lands — this email is the always-on channel.)
+function _esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+async function notifySupportLead({ tenant, thread, contact }) {
+  const brandName = tenant?.brand?.name || tenant?.domain || 'your site';
+  const name = contact?.name || 'Website visitor';
+  const email = contact?.email || '';
+  const notes = String(contact?.notes || '').trim();
+  notifyAdmin({ type: 'contact', app: 'slab', email, name,
+    data: { Brand: brandName, Domain: tenant?.domain || '', Source: 'Support chat', Phone: contact?.phone || '', Notes: notes.slice(0, 300) } }).catch(() => {});
+
+  const recipient = tenant?.meta?.contactEmail || tenant?.meta?.ownerEmail || tenant?.brand?.email;
+  if (!recipient) return;
+  try {
+    const { resolveSmtp, getTenantTransporter } = await import('../plugins/mailer.js');
+    const smtp = resolveSmtp(tenant);
+    const useTenantMailer = smtp.authMode === 'oauth' ? !!smtp.user : !!(smtp.user && smtp.pass);
+    const havePlatform = !!(process.env.ZOHO_USER && process.env.ZOHO_PASS);
+    if (!useTenantMailer && !havePlatform) return;
+    const fromUser = useTenantMailer ? smtp.user : process.env.ZOHO_USER;
+    let t;
+    if (useTenantMailer) { t = await getTenantTransporter(tenant); }
+    else { const nm = await import('nodemailer'); t = nm.default.createTransport({ host: 'smtppro.zoho.com', port: 465, secure: true, authMethod: 'LOGIN', auth: { user: process.env.ZOHO_USER, pass: process.env.ZOHO_PASS } }); }
+    const chatUrl = `https://${tenant?.domain || 'slab.madladslab.com'}/admin/chat`;
+    const fromLabel = useTenantMailer ? `"${brandName}" <${fromUser}>` : `"${brandName} (via MadLadsLab)" <${fromUser}>`;
+    await t.sendMail({
+      from: fromLabel, to: recipient, replyTo: email || undefined,
+      subject: `New lead from your support chat: ${name}`,
+      html: `<div style="font-family:Inter,sans-serif;max-width:500px;padding:24px;background:#fff;color:#111">
+        <h2 style="font-size:18px;margin-bottom:6px">New support-chat lead</h2>
+        <p style="color:#666;font-size:13px;margin:0 0 16px">A visitor left their details in your website chat.</p>
+        <table style="width:100%;border-collapse:collapse">
+          <tr><td style="padding:6px;color:#666;width:90px">Name</td><td style="padding:6px"><strong>${_esc(name)}</strong></td></tr>
+          <tr><td style="padding:6px;color:#666">Email</td><td style="padding:6px"><a href="mailto:${_esc(email)}">${_esc(email)}</a></td></tr>
+          ${contact?.phone ? `<tr><td style="padding:6px;color:#666">Phone</td><td style="padding:6px">${_esc(contact.phone)}</td></tr>` : ''}
+          ${notes ? `<tr><td style="padding:6px;color:#666;vertical-align:top">Notes / needs</td><td style="padding:6px">${_esc(notes.slice(0, 1200))}</td></tr>` : ''}
+        </table>
+        <p style="margin-top:18px"><a href="${chatUrl}" style="color:#1C2B4A;font-weight:600;text-decoration:none">Review the conversation →</a></p>
+        ${!useTenantMailer ? `<p style="margin-top:14px;font-size:11px;color:#999">Sent via the MadLadsLab platform mailer. Connect your mailbox in <a href="${chatUrl.replace('/admin/chat', '/admin/settings')}">Settings</a> to send from your own domain.</p>` : ''}
+      </div>`,
+    });
+  } catch (e) { console.error('[support-lead] email error:', e.message); }
+}
+router.post('/support-chat', supportLimiter, async (req, res) => {
+  try {
+    const db = req.db, tenant = req.tenant;
+    const chat = await import('../plugins/chat.js');
+    if (!chat.chatbotEnabled(tenant)) return res.status(403).json({ ok: false, error: 'Support chat is off.' });
+    const matrix = await chat.getChatFlowMatrix(db);
+    const sup = matrix.support || {};
+    if (sup.enabled === false) return res.status(403).json({ ok: false, error: 'Support chat is off.' });
+
+    const messages = Array.isArray(req.body.messages) ? req.body.messages.slice(-6) : [];
+    const lastUser = [...messages].reverse().find((m) => m && m.role === 'user');
+    const text = String(lastUser?.content || req.body.message || '').trim().slice(0, 1000);
+    if (!text) return res.json({ ok: true, reply: 'Hi! How can I help?' });
+
+    // Visitor session id → one persistent `support` thread per visitor, so the
+    // conversation is reviewable in Chat Control. Persistence is best-effort: a DB
+    // hiccup must never break the guest's chat, so every thread op is guarded.
+    const sid = String(req.body.sid || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
+    let thread = null, isNewThread = false;
+    if (sid) {
+      try {
+        const filt = { kind: 'support', 'context.module': 'support', 'context.refId': sid, status: 'active' };
+        thread = await db.collection('chat_threads').findOne(filt);
+        if (!thread) {
+          try { thread = await chat.createThread(db, { kind: 'support', title: 'Website visitor', context: { module: 'support', refId: sid } }); isNewThread = !!thread; }
+          catch (e) { if (e && e.code === 11000) thread = await db.collection('chat_threads').findOne(filt); else throw e; }
+        }
+        if (thread) {
+          const gmsg = await chat.postMessage(db, { threadId: thread._id, authorType: 'user', authorName: (thread.contact && thread.contact.name) || 'Visitor', role: 'user', body: text });
+          chatBroadcast(thread._id, 'chat:message', gmsg); // watching admins see the guest live
+          // A visitor just opened a conversation → flash whoever's on the panel.
+          if (isNewThread) adminAlert(tenant?.db, { kind: 'chat', title: 'New visitor chat', body: 'A visitor just started a chat on your site.', threadId: String(thread._id) });
+        }
+      } catch (e) { console.warn('[support-chat] persist skipped:', e.message); thread = null; }
+    }
+
+    // Honeypot: a flagged visitor gets no harvest, no AI, no alert — their probe is
+    // still shown to any watching admin (broadcast above), but the door is dead.
+    if (thread && thread.honeypot) return res.json({ ok: true, sid: sid || undefined });
+
+    // Chat-style contact harvest: if the visitor typed an email, capture the lead
+    // (name/phone too when present) → inquiry + stamps the thread. Once per thread.
+    let captured = null;
+    if (thread && !(thread.contact && thread.contact.capturedAt)) {
+      const found = harvestContact(text, messages);
+      if (found) {
+        try {
+          // Save the visitor's own words so far as their notes/needs, so the lead
+          // carries substance — not just an email.
+          const notes = messages.filter((m) => m && m.role === 'user')
+            .map((m) => String(m.content || '').trim()).filter(Boolean).join('  ·  ').slice(0, 2000);
+          await chat.saveContactSubmission(db, { thread, values: { name: found.name || 'Website visitor', phone: found.phone, email: found.email }, notes, tenantDomain: tenant?.domain || '' });
+          found.notes = notes;
+          captured = found;
+          if (found.name) { try { await db.collection('chat_threads').updateOne({ _id: thread._id }, { $set: { title: found.name.slice(0, 120) } }); } catch { /* non-fatal */ } }
+          // Data / CTA from the visitor → in-panel flash for whoever's on the panel.
+          adminAlert(tenant?.db, { kind: 'lead', title: 'New lead', body: (found.name || 'A visitor') + (found.email ? ' — ' + found.email : ''), threadId: String(thread._id) });
+        } catch (e) { console.warn('[support-chat] contact save:', e.message); }
+      }
+    }
+
+    // Human takeover: a staffer has the wheel — the guest message is persisted and
+    // shown to them; stand the AI down. Their replies reach the guest via the poll.
+    if (thread && thread.takeover && thread.takeover.active) {
+      if (captured) notifySupportLead({ tenant, thread, contact: captured }).catch(() => {});
+      return res.json({ ok: true, takeover: true, sid: sid || undefined });
+    }
+
+    // Always answer with a fresh, LLM-generated reply — NEVER a hardcoded line,
+    // including the post-contact acknowledgement. Memory comes from the persisted
+    // thread so the concierge recalls earlier answers and never re-asks.
+    let brand = '';
+    try { const { loadBrandContext } = await import('../plugins/brandContext.js'); brand = await loadBrandContext(tenant, db); } catch { /* non-fatal */ }
+    const bizName = tenant?.brand?.name || tenant?.domain || 'this business';
+    const alreadyHave = thread && thread.contact && thread.contact.capturedAt;
+    const contactHint = captured
+      ? `\nThe visitor JUST shared their contact details${captured.name ? ' (' + captured.name + ')' : ''}. Acknowledge it warmly and naturally IN YOUR OWN WORDS — never a templated phrase — let them know a real person will follow up, then keep helping with anything else. Don't ask for their contact again.`
+      : (alreadyHave ? `\nYou already have this visitor's contact details — do NOT ask again; just keep helping.` : '');
+    const isMadlads = /madlads/i.test(tenant?.domain || '') || /madlads/i.test(bizName);
+    const toneNote = isMadlads
+      ? `\nTone: anti-marketing and real — no hype, no buzzwords, no sales gloss. Being plainly an AI concierge is fine; if it comes up, own it honestly instead of pretending to be a person.`
+      : `\nIf a visitor asks, it's fine to be honest that you're an AI concierge — don't pretend to be a human.`;
+    const sys = `You are the support concierge for ${bizName}, helping a visitor on ${bizName}'s own website. Everyone here is a guest of ${bizName} — you already know this is ${bizName}'s site, so NEVER ask what business, company, or project they have. Have real personality and warmth — be genuinely curious, thoughtful, and a little creative; you are a concierge, not a form. Vary how you phrase things every time; never reuse a canned line.
+Track what the visitor tells you and BUILD on it: remember their answers, connect the dots, and give tailored, specific guidance. Never re-ask something they've already answered.
+You can also take down their notes, questions, and needs and SAVE them for the team — when it's useful, let the visitor know you can jot this down so nothing gets lost, and reassure them it's saved. Everything they share here is kept for ${bizName} to follow up on.
+Answer using ONLY the brand context below — never invent services, prices, hours, or policies; if you don't know, say so plainly and offer to have someone follow up. Keep each reply short and human — one or two sentences, the length of a real chat message; ask at most ONE question at a time.
+When it's something the team should follow up on (a quote, a booking, a question for a person), warmly ask for their name and email — but ask AT MOST ONCE. If they don't give it or decline, do NOT ask again and do NOT pressure them; gracefully keep helping. No coercion, no repeated asks, no hard upsell.${contactHint}${toneNote}
+You cannot take payments, book, or change anything; you only inform and guide.
+${sup.greeting ? 'Persona note: ' + sup.greeting + '\n' : ''}${brand}`.trim();
+
+    // Context from the persisted thread when we have one — the concierge's real
+    // memory. Falls back to the client-sent window if persistence was skipped.
+    let hist;
+    if (thread) {
+      const rows = await chat.listMessages(db, thread._id, { limit: 16 });
+      hist = rows.filter((m) => m.authorType !== 'system')
+        .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.body || '').slice(0, 1000) }));
+    } else {
+      hist = messages.map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 1000) }));
+    }
+    const { callLLM } = await import('../plugins/agentMcp.js');
+    // Tensor the concierge: warmer temperature for depth/creativity, capped tokens
+    // so it still reads like a chat message, not an essay.
+    const reply = await callLLM(hist.length ? hist : [{ role: 'user', content: text }], sys, 60000,
+      { tenant, engine: sup.engine, model: sup.model, temperature: 0.8, maxTokens: 320 });
+    // On an empty generation, surface an error so the widget shows Retry rather
+    // than a fabricated stock line.
+    if (!reply) return res.status(502).json({ ok: false, error: 'Chat is briefly unavailable.' });
+
+    if (thread) {
+      try {
+        const amsg = await chat.postMessage(db, { threadId: thread._id, authorType: 'agent', authorName: 'Support', role: 'assistant', body: reply, meta: { engine: sup.engine || 'house', source: 'ai' } });
+        chatBroadcast(thread._id, 'chat:message', amsg);
+      } catch { /* non-fatal */ }
+    }
+
+    // Data / CTA from the visitor → alert the tenant (email; the same socket room
+    // carries it in-panel when an admin is present).
+    if (captured && thread) { notifySupportLead({ tenant, thread, contact: captured }).catch(() => {}); }
+
+    // With a thread, the widget renders the reply via /support-poll (one source, so
+    // AI and human takeover look identical). Without one (persistence down), return
+    // it inline so the guest still gets an answer.
+    res.json({ ok: true, sid: sid || undefined, ...(thread ? {} : { reply }) });
+  } catch (err) {
+    console.error('[support-chat] error:', err.message);
+    res.status(500).json({ ok: false, error: 'Chat is briefly unavailable.' });
+  }
+});
+
+// Full conversation for the guest to REBUILD on reload (includes their own lines)
+// — this is what lets a quick refresh drop them back into the same chat.
+router.get('/support-history', supportPollLimiter, async (req, res) => {
+  try {
+    const db = req.db, tenant = req.tenant;
+    const { chatbotEnabled, listMessages } = await import('../plugins/chat.js');
+    if (!chatbotEnabled(tenant)) return res.json({ ok: false, messages: [] });
+    const sid = String(req.query.sid || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
+    if (!sid) return res.json({ ok: true, messages: [], takeover: false });
+    const thread = await db.collection('chat_threads').findOne(SUPPORT_THREAD_FILTER(sid));
+    if (!thread) return res.json({ ok: true, messages: [], takeover: false });
+    const rows = await listMessages(db, thread._id, { limit: 100 });
+    res.json({
+      ok: true, messages: rows.map(guestView).filter(Boolean),
+      takeover: !!(thread.takeover && thread.takeover.active),
+    });
+  } catch (err) { console.error('[support-history]', err.message); res.json({ ok: false, messages: [] }); }
+});
+
+// Live delivery: new INCOMING messages (AI, staff, join/leave notices) since a
+// cursor — never the visitor's own echoes. The widget polls this while open.
+router.get('/support-poll', supportPollLimiter, async (req, res) => {
+  try {
+    const db = req.db, tenant = req.tenant;
+    const { chatbotEnabled } = await import('../plugins/chat.js');
+    if (!chatbotEnabled(tenant)) return res.json({ ok: false, messages: [] });
+    const sid = String(req.query.sid || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
+    if (!sid) return res.json({ ok: true, messages: [] });
+    const thread = await db.collection('chat_threads').findOne(SUPPORT_THREAD_FILTER(sid));
+    if (!thread) return res.json({ ok: true, messages: [], takeover: false });
+    const after = req.query.after ? new Date(String(req.query.after)) : new Date(0);
+    const rows = await db.collection('chat_messages')
+      .find({ threadId: thread._id, createdAt: { $gt: isNaN(after) ? new Date(0) : after } })
+      .sort({ createdAt: 1 }).limit(50).toArray();
+    const messages = rows.map(guestView).filter(Boolean).filter((v) => v.kind !== 'me');
+    res.json({ ok: true, messages, takeover: !!(thread.takeover && thread.takeover.active) });
+  } catch (err) { console.error('[support-poll]', err.message); res.json({ ok: false, messages: [] }); }
+});
+
+// Lead capture from the support bubble → inquiries (same shape as the chat
+// contact-capture, so it shows in the admin Inquiries page).
+router.post('/support-inquiry', supportLimiter, async (req, res) => {
+  try {
+    const db = req.db, tenant = req.tenant;
+    const chat = await import('../plugins/chat.js');
+    if (!chat.chatbotEnabled(tenant)) return res.status(403).json({ ok: false });
+    const name = String(req.body.name || '').trim().slice(0, 120);
+    const email = String(req.body.email || '').trim().toLowerCase().slice(0, 160);
+    const message = String(req.body.message || '').trim().slice(0, 2000);
+    if (!/.+@.+\..+/.test(email)) return res.status(400).json({ ok: false, error: 'A valid email is required.' });
+    const sid = String(req.body.sid || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
+
+    // Prefer stamping the visitor's own thread — so the lead shows inside the
+    // reviewable conversation — and fall back to a plain inquiry insert.
+    let thread = null;
+    if (sid) { try { thread = await db.collection('chat_threads').findOne({ kind: 'support', 'context.module': 'support', 'context.refId': sid, status: 'active' }); } catch { /* non-fatal */ } }
+    if (thread && !(thread.contact && thread.contact.capturedAt)) {
+      try {
+        if (message) { try { await chat.postMessage(db, { threadId: thread._id, authorType: 'user', authorName: name || 'Visitor', role: 'user', body: message }); } catch { /* non-fatal */ } }
+        await chat.saveContactSubmission(db, { thread, values: { name: name || 'Website visitor', email, phone: '' }, tenantDomain: tenant?.domain || '' });
+        if (name) { try { await db.collection('chat_threads').updateOne({ _id: thread._id }, { $set: { title: name.slice(0, 120) } }); } catch { /* non-fatal */ } }
+        notifySupportLead({ tenant, thread, contact: { name: name || 'Website visitor', email, phone: '' } }).catch(() => {});
+        adminAlert(tenant?.db, { kind: 'lead', title: 'New lead', body: (name || 'A visitor') + (email ? ' — ' + email : ''), threadId: String(thread._id) });
+        return res.json({ ok: true });
+      } catch (e) { console.warn('[support-inquiry] thread stamp failed:', e.message); }
+    }
+    await db.collection('inquiries').insertOne({
+      name: name || '(via support chat)', email, company: '', service: '',
+      message: message || 'Left contact via the support bubble.',
+      customFields: {}, tenantDomain: tenant?.domain || '', source: 'support-chat',
+      createdAt: new Date(),
+    });
+    notifySupportLead({ tenant, thread: null, contact: { name: name || 'Website visitor', email, phone: '' } }).catch(() => {});
+    adminAlert(tenant?.db, { kind: 'lead', title: 'New lead', body: (name || 'A visitor') + (email ? ' — ' + email : '') });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[support-inquiry] error:', err.message);
+    res.status(500).json({ ok: false });
+  }
+});
+
 router.post('/contact', async (req, res) => {
   try {
     const db = req.db;
@@ -1234,8 +1564,25 @@ router.get('/api/footer-social', async (req, res) => {
   } catch { res.json({ links: [] }); }
 });
 
+// Front-end error sink — the browser posts uncaught JS errors here (see
+// public/js/errorReporter.js). Public + unauthenticated (errors happen on public
+// tenant sites too), rate-limited to blunt abuse, always 204 so the reporter
+// never retries or surfaces anything to the visitor.
+const clientErrorLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 30, standardHeaders: false, legacyHeaders: false,
+  handler: (req, res) => res.status(204).end(),
+});
+router.post('/api/client-error', clientErrorLimiter, express.json({ limit: '16kb' }), (req, res) => {
+  recordClientError(req.body || {}, req);
+  res.status(204).end();
+});
+
 // Dynamic pages — must be last
 router.get('/:slug', async (req, res, next) => {
+  // No tenant db (scanner/probe traffic, unresolved host, or a tenant DB that's
+  // momentarily unavailable) → there is no page to serve. Skip straight to 404
+  // instead of throwing on db.collection and dumping a stack trace per hit.
+  if (!req.db) return next();
   try {
     const db = req.db;
     const [pg, design, logos] = await Promise.all([
@@ -1275,28 +1622,53 @@ router.get('/:slug', async (req, res, next) => {
       }],
     });
 
-    // Data-list pages: fetch paginated collection
-    if (pg.pageType === 'data-list') {
-      const ALLOWED = ['blog', 'portfolio'];
-      const col     = ALLOWED.includes(pg.dataCollection) ? pg.dataCollection : 'blog';
-      const perPage = Math.min(Math.max(parseInt(pg.dataPageSize) || 9, 1), 100);
-      const p       = Math.max(1, parseInt(req.query.p) || 1);
-      const skip    = (p - 1) * perPage;
-      // Portfolio items don't have a draft workflow — treat anything not explicitly drafted as visible.
-      // Blog posts do have draft/published, so keep the strict filter there.
-      const query   = col === 'portfolio'
-        ? { status: { $ne: 'draft' } }
-        : { status: 'published', contentType: { $in: ['blog', null] } };
-      if (col === 'portfolio' && pg.dataGroup) query.group = pg.dataGroup;
-      const [total, items] = await Promise.all([
-        db.collection(col).countDocuments(query),
-        db.collection(col).find(query).sort({ publishedAt: -1, createdAt: -1 }).skip(skip).limit(perPage).toArray(),
-      ]);
-      const totalPages = Math.ceil(total / perPage);
-      return res.render('page', { pg, design, logos, items, p, totalPages, perPage, col, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
+    // Unified render: a page is always a block stack. Legacy content/data-list
+    // pages are migrated in memory so there is one render path. applyPipes (above)
+    // already resolved {{ }} in html-block text; hydrate data BELOW that so items'
+    // Date/ObjectId values never reach the pipe scanner.
+    pg.blocks = synthesizeLegacyBlocks(pg);
+
+    // Build a query-string helper the view uses for pagination links: clone the
+    // full query, override one param, drop empties — so paginating one datalist
+    // block preserves every OTHER block's page.
+    const pageHref = (param, value) => {
+      const q = { ...req.query, [param]: value };
+      const qs = Object.entries(q)
+        .filter(([, v]) => v !== '' && v != null)
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join('&');
+      return qs ? `?${qs}` : '?';
+    };
+
+    // Hydrate every datalist block. Multiple lists paginate independently: the
+    // first uses ?p= (preserves existing bookmarks), the rest ?p2=, ?p3=, …
+    const portfolioModalItems = [];
+    let datalistOrdinal = 0;
+    for (const block of pg.blocks) {
+      if (!block || block.type !== 'datalist') continue;
+      const f = block.fields || {};
+      const paginate = f.paginate === 'true' || f.paginate === true;
+      const pageParam = datalistOrdinal === 0 ? 'p' : `p${datalistOrdinal + 1}`;
+      datalistOrdinal++;
+      const perPage = Math.min(Math.max(parseInt(f.pageSize) || 9, 1), 100);
+      const p = paginate ? Math.max(1, parseInt(req.query[pageParam]) || 1) : 1;
+      try {
+        const { items, total, source } = await runSource(db, f.source, { page: p, perPage, group: f.group || '' });
+        const totalPages = paginate ? Math.ceil(total / perPage) : 1;
+        block._data = { items, p, totalPages, perPage, source, pageParam, paginate, kind: items[0]?.kind || 'link' };
+        for (const it of items) if (it.kind === 'modal') portfolioModalItems.push(it.raw);
+      } catch (e) {
+        console.warn('[pages] datalist hydrate failed:', e.message);
+        block._data = { items: [], p: 1, totalPages: 1, perPage, source: f.source, pageParam, paginate, kind: 'link' };
+      }
     }
 
-    res.render('page', { pg, design, logos, items: null, p: 1, totalPages: 1, perPage: 9, col: null, visibility: buildVisibility(design), centralAuthUrl: config.DOMAIN + '/auth/login' });
+    res.render('page', {
+      pg, design, logos,
+      pageHref, portfolioModalItems,
+      visibility: buildVisibility(design),
+      centralAuthUrl: config.DOMAIN + '/auth/login',
+    });
   } catch (err) {
     console.error(err);
     next();

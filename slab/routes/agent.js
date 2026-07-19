@@ -37,7 +37,10 @@ router.get('/suggestions', (req, res) => {
   try {
     const { audience, ctx } = audienceFromReq(req);
     const brand = req.tenant?.brand || {};
-    res.json({ ok: true, audience, suggestions: suggestionsFor(audience, brand, ctx, 4) });
+    // The ✦ modal passes the module it's scoped to (view/active tab) so chips come
+    // from the agent in focus. Returns a fresh shuffle each call → recycling varies.
+    const module = req.query.module ? String(req.query.module).slice(0, 40) : null;
+    res.json({ ok: true, audience, module, suggestions: suggestionsFor(audience, brand, ctx, 6, module) });
   } catch {
     res.json({ ok: false, suggestions: [] });
   }

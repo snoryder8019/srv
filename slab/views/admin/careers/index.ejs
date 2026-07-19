@@ -1,0 +1,78 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Careers</div>
+  <div class="topbar-actions">
+    <a href="/admin/careers/connectors" class="btn btn-ghost">Connectors</a>
+    <a href="/admin/careers/applications" class="btn btn-ghost">Applications</a>
+    <a href="/admin/careers/new" class="btn btn-navy">+ New Posting</a>
+  </div>
+</div>
+<div class="content">
+
+  <% if (msg === 'created') { %><div class="alert alert-success">Posting created.</div><% } %>
+  <% if (msg === 'updated') { %><div class="alert alert-success">Posting updated.</div><% } %>
+  <% if (msg === 'deleted') { %><div class="alert alert-success">Posting deleted.</div><% } %>
+  <% if (msg === 'published') { %><div class="alert alert-success">Posting is now open.</div><% } %>
+  <% if (msg === 'closed') { %><div class="alert alert-success">Posting closed.</div><% } %>
+  <% if (err) { %><div class="alert alert-error">Something went wrong. Please try again.</div><% } %>
+
+  <% if (!jobs || jobs.length === 0) { %>
+    <div class="empty">
+      <div class="empty-icon">✎</div>
+      <p>No postings yet. Create your first job opening to start receiving applicants.</p>
+      <div style="margin-top:20px;"><a href="/admin/careers/new" class="btn btn-navy">Create Posting</a></div>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Department</th>
+            <th>Location</th>
+            <th>Status</th>
+            <th>Applicants</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% jobs.forEach(function(j) { %>
+            <tr>
+              <td><a href="/admin/careers/<%= j._id %>/edit"><strong><%= j.title %></strong></a></td>
+              <td><%= j.department || '—' %></td>
+              <td><%= j.location || (j.remote ? 'Remote' : '—') %><%= (j.remote && j.location) ? ' · Remote' : '' %></td>
+              <td>
+                <% if (j.status === 'open') { %>
+                  <span class="badge badge-success">Open</span>
+                <% } else { %>
+                  <span class="badge">Draft</span>
+                <% } %>
+              </td>
+              <td>
+                <a href="/admin/careers/applications?job=<%= j._id %>">
+                  <%= j.appCount.total %><% if (j.appCount.open) { %> <span style="opacity:.6;">(<%= j.appCount.open %> open)</span><% } %>
+                </a>
+              </td>
+              <td style="text-align:right;white-space:nowrap;">
+                <% if (j.status === 'open') { %>
+                  <button type="button" class="btn btn-sm btn-ghost" title="Share / cross-post to LinkedIn & channels"
+                    onclick="shareAdminContent('jobs', '<%= j._id %>', { title: <%= JSON.stringify(j.title) %>, crossPost: true })">⤴ Share</button>
+                <% } %>
+                <form data-guard="button" action="/admin/careers/<%= j._id %>/publish" method="post" style="display:inline;">
+                  <button type="submit" class="btn btn-sm btn-ghost"><%= j.status === 'open' ? 'Close' : 'Open' %></button>
+                </form>
+                <a href="/admin/careers/<%= j._id %>/edit" class="btn btn-sm btn-ghost">Edit</a>
+                <form data-guard="button" action="/admin/careers/<%= j._id %>/delete" method="post" style="display:inline;" onsubmit="return confirm('Delete this posting? Applications are kept.');">
+                  <button type="submit" class="btn btn-sm btn-ghost">Delete</button>
+                </form>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+<%- include('../../partials/_share-modal') %>

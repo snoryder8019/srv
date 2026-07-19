@@ -34,24 +34,15 @@
       ones usable as soon as the domain name is set. The toggle is a client-side
       preference (localStorage) — it changes what's shown, not what's permitted.
     %>
-    <div class="nav-advanced-toggle">
-      <label class="adv-switch">
-        <input type="checkbox" id="advancedToggle">
-        <span class="adv-switch-track"><span class="adv-switch-thumb"></span></span>
-        <span class="adv-switch-label">Advanced</span>
-      </label>
-    </div>
-    <% (typeof navGroups !== 'undefined' ? navGroups : []).forEach(function(group) {
-         var _adv = group.items.filter(function(f){ return f.advanced; }).length;
-    %>
-      <div class="nav-group"<%- (_adv === group.items.length) ? ' data-advanced="1"' : '' %>>
+    <% (typeof navGroups !== 'undefined' ? navGroups : []).forEach(function(group) { %>
+      <div class="nav-group">
       <span class="sidebar-section"><%= group.section %></span>
       <% group.items.forEach(function(f) { %>
-        <a href="<%= f.url %>"<%- f.advanced ? ' data-advanced="1"' : '' %> class="<%= (typeof page !== 'undefined' && page === f.page) ? 'active' : '' %>">
+        <a href="<%= f.url %>" class="<%= (typeof page !== 'undefined' && page === f.page) ? 'active' : '' %>">
           <span class="icon"><%- f.icon %></span> <%= f.label %><% if (f._badge === 'beta') { %><span style="margin-left:6px;font-size:0.55rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;background:rgba(52,211,153,0.18);color:#34d399;padding:1px 5px;border-radius:3px;vertical-align:middle;">beta</span><% } else if (f._badge === 'experimental') { %><span style="margin-left:6px;font-size:0.55rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;background:rgba(201,168,72,0.18);color:var(--gold-light,#e0c26a);padding:1px 5px;border-radius:3px;vertical-align:middle;">exp</span><% } %>
         </a>
         <% (f.subItems || []).forEach(function(s) { %>
-        <a href="<%= s.url %>"<%- f.advanced ? ' data-advanced="1"' : '' %> class="<%= (typeof page !== 'undefined' && page === s.page) ? 'active' : '' %>" style="padding-left:34px;font-size:0.78rem;">
+        <a href="<%= s.url %>" class="<%= (typeof page !== 'undefined' && page === s.page) ? 'active' : '' %>" style="padding-left:34px;font-size:0.78rem;">
           <span class="icon"><%- s.icon %></span> <%= s.label %>
         </a>
         <% }); %>
@@ -117,40 +108,6 @@
       if (window.innerWidth <= 820) close();
     });
   });
-
-  // ── Advanced toggle ──
-  // Hides features flagged `advanced` in the registry until the viewer opts in.
-  // Preference is per-browser (localStorage). A section whose items are all
-  // advanced collapses entirely when off.
-  (function() {
-    var nav = document.getElementById('sidebarNav');
-    var chk = document.getElementById('advancedToggle');
-    if (!nav || !chk) return;
-    var KEY = 'slab.sidebar.advanced';
-
-    function apply(on) {
-      nav.classList.toggle('advanced-on', on);
-    }
-
-    // Default off; but if the page the viewer is currently on is an advanced
-    // feature, force it on so the active item never vanishes.
-    var stored = localStorage.getItem(KEY) === '1';
-    var onActiveAdvanced = !!nav.querySelector('a.active[data-advanced]');
-    var on = stored || onActiveAdvanced;
-    chk.checked = on;
-    apply(on);
-
-    // Enable transitions only after the initial state is painted, so toggling
-    // animates but page load doesn't.
-    requestAnimationFrame(function() {
-      requestAnimationFrame(function() { nav.classList.add('nav-anim'); });
-    });
-
-    chk.addEventListener('change', function() {
-      apply(chk.checked);
-      localStorage.setItem(KEY, chk.checked ? '1' : '0');
-    });
-  })();
 
   // ── Slab Switcher ──
   var switcherBtn = document.getElementById('slabSwitcherBtn');

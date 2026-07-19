@@ -19,6 +19,7 @@ import {
 } from '../../plugins/printConfig.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import { callLLM, webSearch, tryParseAgentResponse, generateSdImage } from '../../plugins/agentMcp.js';
+import { agentLLMOpts } from '../../plugins/agentRegistry.js';
 import { relativeLuminance } from '../../plugins/colorContrast.js';
 import { htmlToPdf, htmlToPng, htmlToBatch } from '../../plugins/headless.js';
 import { renderStyledQRDataUrl } from '../../plugins/qrStyle.js';
@@ -448,7 +449,7 @@ Only include fields you set. If just chatting, use "fill": {}.
 Fields you may set:
 ${allowed.map((k) => `- ${k}: ${guide[k]}`).join('\n')}
 ${currentCtx}${researchCtx}`;
-    const parsed = tryParseAgentResponse(await callLLM(messages, systemPrompt));
+    const parsed = tryParseAgentResponse(await callLLM(messages, systemPrompt, 90000, await agentLLMOpts(req.db, req.tenant, 'print')));
     if (parsed.fill) for (const k of Object.keys(parsed.fill)) if (!allowed.includes(k)) delete parsed.fill[k];
     res.json(parsed);
   } catch (err) { console.error('[PrintStudio] agent error:', err); res.status(500).json({ error: 'Agent error: ' + err.message }); }

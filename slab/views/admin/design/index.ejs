@@ -374,7 +374,7 @@
 
 <%# ═══════════ LEFT PANEL — FORM ═══════════ %>
 <div class="editor-panel">
-<form method="POST" action="/admin/design" id="designForm">
+<form method="POST" action="/admin/design" id="designForm" data-guard data-guard-label="Saving">
 
 <div style="padding:10px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;">
   <a href="/admin" style="font-size:0.72rem;color:var(--slate);text-decoration:none;">&larr; Admin</a>
@@ -388,9 +388,9 @@
 <div class="dp-tabs-wrap" id="dpTabsWrap">
   <button type="button" class="dp-tab-nav dp-tab-nav-l" aria-label="Scroll tabs left" tabindex="-1" onclick="dpScrollTabs(-1)">‹</button>
   <div class="dp-tabs" id="dpTabs">
-    <button type="button" class="dp-tab" data-tab="design"    onclick="dpSwitch('design')"><span class="ico">◑</span>Design</button>
-    <button type="button" class="dp-tab" data-tab="copy"      onclick="dpSwitch('copy')"><span class="ico">¶</span>Content</button>
-    <button type="button" class="dp-tab" data-tab="source"    onclick="dpSwitch('source')"><span class="ico">◐</span>Layout</button>
+    <button type="button" class="dp-tab" data-tab="design"    onclick="dpSwitch('design')" data-agent-scope="design" data-agent-kind="design" data-agent-title="Design Agent" data-agent-suggest="Switch to a modern, high-contrast palette|Suggest a font pairing that fits us|Make the accents feel more premium|Improve mobile readability"><span class="ico">◑</span>Design</button>
+    <button type="button" class="dp-tab" data-tab="copy"      onclick="dpSwitch('copy')" data-agent-scope="copy" data-agent-kind="design" data-agent-title="Content Agent" data-agent-suggest="Refresh the homepage hero copy|Sharpen our value proposition|Rewrite the About blurb in our voice|Punch up the primary CTA"><span class="ico">¶</span>Content</button>
+    <button type="button" class="dp-tab" data-tab="source"    onclick="dpSwitch('source')" data-agent-scope="layout" data-agent-kind="design" data-agent-title="Layout Agent" data-agent-suggest="Reorder the sections for conversions|Toggle which sections show on the home|Add a testimonials section|Suggest the best section order"><span class="ico">◐</span>Layout</button>
   </div>
   <button type="button" class="dp-tab-nav dp-tab-nav-r" aria-label="Scroll tabs right" tabindex="-1" onclick="dpScrollTabs(1)">›</button>
 </div>
@@ -3046,14 +3046,14 @@
 
 <%# ─── Standalone forms for inline controls (HTML5 disallows nested <form>). ─── %>
 <%# Each form is `hidden` and zero-size; its submit is triggered by buttons elsewhere via the `form` attribute. %>
-<form id="link-create" action="/admin/design/links" method="POST" hidden></form>
+<form id="link-create" action="/admin/design/links" method="POST" data-guard="button" hidden></form>
 <% (navLinks || []).forEach(function(l) { %>
-  <form id="link-edit-<%= l._id %>" action="/admin/design/links" method="POST" hidden></form>
-  <form id="link-delete-<%= l._id %>" action="/admin/design/links/<%= l._id %>/delete" method="POST" hidden></form>
+  <form id="link-edit-<%= l._id %>" action="/admin/design/links" method="POST" data-guard="button" hidden></form>
+  <form id="link-delete-<%= l._id %>" action="/admin/design/links/<%= l._id %>/delete" method="POST" data-guard="button" hidden></form>
 <% }); %>
 <% (templates || []).forEach(function(tpl) { %>
-  <form id="tpl-act-<%= tpl._id %>"   action="/admin/templates/<%= tpl._id %>/activate"   method="POST" hidden></form>
-  <form id="tpl-deact-<%= tpl._id %>" action="/admin/templates/<%= tpl._id %>/deactivate" method="POST" hidden></form>
+  <form id="tpl-act-<%= tpl._id %>"   action="/admin/templates/<%= tpl._id %>/activate"   method="POST" data-guard="button" hidden></form>
+  <form id="tpl-deact-<%= tpl._id %>" action="/admin/templates/<%= tpl._id %>/deactivate" method="POST" data-guard="button" hidden></form>
 <% }); %>
 
 <%# ─── 14. LOGOS & BRAND IMAGES ─── %>
@@ -3091,14 +3091,14 @@
               <span style="font-size:0.62rem;color:var(--slate);">No image uploaded</span>
             <% } %>
           </div>
-          <form method="POST" action="/admin/design/images" enctype="multipart/form-data" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+          <form method="POST" action="/admin/design/images" enctype="multipart/form-data" data-guard="button" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
             <input type="hidden" name="slot" value="<%= ls.slot %>">
             <input type="hidden" name="label" value="<%= ls.label %>">
             <input type="file" name="image" accept="image/*" required style="font-size:0.62rem;flex:1;min-width:0;">
             <button type="submit" class="btn btn-navy btn-sm" style="font-size:0.62rem;padding:4px 10px;"><%= existing ? 'Replace' : 'Upload' %></button>
           </form>
           <% if (existing) { %>
-            <form method="POST" action="/admin/design/images/<%= existing._id %>/delete" style="margin:0;" onsubmit="return confirm('Remove this <%= ls.label %>?');">
+            <form method="POST" action="/admin/design/images/<%= existing._id %>/delete" data-guard="button" style="margin:0;" onsubmit="return confirm('Remove this <%= ls.label %>?');">
               <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.58rem;padding:2px 6px;color:var(--slate);">Remove</button>
             </form>
           <% } %>
@@ -3137,7 +3137,7 @@
       <% const existing = brandModels.find(m => m.slot === ms.slot); %>
       <div style="margin-bottom:8px;">
         <div style="font-size:0.68rem;color:var(--on-surface);margin-bottom:4px;"><%= ms.label %> <% if (existing) { %><span style="color:var(--success);font-size:0.6rem;">uploaded</span><% } %></div>
-        <form method="POST" action="/admin/design/models" enctype="multipart/form-data" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+        <form method="POST" action="/admin/design/models" enctype="multipart/form-data" data-guard="button" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
           <input type="hidden" name="slot" value="<%= ms.slot %>">
           <input type="hidden" name="label" value="<%= ms.label %>">
           <input type="file" name="model" accept=".glb,.gltf" required style="font-size:0.65rem;max-width:160px;">
@@ -3178,10 +3178,10 @@
           <div class="theme-card-name"><%= t.name %></div>
           <div class="theme-card-meta"><%= t.settings.font_heading || 'Default' %> / <%= t.settings.font_body || 'Default' %> &middot; <%= new Date(t.createdAt).toLocaleDateString() %></div>
           <div class="theme-card-actions">
-            <form method="POST" action="/admin/design/themes/<%= t._id %>/apply" style="display:inline;">
+            <form method="POST" action="/admin/design/themes/<%= t._id %>/apply" data-guard="button" style="display:inline;">
               <button type="submit" class="btn btn-navy btn-sm" style="font-size:0.58rem;padding:3px 8px;" onclick="return confirm('Apply this theme?')">Apply</button>
             </form>
-            <form method="POST" action="/admin/design/themes/<%= t._id %>/delete" style="display:inline;" onsubmit="return confirm('Delete?')">
+            <form method="POST" action="/admin/design/themes/<%= t._id %>/delete" data-guard="button" style="display:inline;" onsubmit="return confirm('Delete?')">
               <button type="submit" class="btn btn-danger btn-sm" style="font-size:0.58rem;padding:3px 8px;">Del</button>
             </form>
           </div>
@@ -3482,7 +3482,7 @@ async function csSave(id, btn) {
     btn.textContent = '✓ Saved'; setTimeout(function() { btn.textContent = prev; btn.disabled = false; }, 1200);
     // Re-render the live preview so the new section content is visible
     previewReload();
-  } catch (e) { btn.textContent = '✕ Failed'; btn.disabled = false; alert('Save failed: ' + e.message); }
+  } catch (e) { btn.textContent = '✕ Failed'; btn.disabled = false; SlabFlash.error('Save failed: ' + e.message); }
 }
 async function csDelete(id, btn) {
   if (!confirm('Delete this section permanently?')) return;
@@ -3491,7 +3491,7 @@ async function csDelete(id, btn) {
     var r = await fetch('/admin/sections/custom/' + id, { method: 'DELETE' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     location.reload();
-  } catch (e) { btn.disabled = false; alert('Delete failed: ' + e.message); }
+  } catch (e) { btn.disabled = false; SlabFlash.error('Delete failed: ' + e.message); }
 }
 async function csCreate(btn) {
   var type = document.getElementById('cs-new-type').value;
@@ -3525,7 +3525,7 @@ async function csMove(id, dir) {
   try {
     await fetch('/admin/sections/custom/reorder', { method: 'POST', body: fd });
     previewReload();
-  } catch (e) { alert('Reorder save failed: ' + e.message); }
+  } catch (e) { SlabFlash.error('Reorder save failed: ' + e.message); }
 }
 async function csToggleVisible(id, btn) {
   var nowVisible = btn.dataset.visible !== 'true'; // flip
@@ -3542,7 +3542,7 @@ async function csToggleVisible(id, btn) {
     btn.style.color = nowVisible ? 'var(--navy)' : 'var(--slate)';
     btn.title = nowVisible ? 'Hide section' : 'Show section';
     previewReload();
-  } catch (e) { alert('Visibility update failed: ' + e.message); }
+  } catch (e) { SlabFlash.error('Visibility update failed: ' + e.message); }
 }
 
 // ── Header & Footer sub-tabs ──
@@ -4301,7 +4301,7 @@ function toggleModel(key, enabled) {
 // ── Save theme via fetch (avoids nested form issue) ──
 function saveTheme() {
   var name = document.getElementById('themeNameInput').value.trim();
-  if (!name) { alert('Enter a theme name'); return; }
+  if (!name) { SlabFlash.error('Enter a theme name'); return; }
   var form = document.createElement('form');
   form.method = 'POST';
   form.action = '/admin/design/themes';
@@ -4526,7 +4526,7 @@ function saveTheme() {
 
   function pick(type) {
     if (typeof window.openAssetPicker !== 'function') {
-      alert('Asset picker not loaded');
+      SlabFlash.error('Asset picker not loaded');
       return;
     }
     window.openAssetPicker({

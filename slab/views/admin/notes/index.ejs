@@ -379,10 +379,70 @@ const CLIENTS = <%- JSON.stringify(clients.map(c=>({id:String(c._id), name:c.nam
 function wordCount(t) { return (t||'').trim().split(/\s+/).filter(Boolean).length; }
 
 // ── Voice Recording (hold to record) ─────────────────────────────────────────
-let recFinalText     = ''; // accumulated confirmed words — never wiped on restart
+let recBaseText      = ''; // confirmed words from previous (ended) sessions + seed — committed once each
+let recSessionFinal  = ''; // finals for the CURRENT recognition session; rebuilt idempotently each onresult
 let recStopping      = false;
 let recFinalizing    = false; // released, waiting for the engine to flush its final buffer
 let recFinalizeTimer = null;  // safety net if onend never fires
+
+// Merge `add` onto `base`, collapsing any overlap where the tail of base repeats
+// the head of add. This is what kills STT duplication in both places it happens:
+//  • Android Chrome re-emits CUMULATIVE finals within one session ("I went" then
+//    "I went home" then "I went home now") — folding collapses the shared prefix.
+//  • Desktop restarts re-recognise the tail audio at the pause seam.
+// minK (default 2 words) guards against eating a genuine short repeat like "no no".
+function foldOverlap(base, add, minK) {
+  add  = (add  || '').trim();
+  base = (base || '').trim();
+  if (!add)  return base;
+  if (!base) return add;
+  const b = base.split(/\s+/);
+  const a = add.split(/\s+/);
+  const floor = minK || 2;
+  let overlap = 0;
+  const maxK = Math.min(b.length, a.length, 15);
+  for (let k = maxK; k >= floor; k--) {
+    if (b.slice(b.length - k).join(' ').toLowerCase() === a.slice(0, k).join(' ').toLowerCase()) { overlap = k; break; }
+  }
+  const kept = a.slice(overlap).join(' ');
+  return kept ? base + ' ' + kept : base;
+}
+
+// Fold the current recognition session's finalized words into recBaseText once,
+// collapsing any seam overlap the restarted engine re-recognises.
+function commitSession() {
+  const add = recSessionFinal.trim();
+  recSessionFinal = '';
+  if (!add) return;
+  recBaseText = foldOverlap(recBaseText, add);
+}
+
+// Authoritative whole-text dedup net. Rebuilds the text left-to-right and drops any
+// incoming run of >=2 words that exactly repeats the run just emitted. This catches
+// what the incremental fold can miss — e.g. Android's overlapping cumulative finals
+// "i went home i went home now" -> "i went home now", and plain block repeats
+// "hello world hello world" -> "hello world" — without eating a genuine single-word
+// repeat like "no no" (>=2 words required to collapse). Comparison ignores case and
+// punctuation so revised trailing punctuation doesn't defeat the match.
+function collapseRepeats(text) {
+  const words = (text || '').split(/\s+/).filter(Boolean);
+  const norm  = w => w.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  const out = [], outN = [];
+  for (let i = 0; i < words.length; ) {
+    const maxK = Math.min(outN.length, words.length - i);
+    let skip = 0;
+    for (let k = maxK; k >= 2; k--) {
+      let match = true;
+      for (let j = 0; j < k; j++) {
+        if (outN[outN.length - k + j] !== norm(words[i + j])) { match = false; break; }
+      }
+      if (match) { skip = k; break; }
+    }
+    if (skip) { i += skip; continue; }        // incoming run duplicates the tail — drop it
+    out.push(words[i]); outN.push(norm(words[i])); i++;
+  }
+  return out.join(' ');
+}
 
 function startRec(e) {
   // Prevent hold triggering twice on touch+mouse devices
@@ -393,8 +453,8 @@ function startRec(e) {
   if (!SR) { alert('Speech recognition needs Chrome or Edge. You can still type your note directly.'); return; }
 
   // Seed once from whatever is already typed
-  if (!recFinalText) recFinalText = document.getElementById('recText').value.trimEnd();
-  if (recFinalText) recFinalText += ' ';
+  if (!recBaseText && !recSessionFinal) recBaseText = document.getElementById('recText').value.trim();
+  recSessionFinal = '';
   recStopping   = false;
   recFinalizing = false;
 
@@ -405,15 +465,23 @@ function startRec(e) {
     r.lang           = 'en-US';
 
     r.onresult = e => {
-      // Confirmed words accumulate into recFinalText exactly once; the still-forming
-      // phrase is shown as transient interim text and never stored (no duplication).
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      // Rebuild THIS session's text from the full results list every event (idempotent)
+      // rather than appending by resultIndex — so no result can ever be counted twice.
+      // Confirmed words from earlier sessions live in recBaseText; the still-forming
+      // phrase is shown as transient interim text and never stored.
+      let sessionFinal = '';
+      let interim      = '';
+      for (let i = 0; i < e.results.length; i++) {
         const res = e.results[i];
-        if (res.isFinal) recFinalText += res[0].transcript.trim() + ' ';
-        else             interim      += res[0].transcript;
+        // fold each final onto the running session text so Android's cumulative
+        // finals ("I went" → "I went home") collapse instead of concatenating.
+        if (res.isFinal) sessionFinal = foldOverlap(sessionFinal, res[0].transcript);
+        else             interim     += res[0].transcript;
       }
-      document.getElementById('recText').value = (recFinalText + interim).trimStart();
+      recSessionFinal = sessionFinal.trim();
+      // Collapse the confirmed text; leave the still-forming interim raw (it's transient).
+      const committed = collapseRepeats([recBaseText, recSessionFinal].map(s => (s || '').trim()).filter(Boolean).join(' '));
+      document.getElementById('recText').value = [committed, interim.trim()].filter(Boolean).join(' ');
     };
 
     r.onerror = e => {
@@ -426,8 +494,10 @@ function startRec(e) {
     };
 
     r.onend = () => {
-      // Auto-end mid-hold (e.g. after silence) — restart to keep listening
+      // Auto-end mid-hold (e.g. after silence) — commit this session's finals (with
+      // seam-overlap dedup), then restart a fresh session to keep listening.
       if (!recStopping) {
+        commitSession();
         try { recognition = attach(); recognition.start(); } catch(_) {}
         return;
       }
@@ -493,12 +563,14 @@ function finalizeRec() {
   btn.textContent = currentId ? '🎙 Hold to Add More' : '🎙 Hold to Record';
 
   recSecs = 0;
-  const transcript = recFinalText.trim();
+  commitSession();             // fold the last session's finals in (with seam dedup)
+  const transcript = collapseRepeats(recBaseText).trim(); // authoritative whole-text dedup
   const ta = document.getElementById('recText');
   ta.value = '';               // clear so the next hold doesn't re-seed saved text
   ta.style.display = 'none';
   document.getElementById('recTimer').textContent = '';
-  recFinalText = '';
+  recBaseText = '';
+  recSessionFinal = '';
   if (transcript) saveFromTranscript(transcript);
 }
 
@@ -512,7 +584,8 @@ function clearRec() {
   clearInterval(recTimer);
   recTimer = null;
   recSecs = 0;
-  recFinalText = '';
+  recBaseText = '';
+  recSessionFinal = '';
   const btn = document.getElementById('recBtn');
   if (window.SlabLoader) SlabLoader.button(btn, false);
   document.getElementById('recText').value = '';

@@ -87,7 +87,7 @@
     <% const activeTags = tenant.tags || []; %>
     <% for (const [slug, def] of Object.entries(tagDefs)) { %>
       <% const isOn = activeTags.includes(slug); %>
-      <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/tags" style="display:inline;">
+      <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/tags" data-guard="button" style="display:inline;">
         <input type="hidden" name="tag" value="<%= slug %>">
         <input type="hidden" name="action" value="<%= isOn ? 'remove' : 'add' %>">
         <button type="submit" class="tag-toggle<%= isOn ? ' on' : '' %>"
@@ -125,7 +125,7 @@
   <!-- Actions -->
   <div class="section-title">Actions</div>
   <div class="actions-bar" style="margin-bottom:24px;">
-    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/impersonate" style="display:inline;">
+    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/impersonate" data-guard="button" style="display:inline;">
       <button type="submit" class="btn btn-gold">Login as Admin ↗</button>
     </form>
     <a href="https://<%= tenant.domain %>" target="_blank" class="btn btn-ghost">View Site ↗</a>
@@ -136,29 +136,33 @@
   <div class="section-title">Plan Management</div>
   <div class="actions-bar" style="margin-bottom:24px;">
     <% if (tenant.status !== 'active') { %>
-    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/activate" class="action-form">
+    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/activate" class="action-form" data-guard data-guard-label="Activating">
       <select name="plan" class="super-select">
+        <option value="trial">Free Trial (14 days)</option>
         <option value="30day">30-Day Trial</option>
         <option value="120day">120-Day Promo</option>
-        <option value="monthly">Monthly ($50/mo)</option>
-        <option value="annual">Annual</option>
-        <option value="lifetime">Lifetime</option>
+        <option value="monthly">Monthly ($39.95/mo)</option>
+        <option value="quarterly">Quarterly ($110.26/qtr)</option>
+        <option value="annual">Annual ($431.46/yr)</option>
+        <option value="lifetime">Lifetime ($2,500 — failsafe)</option>
       </select>
       <button type="submit" class="btn btn-navy btn-sm">Activate</button>
     </form>
     <% } else { %>
-    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/change-plan" class="action-form">
+    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/change-plan" class="action-form" data-guard data-guard-label="Saving">
       <select name="plan" class="super-select">
         <option value="free" <%= tenant.meta?.plan === 'free' ? 'selected' : '' %>>Free (Preview)</option>
+        <option value="trial" <%= tenant.meta?.plan === 'trial' ? 'selected' : '' %>>Free Trial (14 days)</option>
         <option value="30day" <%= tenant.meta?.plan === '30day' ? 'selected' : '' %>>30-Day Trial</option>
         <option value="120day" <%= tenant.meta?.plan === '120day' ? 'selected' : '' %>>120-Day Promo</option>
-        <option value="monthly" <%= tenant.meta?.plan === 'monthly' ? 'selected' : '' %>>Monthly ($50/mo)</option>
-        <option value="annual" <%= tenant.meta?.plan === 'annual' ? 'selected' : '' %>>Annual</option>
-        <option value="lifetime" <%= tenant.meta?.plan === 'lifetime' ? 'selected' : '' %>>Lifetime</option>
+        <option value="monthly" <%= tenant.meta?.plan === 'monthly' ? 'selected' : '' %>>Monthly ($39.95/mo)</option>
+        <option value="quarterly" <%= tenant.meta?.plan === 'quarterly' ? 'selected' : '' %>>Quarterly ($110.26/qtr)</option>
+        <option value="annual" <%= tenant.meta?.plan === 'annual' ? 'selected' : '' %>>Annual ($431.46/yr)</option>
+        <option value="lifetime" <%= tenant.meta?.plan === 'lifetime' ? 'selected' : '' %>>Lifetime ($2,500 — failsafe)</option>
       </select>
       <button type="submit" class="btn btn-gold btn-sm" onclick="return confirm('Change plan to ' + this.form.plan.value + '?')">Change Plan</button>
     </form>
-    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/suspend" style="display:inline;">
+    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/suspend" data-guard="button" style="display:inline;">
       <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Suspend this tenant?')">Suspend</button>
     </form>
     <% } %>
@@ -167,7 +171,7 @@
   <!-- Danger Zone -->
   <div class="section-title" style="color:var(--danger);">Danger Zone</div>
   <div class="detail-card danger-card">
-    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/delete" style="display:inline;">
+    <form method="POST" action="/admin/super/tenants/<%= tenant._id %>/delete" data-guard="button" style="display:inline;">
       <button type="submit" class="btn btn-danger" onclick="return confirm('DELETE this tenant and all data? This cannot be undone.')">Delete Tenant</button>
     </form>
   </div>

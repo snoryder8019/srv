@@ -1,0 +1,72 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Applications</div>
+  <div class="topbar-actions">
+    <a href="/admin/careers" class="btn btn-ghost">← Postings</a>
+  </div>
+</div>
+<div class="content">
+
+  <% if (msg) { %><div class="alert alert-success">Saved.</div><% } %>
+  <% if (err) { %><div class="alert alert-error">Something went wrong.</div><% } %>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+    <form method="get" style="display:flex;gap:8px;flex-wrap:wrap;">
+      <select name="job" onchange="this.form.submit()">
+        <option value="">All postings</option>
+        <% jobs.forEach(function(j){ %>
+          <option value="<%= j._id %>" <%= activeJob === String(j._id) ? 'selected' : '' %>><%= j.title %></option>
+        <% }); %>
+      </select>
+      <select name="stage" onchange="this.form.submit()">
+        <option value="">All stages</option>
+        <% stages.forEach(function(s){ %>
+          <option value="<%= s %>" <%= activeStage === s ? 'selected' : '' %>><%= s %></option>
+        <% }); %>
+      </select>
+    </form>
+  </div>
+
+  <% if (!applications || applications.length === 0) { %>
+    <div class="empty">
+      <div class="empty-icon">✉</div>
+      <p>No applications<%= activeJob || activeStage ? ' match this filter' : ' yet' %>.</p>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Applicant</th>
+            <th>Position</th>
+            <th>Stage</th>
+            <th>Résumé</th>
+            <th>Received</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% applications.forEach(function(a){ %>
+            <tr>
+              <td>
+                <a href="/admin/careers/applications/<%= a._id %>"><strong><%= a.name %></strong></a><br>
+                <span style="opacity:.6;font-size:.85em;"><%= a.email %></span>
+              </td>
+              <td><%= a.jobTitle %></td>
+              <td><span class="badge <%= a.stage === 'hired' ? 'badge-success' : (a.stage === 'rejected' ? 'badge-muted' : '') %>"><%= a.stage %></span></td>
+              <td>
+                <% if (a.resumeKey) { %>
+                  <a href="/admin/careers/applications/<%= a._id %>/resume" target="_blank" rel="noopener">View</a>
+                <% } else { %>—<% } %>
+              </td>
+              <td style="white-space:nowrap;"><%= new Date(a.createdAt).toLocaleDateString() %></td>
+              <td style="text-align:right;"><a href="/admin/careers/applications/<%= a._id %>" class="btn btn-sm btn-ghost">Open</a></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>

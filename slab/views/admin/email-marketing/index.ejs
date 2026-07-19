@@ -103,6 +103,60 @@
   #agentOverlay.active { display: block; }
 
   .ai-filled { background: rgba(21,128,61,0.07) !important; border-color: rgba(21,128,61,0.45) !important; transition: background 0.4s, border-color 0.4s; }
+
+  /* ═══════════ Campaign card grid ═══════════ */
+  .camp-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
+  .camp-toolbar .spacer { flex:1; }
+  .camp-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:18px; align-items:start; }
+
+  .camp-card {
+    background:var(--surface); border:1px solid var(--border); border-radius:6px;
+    padding:16px 16px 14px; display:flex; flex-direction:column; gap:10px;
+    transition:box-shadow .15s, border-color .15s;
+  }
+  .camp-card:hover { box-shadow:0 4px 18px color-mix(in srgb, var(--navy-deep) 8%, transparent); }
+  .camp-card.pinned { border-color:color-mix(in srgb, var(--gold) 55%, transparent); box-shadow:0 0 0 1px color-mix(in srgb, var(--gold) 30%, transparent); }
+
+  .cc-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+  .cc-badges { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+  .cc-badge { display:inline-block; padding:2px 8px; border-radius:2px; font-size:0.6rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+  .cc-quick { display:flex; align-items:center; gap:2px; }
+  .cc-iconbtn { background:none; border:1px solid transparent; border-radius:4px; padding:3px 5px; font-size:0.85rem; line-height:1; cursor:pointer; color:var(--slate); transition:all .12s; }
+  .cc-iconbtn:hover { border-color:var(--border); color:var(--navy); background:var(--ivory); }
+  .cc-iconbtn.on { color:var(--gold); }
+
+  .cc-subject { font-family:'Cormorant Garamond',serif; font-size:1.28rem; line-height:1.2; color:var(--navy); text-decoration:none; }
+  .cc-subject:hover { text-decoration:underline; }
+  .cc-pre { font-size:0.78rem; color:var(--slate); line-height:1.4; margin-top:-4px;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .cc-target { font-size:0.7rem; color:var(--slate); display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+  .cc-chip { display:inline-block; padding:1px 6px; border-radius:2px; font-size:0.6rem; background:rgba(28,43,74,0.06); color:var(--slate); }
+
+  .cc-metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--border);
+    border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+  .cc-metric { background:var(--surface); padding:9px 6px; text-align:center; }
+  .cc-metric .n { font-family:'Cormorant Garamond',serif; font-size:1.35rem; color:var(--navy); line-height:1; }
+  .cc-metric .r { font-size:0.62rem; color:var(--gold-dark, #92660F); font-weight:600; margin-top:1px; }
+  .cc-metric .l { font-size:0.56rem; text-transform:uppercase; letter-spacing:.1em; color:var(--slate); margin-top:3px; }
+  .cc-draftnote { text-align:center; font-size:0.72rem; color:var(--slate); padding:10px; border:1px dashed var(--border); border-radius:4px; }
+
+  .cc-actions { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+
+  /* Follow-up thread */
+  .cc-followups { margin-top:4px; padding-top:10px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:8px; }
+  .cc-fu-label { font-size:0.6rem; text-transform:uppercase; letter-spacing:.1em; color:var(--slate); font-weight:600; }
+  .fu-row { position:relative; padding-left:16px; }
+  .fu-row::before { content:''; position:absolute; left:3px; top:0; bottom:0; width:1px; background:var(--border); }
+  .fu-row::after { content:''; position:absolute; left:3px; top:12px; width:9px; height:1px; background:var(--border); }
+  .fu-card { background:var(--ivory); border:1px solid var(--border); border-radius:4px; padding:9px 11px; display:flex; flex-direction:column; gap:6px; }
+  .fu-top { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  .fu-subject { font-size:0.82rem; font-weight:600; color:var(--navy); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fu-subject:hover { text-decoration:underline; }
+  .fu-seg { font-size:0.58rem; text-transform:uppercase; letter-spacing:.06em; padding:1px 6px; border-radius:2px; background:color-mix(in srgb, var(--gold) 16%, transparent); color:#92660F; white-space:nowrap; flex-shrink:0; }
+  .fu-metrics { display:flex; gap:12px; font-size:0.68rem; color:var(--slate); }
+  .fu-metrics b { color:var(--navy); font-size:0.76rem; }
+  .fu-actions { display:flex; gap:4px; flex-wrap:wrap; }
+  .cc-fu-empty { margin-top:2px; padding-top:10px; border-top:1px dashed var(--border); }
 </style>
 
 <div class="topbar">
@@ -312,7 +366,7 @@
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
         <button class="btn btn-navy btn-sm" onclick="document.getElementById('addContactCard').style.display=document.getElementById('addContactCard').style.display==='none'?'block':'none'">+ Add Contact</button>
         <button class="btn btn-ghost btn-sm" onclick="document.getElementById('csvUploadCard').style.display=document.getElementById('csvUploadCard').style.display==='none'?'block':'none'">Upload CSV</button>
-        <form method="POST" action="/admin/email-marketing/contacts/import-clients" style="display:inline;" onsubmit="return confirm('Import all clients with emails as contacts?')">
+        <form method="POST" action="/admin/email-marketing/contacts/import-clients" data-guard="button" style="display:inline;" onsubmit="return confirm('Import all clients with emails as contacts?')">
           <button class="btn btn-ghost btn-sm">Import Clients</button>
         </form>
         <div style="margin-left:auto;font-size:0.75rem;color:var(--slate);">
@@ -324,7 +378,7 @@
     <!-- Add contact form (hidden by default) -->
     <div id="addContactCard" class="card" style="margin-bottom:16px;display:none;">
       <div class="card-title">Add Contact</div>
-      <form method="POST" action="/admin/email-marketing/contacts">
+      <form method="POST" action="/admin/email-marketing/contacts" data-guard data-guard-label="Saving">
         <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;">
           <div class="form-field">
             <label>Email *</label>
@@ -355,7 +409,7 @@
     <div id="csvUploadCard" class="card" style="margin-bottom:16px;display:none;">
       <div class="card-title">Upload CSV</div>
       <p style="font-size:0.78rem;color:var(--slate);margin-bottom:12px;">CSV must have an <strong>email</strong> column. Optional columns: <strong>name</strong>, <strong>tags</strong> (semicolon-separated within cell).</p>
-      <form method="POST" action="/admin/email-marketing/contacts/upload" enctype="multipart/form-data">
+      <form method="POST" action="/admin/email-marketing/contacts/upload" enctype="multipart/form-data" data-guard data-guard-label="Uploading">
         <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;">
           <div class="form-field">
             <label>CSV File *</label>
@@ -402,7 +456,7 @@
             <td style="font-size:0.82rem;font-weight:500;color:var(--navy);"><%= ct.email %></td>
             <td style="font-size:0.82rem;"><%= ct.name || '---' %></td>
             <td>
-              <form method="POST" action="/admin/email-marketing/contacts/<%= ct._id %>/update" style="display:inline;">
+              <form method="POST" action="/admin/email-marketing/contacts/<%= ct._id %>/update" data-guard="button" style="display:inline;">
                 <%
                   const funnelColors = { lead:'background:rgba(201,168,72,0.12);color:#92660F;', prospect:'background:rgba(28,43,74,0.08);color:var(--navy);', customer:'background:rgba(21,128,61,0.1);color:var(--success);', churned:'background:rgba(185,28,28,0.08);color:var(--danger);' };
                 %>
@@ -415,7 +469,7 @@
               </form>
             </td>
             <td>
-              <form method="POST" action="/admin/email-marketing/contacts/<%= ct._id %>/update" style="display:inline;">
+              <form method="POST" action="/admin/email-marketing/contacts/<%= ct._id %>/update" data-guard="button" style="display:inline;">
                 <select name="status" onchange="this.form.submit()" style="padding:2px 6px;font-size:0.7rem;border:1px solid var(--border);border-radius:2px;font-family:'Jost',sans-serif;cursor:pointer;">
                   <option value="subscribed" <%= ct.status === 'subscribed' ? 'selected' : '' %>>Subscribed</option>
                   <option value="unsubscribed" <%= ct.status === 'unsubscribed' ? 'selected' : '' %>>Unsubscribed</option>
@@ -433,7 +487,7 @@
             </td>
             <td style="font-size:0.72rem;color:var(--slate);"><%= new Date(ct.createdAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) %></td>
             <td>
-              <form method="POST" action="/admin/email-marketing/contacts/<%= ct._id %>/delete" onsubmit="return confirm('Remove this contact?')" style="display:inline;">
+              <form method="POST" action="/admin/email-marketing/contacts/<%= ct._id %>/delete" data-guard="button" onsubmit="return confirm('Remove this contact?')" style="display:inline;">
                 <button class="btn btn-danger btn-sm" style="font-size:0.65rem;">Del</button>
               </form>
             </td>
@@ -449,10 +503,35 @@
   <!-- ═══════════ CAMPAIGNS TAB ═══════════ -->
   <% if (tab === 'campaigns') { %>
 
-    <!-- New / edit campaign form -->
-    <div class="card" style="margin-bottom:20px;">
+    <!-- Toolbar -->
+    <div class="camp-toolbar">
+      <button type="button" class="btn btn-navy btn-sm" id="composerToggle" onclick="toggleComposer()">+ New Campaign</button>
+      <div class="spacer"></div>
+      <% if (showArchived) { %>
+        <a href="?tab=campaigns" class="btn btn-ghost btn-sm" style="font-size:0.72rem;">&larr; Back to active</a>
+      <% } else if (archivedCount) { %>
+        <a href="?tab=campaigns&archived=1" class="btn btn-ghost btn-sm" style="font-size:0.72rem;">Archived (<%= archivedCount %>)</a>
+      <% } %>
+    </div>
+
+    <!-- Templates strip -->
+    <% if (!showArchived && templates.length) { %>
+    <div class="card" style="margin-bottom:18px;padding:12px 16px;">
+      <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);margin-bottom:8px;">Saved templates</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <% for (const t of templates) { %>
+        <form method="POST" action="/admin/email-marketing/campaigns/<%= t._id %>/clone" data-guard="button" style="display:inline;">
+          <button class="btn btn-ghost btn-sm" style="font-size:0.7rem;" title="Copy this template into a new draft">🔖 <%= t.subject || 'Untitled' %></button>
+        </form>
+        <% } %>
+      </div>
+    </div>
+    <% } %>
+
+    <!-- New / edit campaign form (collapsible) -->
+    <div class="card" id="campComposer" style="margin-bottom:20px;display:none;">
       <div class="card-title" id="campFormTitle">New Campaign</div>
-      <form method="POST" action="/admin/email-marketing/campaigns" id="campForm">
+      <form method="POST" action="/admin/email-marketing/campaigns" id="campForm" data-guard data-guard-label="Saving">
         <div class="form-grid">
           <div class="form-field">
             <label>Subject Line *</label>
@@ -499,115 +578,137 @@
       </form>
     </div>
 
-    <!-- Campaigns list -->
-    <% if (!campaigns.length) { %>
-      <div class="empty"><div class="empty-icon">@</div><p>No campaigns yet. Create one above.</p></div>
+    <!-- Campaign cards -->
+    <%
+      // Reusable status badge + stale/no-reach flags for a campaign object.
+      const campStatusColors = { draft:'var(--slate)', sent:'var(--success)', sending:'var(--warn)' };
+    %>
+    <% if (!campaignTree.length) { %>
+      <div class="empty">
+        <div class="empty-icon">@</div>
+        <p><% if (showArchived) { %>No archived campaigns.<% } else { %>No campaigns yet. Click <strong>+ New Campaign</strong> to create one.<% } %></p>
+      </div>
     <% } else { %>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Subject</th>
-            <th>Target</th>
-            <th>Status</th>
-            <th>Sent</th>
-            <th>Opens</th>
-            <th>Clicks</th>
-            <th>Date</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <% for (const camp of campaigns) { %>
-          <tr>
-            <td style="font-weight:500;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-              <a href="/admin/email-marketing/campaigns/<%= camp._id %>" style="color:var(--navy);text-decoration:none;"><%= camp.subject %></a>
-              <% if (camp.parentSegment) { %>
-              <div style="font-size:0.6rem;color:var(--warn);margin-top:2px;">follow-up: <%= camp.parentSegment %></div>
-              <% } %>
-            </td>
-            <td style="font-size:0.78rem;color:var(--slate);">
-              <%= camp.targetFunnel === 'all' ? 'All' : camp.targetFunnel %>
-              <% if (camp.targetTags?.length) { %>
-                <% for (const t of camp.targetTags) { %>
-                <span style="display:inline-block;padding:1px 4px;border-radius:2px;font-size:0.6rem;background:rgba(28,43,74,0.06);color:var(--slate);margin-left:2px;"><%= t %></span>
-                <% } %>
-              <% } %>
-            </td>
-            <td>
-              <%
-                const campStatusColors = { draft:'var(--slate)', sent:'var(--success)', sending:'var(--warn)' };
-                const csc = campStatusColors[camp.status] || 'var(--slate)';
-              %>
-              <span style="display:inline-block;padding:2px 8px;border-radius:2px;font-size:0.68rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;background:color-mix(in srgb, <%= csc %> 10%, transparent);color:<%= csc %>;"><%= camp.status %></span>
-              <%
-                const _campAgeDays = camp.createdAt ? Math.floor((Date.now() - new Date(camp.createdAt).getTime()) / 86400000) : 0;
-                const _campStale = camp.status === 'draft' && _campAgeDays > 30;
-                const _campNoReach = camp.status === 'sent' && !camp.sentCount;
-              %>
-              <% if (_campStale) { %>
-                <span title="Draft sitting unsent for <%= _campAgeDays %> days — review or remove" style="display:inline-block;margin-left:4px;padding:2px 7px;border-radius:2px;font-size:0.6rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:rgba(185,28,28,0.12);color:#B91C1C;">Stale</span>
-              <% } else if (_campNoReach) { %>
-                <span title="Sent but reached nobody" style="display:inline-block;margin-left:4px;padding:2px 7px;border-radius:2px;font-size:0.6rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:rgba(197,165,90,0.18);color:#92660F;">No reach</span>
-              <% } %>
-            </td>
-            <td style="font-size:0.82rem;">
-              <% if (camp.status === 'sent') { %>
-                <%= camp.sentCount %><% if (camp.failedCount) { %> <span style="color:var(--danger);font-size:0.72rem;">(<%= camp.failedCount %> failed)</span><% } %>
+    <div class="camp-grid">
+      <% for (const p of campaignTree) {
+           const csc = campStatusColors[p.status] || 'var(--slate)';
+           const pAge = p.createdAt ? Math.floor((Date.now() - new Date(p.createdAt).getTime()) / 86400000) : 0;
+           const pStale = p.status === 'draft' && pAge > 30;
+           const pNoReach = p.status === 'sent' && !p.sentCount;
+           const pa = p._analytics;
+      %>
+      <div class="camp-card <%= p.pinned ? 'pinned' : '' %>">
+        <div class="cc-head">
+          <div class="cc-badges">
+            <span class="cc-badge" style="background:color-mix(in srgb, <%= csc %> 12%, transparent);color:<%= csc %>;"><%= p.status %></span>
+            <% if (p.pinned) { %><span class="cc-badge" style="background:color-mix(in srgb, var(--gold) 18%, transparent);color:#92660F;">📌 Pinned</span><% } %>
+            <% if (p.isTemplate) { %><span class="cc-badge" style="background:rgba(28,43,74,0.07);color:var(--slate);">Template</span><% } %>
+            <% if (pStale) { %><span class="cc-badge" title="Draft unsent for <%= pAge %> days" style="background:rgba(185,28,28,0.12);color:#B91C1C;">Stale</span>
+            <% } else if (pNoReach) { %><span class="cc-badge" title="Sent but reached nobody" style="background:rgba(197,165,90,0.18);color:#92660F;">No reach</span><% } %>
+          </div>
+          <div class="cc-quick">
+            <form method="POST" action="/admin/email-marketing/campaigns/<%= p._id %>/pin" data-guard="button" style="display:inline;">
+              <button class="cc-iconbtn <%= p.pinned ? 'on' : '' %>" title="<%= p.pinned ? 'Unpin' : 'Pin to top' %>">📌</button>
+            </form>
+            <form method="POST" action="/admin/email-marketing/campaigns/<%= p._id %>/archive" data-guard="button" style="display:inline;">
+              <button class="cc-iconbtn" title="<%= p.archived ? 'Restore from archive' : 'Archive' %>"><%= p.archived ? '↩' : '🗄' %></button>
+            </form>
+          </div>
+        </div>
+
+        <a class="cc-subject" href="/admin/email-marketing/campaigns/<%= p._id %>"><%= p.subject %></a>
+        <% if (p.preheader) { %><div class="cc-pre"><%= p.preheader %></div><% } %>
+
+        <div class="cc-target">
+          <span>To: <%= p.targetFunnel === 'all' ? 'All subscribed' : p.targetFunnel %></span>
+          <% if (p.targetTags?.length) { %><% for (const t of p.targetTags) { %><span class="cc-chip"><%= t %></span><% } %><% } %>
+          <span style="margin-left:auto;"><%= p.sentAt ? new Date(p.sentAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : new Date(p.createdAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) %></span>
+        </div>
+
+        <% if (p.status === 'sent') { %>
+        <div class="cc-metrics">
+          <div class="cc-metric"><div class="n"><%= pa.sent %></div><div class="l">Sent<%= p.failedCount ? ' · ' + p.failedCount + ' fail' : '' %></div></div>
+          <div class="cc-metric"><div class="n"><%= pa.opensUnique %></div><div class="r"><%= pa.openRate %>%</div><div class="l">Opens</div></div>
+          <div class="cc-metric"><div class="n"><%= pa.clicksUnique %></div><div class="r"><%= pa.clickRate %>%</div><div class="l">Clicks</div></div>
+        </div>
+        <% } else { %>
+        <div class="cc-draftnote">Draft — not sent yet</div>
+        <% } %>
+
+        <div class="cc-actions">
+          <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="openEmailPreview({ endpoint: '/admin/email-marketing/campaigns/<%= p._id %>/preview', title: 'Campaign preview' })">Preview</button>
+          <form method="POST" action="/admin/email-marketing/campaigns/<%= p._id %>/test" data-guard="button" style="display:inline;" onsubmit="return prepTestSend(this)">
+            <input type="hidden" name="testEmail" value="<%= user && user.email ? user.email : '' %>">
+            <button class="btn btn-ghost btn-sm" style="font-size:0.68rem;" title="Send a test copy to your inbox only">Test</button>
+          </form>
+          <% if (p.status === 'draft') { %>
+          <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" data-camp="<%= JSON.stringify({ id: p._id.toString(), subject: p.subject || '', preheader: p.preheader || '', body: p.body || '', targetFunnel: p.targetFunnel || 'all', targetTags: (p.targetTags || []).join(', '), isFollowUp: !!(p.targetContactIds && p.targetContactIds.length) }) %>" onclick="editCampaign(this)">Edit</button>
+          <form method="POST" action="/admin/email-marketing/campaigns/<%= p._id %>/send" data-guard="button" style="display:inline;" onsubmit="return confirm('Send this campaign to all matching contacts? This cannot be undone.')">
+            <button class="btn btn-gold btn-sm" style="font-size:0.68rem;">Send</button>
+          </form>
+          <% } else { %>
+          <a class="btn btn-ghost btn-sm" style="font-size:0.68rem;" href="/admin/email-marketing/campaigns/<%= p._id %>">Analytics &amp; follow-up →</a>
+          <% } %>
+        </div>
+
+        <div class="cc-actions" style="margin-top:-4px;">
+          <form method="POST" action="/admin/email-marketing/campaigns/<%= p._id %>/template" data-guard="button" style="display:inline;">
+            <button class="btn btn-ghost btn-sm" style="font-size:0.64rem;color:var(--slate);"><%= p.isTemplate ? '🔖 Saved as template' : 'Save as template' %></button>
+          </form>
+          <form method="POST" action="/admin/email-marketing/campaigns/<%= p._id %>/clone" data-guard="button" style="display:inline;">
+            <button class="btn btn-ghost btn-sm" style="font-size:0.64rem;color:var(--slate);" title="Copy into a new draft">Duplicate</button>
+          </form>
+          <form method="POST" action="/admin/email-marketing/campaigns/<%= p._id %>/delete" data-guard="button" onsubmit="return confirm('Delete this campaign?')" style="display:inline;margin-left:auto;">
+            <button class="btn btn-danger btn-sm" style="font-size:0.64rem;">Delete</button>
+          </form>
+        </div>
+
+        <!-- Follow-up thread with granular per-segment analytics -->
+        <% if (p._followUps && p._followUps.length) { %>
+        <div class="cc-followups">
+          <div class="cc-fu-label">Follow-ups (<%= p._followUps.length %>)</div>
+          <% for (const fu of p._followUps) {
+               const fcsc = campStatusColors[fu.status] || 'var(--slate)';
+               const fa = fu._analytics;
+          %>
+          <div class="fu-row">
+            <div class="fu-card">
+              <div class="fu-top">
+                <a class="fu-subject" href="/admin/email-marketing/campaigns/<%= fu._id %>"><%= fu.subject %></a>
+                <% if (fu.parentSegment) { %><span class="fu-seg"><%= fu.parentSegment.replace(/_/g,' ') %></span><% } %>
+              </div>
+              <% if (fu.status === 'sent') { %>
+              <div class="fu-metrics">
+                <span><b><%= fa.sent %></b> sent</span>
+                <span><b><%= fa.opensUnique %></b> opens <span style="color:var(--gold-dark,#92660F);"><%= fa.openRate %>%</span></span>
+                <span><b><%= fa.clicksUnique %></b> clicks <span style="color:var(--gold-dark,#92660F);"><%= fa.clickRate %>%</span></span>
+              </div>
               <% } else { %>
-                ---
+              <div class="fu-metrics"><span style="color:<%= fcsc %>;text-transform:uppercase;letter-spacing:.06em;font-size:0.6rem;font-weight:700;"><%= fu.status %></span> — not sent yet</div>
               <% } %>
-            </td>
-            <%
-              const ca = analyticsMap[camp._id.toString()] || {};
-              const opens = ca.open || { total: 0, unique: 0 };
-              const clicks = ca.click || { total: 0, unique: 0 };
-              const openRate = camp.sentCount ? Math.round(opens.unique / camp.sentCount * 100) : 0;
-              const clickRate = camp.sentCount ? Math.round(clicks.unique / camp.sentCount * 100) : 0;
-            %>
-            <td style="font-size:0.78rem;">
-              <% if (camp.status === 'sent') { %>
-                <strong><%= opens.unique %></strong>
-                <span style="color:var(--slate);font-size:0.65rem;">(<%= openRate %>%)</span>
-                <% if (opens.total > opens.unique) { %>
-                <div style="font-size:0.6rem;color:var(--slate);"><%= opens.total %> total</div>
-                <% } %>
-              <% } else { %>---<% } %>
-            </td>
-            <td style="font-size:0.78rem;">
-              <% if (camp.status === 'sent') { %>
-                <strong><%= clicks.unique %></strong>
-                <span style="color:var(--slate);font-size:0.65rem;">(<%= clickRate %>%)</span>
-                <% if (clicks.total > clicks.unique) { %>
-                <div style="font-size:0.6rem;color:var(--slate);"><%= clicks.total %> total</div>
-                <% } %>
-              <% } else { %>---<% } %>
-            </td>
-            <td style="font-size:0.78rem;color:var(--slate);">
-              <%= camp.sentAt ? new Date(camp.sentAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : new Date(camp.createdAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) %>
-            </td>
-            <td style="white-space:nowrap;">
-              <div style="display:flex;gap:4px;align-items:center;">
-                <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="openEmailPreview({ endpoint: '/admin/email-marketing/campaigns/<%= camp._id %>/preview', title: 'Campaign preview' })">Preview</button>
-                <form method="POST" action="/admin/email-marketing/campaigns/<%= camp._id %>/test" style="display:inline;" onsubmit="return prepTestSend(this)">
-                  <input type="hidden" name="testEmail" value="<%= user && user.email ? user.email : '' %>">
-                  <button class="btn btn-ghost btn-sm" style="font-size:0.68rem;" title="Send a test copy to your inbox only">Test</button>
-                </form>
-                <% if (camp.status === 'draft') { %>
-                <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" data-camp="<%= JSON.stringify({ id: camp._id.toString(), subject: camp.subject || '', preheader: camp.preheader || '', body: camp.body || '', targetFunnel: camp.targetFunnel || 'all', targetTags: (camp.targetTags || []).join(', '), isFollowUp: !!(camp.targetContactIds && camp.targetContactIds.length) }) %>" onclick="editCampaign(this)">Edit</button>
-                <form method="POST" action="/admin/email-marketing/campaigns/<%= camp._id %>/send" style="display:inline;" onsubmit="return confirm('Send this campaign to all matching contacts? This cannot be undone.')">
-                  <button class="btn btn-gold btn-sm" style="font-size:0.68rem;">Send</button>
+              <div class="fu-actions">
+                <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.64rem;" onclick="openEmailPreview({ endpoint: '/admin/email-marketing/campaigns/<%= fu._id %>/preview', title: 'Follow-up preview' })">Preview</button>
+                <% if (fu.status === 'draft') { %>
+                <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.64rem;" data-camp="<%= JSON.stringify({ id: fu._id.toString(), subject: fu.subject || '', preheader: fu.preheader || '', body: fu.body || '', targetFunnel: fu.targetFunnel || 'all', targetTags: (fu.targetTags || []).join(', '), isFollowUp: !!(fu.targetContactIds && fu.targetContactIds.length) }) %>" onclick="editCampaign(this)">Edit</button>
+                <form method="POST" action="/admin/email-marketing/campaigns/<%= fu._id %>/send" data-guard="button" style="display:inline;" onsubmit="return confirm('Send this follow-up now? This cannot be undone.')">
+                  <button class="btn btn-gold btn-sm" style="font-size:0.64rem;">Send</button>
                 </form>
                 <% } %>
-                <form method="POST" action="/admin/email-marketing/campaigns/<%= camp._id %>/delete" onsubmit="return confirm('Delete this campaign?')" style="display:inline;">
-                  <button class="btn btn-danger btn-sm" style="font-size:0.68rem;">Del</button>
+                <form method="POST" action="/admin/email-marketing/campaigns/<%= fu._id %>/delete" data-guard="button" onsubmit="return confirm('Delete this follow-up?')" style="display:inline;">
+                  <button class="btn btn-danger btn-sm" style="font-size:0.64rem;">Del</button>
                 </form>
               </div>
-            </td>
-          </tr>
+            </div>
+          </div>
           <% } %>
-        </tbody>
-      </table>
+        </div>
+        <% } else if (p.status === 'sent') { %>
+        <div class="cc-fu-empty">
+          <a class="btn btn-ghost btn-sm" style="font-size:0.66rem;" href="/admin/email-marketing/campaigns/<%= p._id %>#followup">+ Create follow-up</a>
+        </div>
+        <% } %>
+      </div>
+      <% } %>
     </div>
     <% } %>
 
@@ -630,7 +731,7 @@
         <span>New Capture Form</span>
         <button type="button" class="agent-btn" id="formAgentBtn" style="font-size:0.66rem;padding:6px 12px;"><span style="font-size:0.9rem;">✦</span> Write with AI</button>
       </div>
-      <form method="POST" action="/admin/email-marketing/forms">
+      <form method="POST" action="/admin/email-marketing/forms" data-guard data-guard-label="Creating">
         <div class="form-grid" style="grid-template-columns:1fr 1fr;">
           <div class="form-field">
             <label>Form Name * <span style="font-weight:400;color:var(--slate);font-size:0.75rem;">(internal)</span></label>
@@ -744,18 +845,18 @@
         </div>
 
         <div style="margin-top:12px;display:flex;gap:6px;">
-          <form method="POST" action="/admin/email-marketing/forms/<%= f._id %>/toggle" style="display:inline;">
+          <form method="POST" action="/admin/email-marketing/forms/<%= f._id %>/toggle" data-guard="button" style="display:inline;">
             <button class="btn btn-ghost btn-sm" style="font-size:0.68rem;"><%= f.enabled !== false ? 'Pause' : 'Activate' %></button>
           </form>
           <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.68rem;" onclick="document.getElementById('editForm<%= f._id %>').style.display=document.getElementById('editForm<%= f._id %>').style.display==='none'?'block':'none'">Edit</button>
-          <form method="POST" action="/admin/email-marketing/forms/<%= f._id %>/delete" onsubmit="return confirm('Delete this form? Signups already captured are kept.')" style="display:inline;">
+          <form method="POST" action="/admin/email-marketing/forms/<%= f._id %>/delete" data-guard="button" onsubmit="return confirm('Delete this form? Signups already captured are kept.')" style="display:inline;">
             <button class="btn btn-danger btn-sm" style="font-size:0.68rem;">Delete</button>
           </form>
         </div>
 
         <!-- Edit (hidden) -->
         <div id="editForm<%= f._id %>" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">
-          <form method="POST" action="/admin/email-marketing/forms/<%= f._id %>/update">
+          <form method="POST" action="/admin/email-marketing/forms/<%= f._id %>/update" data-guard data-guard-label="Saving">
             <div class="form-grid" style="grid-template-columns:1fr 1fr;">
               <div class="form-field"><label>Name</label><input type="text" name="name" value="<%= f.name %>"></div>
               <div class="form-field"><label>Headline</label><input type="text" name="headline" value="<%= f.headline %>"></div>
@@ -896,15 +997,16 @@ function fallbackCopy(text, cb) {
         body: JSON.stringify({ prompt: brief || 'a general newsletter signup form' }),
       });
       const data = await res.json();
-      if (data.error) { alert('Agent error: ' + data.error); return; }
+      if (data.error) { SlabFlash.error('Agent error: ' + data.error); return; }
       const fill = data.fill || {};
       const map = { headline: 'fHeadline', subhead: 'fSubhead', buttonText: 'fButton', successMessage: 'fSuccess', welcomeSubject: 'fWelcomeSubject', welcomeBody: 'fWelcomeBody' };
       for (const [k, id] of Object.entries(map)) {
         if (fill[k]) { const el = document.getElementById(id); if (el) { el.value = fill[k]; el.classList.add('ai-filled'); } }
       }
       if (fill.headline && !document.getElementById('fName').value) document.getElementById('fName').value = brief.slice(0, 40) || fill.headline;
+      SlabFlash.success('Form copy drafted — review before creating.');
     } catch (e) {
-      alert('Could not reach the writing assistant. Please try again.');
+      SlabFlash.error('Could not reach the writing assistant. Please try again.');
     } finally {
       btn.disabled = false; btn.innerHTML = orig;
     }
@@ -1121,6 +1223,19 @@ function fallbackCopy(text, cb) {
 
 <%- include('../partials/_email-preview-modal') %>
 <script>
+  // Collapsible composer (collapsed by default so the card grid leads).
+  function openComposer() {
+    var c = document.getElementById('campComposer');
+    if (c) c.style.display = '';
+  }
+  function toggleComposer() {
+    var c = document.getElementById('campComposer');
+    if (!c) return;
+    var hidden = c.style.display === 'none';
+    c.style.display = hidden ? '' : 'none';
+    if (hidden) { c.scrollIntoView({ behavior: 'smooth', block: 'start' }); var s = document.getElementById('campSubject'); if (s) s.focus(); }
+  }
+
   // Confirm / adjust the test recipient before sending a proof copy.
   function prepTestSend(form) {
     var input = form.querySelector('input[name="testEmail"]');
@@ -1136,6 +1251,7 @@ function fallbackCopy(text, cb) {
   function editCampaign(btn) {
     var c;
     try { c = JSON.parse(btn.getAttribute('data-camp')); } catch (e) { return; }
+    openComposer();
     var form = document.getElementById('campForm');
     form.action = '/admin/email-marketing/campaigns/' + c.id + '/update';
     document.getElementById('campFormTitle').textContent = 'Edit Campaign';
@@ -1169,6 +1285,8 @@ function fallbackCopy(text, cb) {
     var tt = document.querySelector('#campForm input[name="targetTags"]');
     if (tf) tf.disabled = false;
     if (tt) tt.disabled = false;
+    var comp = document.getElementById('campComposer');
+    if (comp) comp.style.display = 'none';
   }
 
   // Live preview of the in-progress campaign composer.

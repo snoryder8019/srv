@@ -159,7 +159,7 @@ router.post('/agent', express.json(), async (req, res) => {
     const metrics = await buildMetrics(req.db, range);
     const brandContext = await loadBrandContext(req.tenant, req.db);
 
-    const parsed = await runTool('analyze_metrics', { question, metrics, range, brandContext });
+    const parsed = await runTool('analyze_metrics', { question, metrics, range, brandContext }, { db: req.db, tenant: req.tenant });
     res.json({
       success: true,
       message: parsed.message || 'Analysis ready.',

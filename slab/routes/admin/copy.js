@@ -3,6 +3,7 @@ import { getDb } from '../../plugins/mongo.js';
 import { config } from '../../config/config.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import { webSearch, callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
+import { agentLLMOpts } from '../../plugins/agentRegistry.js';
 const router = express.Router();
 
 const SECTIONS = {
@@ -222,7 +223,7 @@ Available field keys:
 - contact_sub, contact_location, contact_serving
 ${copyContext}${researchCtx}`;
 
-    const raw = await callLLM(messages, systemPrompt);
+    const raw = await callLLM(messages, systemPrompt, 90000, await agentLLMOpts(req.db, req.tenant, 'copy'));
     const parsed = tryParseAgentResponse(raw);
     res.json(parsed);
   } catch (err) {

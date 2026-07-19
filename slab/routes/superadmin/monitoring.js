@@ -192,4 +192,177 @@ load();setInterval(load,30000);
 });
 
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LIVE REPORTING — crons, backend + front-end errors  (testing-phase observability)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Cron health: per-job last run / outcome / failure streak + recent runs ──
+router.get('/api/crons', async (req, res) => {
+  const slab = getSlabDb();
+  const [state, recent] = await Promise.all([
+    slab.collection('cron_state').find({}).toArray(),
+    slab.collection('cron_runs').find({}).sort({ at: -1 }).limit(60).toArray(),
+  ]);
+  const now = Date.now();
+  const jobs = state.map((s) => {
+    const last = s.lastFinishedAt || s.lastRun || null;
+    const ageMs = last ? now - new Date(last).getTime() : null;
+    // Stale = a daily job silent >26h, or any job with no run recorded yet.
+    const stale = ageMs != null && s.kind === 'daily' && ageMs > 26 * 3600 * 1000;
+    const health = (s.consecutiveFailures > 0) ? 'fail' : (s.lastStatus === 'ok' ? 'ok' : (last ? 'ok' : 'unknown'));
+    return {
+      name: s._id, label: s.label || s._id, kind: s.kind || '—',
+      lastRun: last, ageMs, stale,
+      lastStatus: s.lastStatus || null, lastDurationMs: s.lastDurationMs || 0,
+      lastError: s.lastError || null,
+      runs: s.runs || 0, fails: s.fails || 0, consecutiveFailures: s.consecutiveFailures || 0,
+      health,
+    };
+  }).sort((a, b) => (b.consecutiveFailures - a.consecutiveFailures) || String(a.name).localeCompare(b.name));
+  res.json({ ok: true, jobs, recent });
+});
+
+// ── Errors: backend (error_logs) + front-end (client_errors), filterable ──
+router.get('/api/errors', async (req, res) => {
+  const slab = getSlabDb();
+  const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+  const q = (req.query.q || '').trim();
+  const rx = q ? new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
+  const since = new Date(Date.now() - 24 * 3600 * 1000);
+  const serverFilter = rx ? { $or: [{ message: rx }, { route: rx }] } : {};
+  const clientFilter = rx ? { $or: [{ message: rx }, { url: rx }] } : {};
+  const [server, client, serverToday, clientToday] = await Promise.all([
+    slab.collection('error_logs').find(serverFilter).sort({ at: -1 }).limit(limit).toArray(),
+    slab.collection('client_errors').find(clientFilter).sort({ at: -1 }).limit(limit).toArray(),
+    slab.collection('error_logs').countDocuments({ at: { $gte: since } }),
+    slab.collection('client_errors').countDocuments({ at: { $gte: since } }),
+  ]);
+  res.json({ ok: true, server, client, counts: { serverToday, clientToday } });
+});
+
+// ── Reporting hub — one page linking every live feed ──
+router.get('/reports', (req, res) => {
+  res.type('html').send(`<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Live Reporting · sLab</title>
+<style>
+  body{margin:0;background:#0a0a0a;color:#e5e5e5;font-family:Inter,system-ui,sans-serif}
+  header{padding:16px 24px;border-bottom:1px solid #222}header b{letter-spacing:.06em}
+  .wrap{max-width:1000px;margin:0 auto;padding:32px 24px}
+  h1{font-weight:600;font-size:1.4rem;margin:0 0 6px}.sub{color:#888;font-size:.9rem;margin-bottom:26px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+  a.card{display:block;background:#141414;border:1px solid #262626;border-radius:10px;padding:18px 20px;text-decoration:none;color:#e5e5e5;transition:border-color .15s}
+  a.card:hover{border-color:#3b82f6}
+  a.card .t{font-size:1.05rem;font-weight:600;margin-bottom:6px}
+  a.card .d{color:#888;font-size:.82rem;line-height:1.5}
+  a.card .e{font-size:1.3rem;margin-bottom:8px;display:block}
+</style></head><body>
+<header><b>sLab · LIVE REPORTING</b> &nbsp; <a href="/superadmin" style="color:#888;text-decoration:none;font-size:.85rem">← dashboard</a></header>
+<div class="wrap">
+  <h1>Live Reporting</h1>
+  <div class="sub">Real-time health for the testing phase — traffic, jobs, and errors across the whole platform.</div>
+  <div class="grid">
+    <a class="card" href="/superadmin/crons"><span class="e">⏱️</span><div class="t">Cron Health</div><div class="d">Every scheduled job: last run, duration, and failure streaks.</div></a>
+    <a class="card" href="/superadmin/errors"><span class="e">🚨</span><div class="t">Errors</div><div class="d">Backend crashes + front-end JS errors from real browsers.</div></a>
+    <a class="card" href="/superadmin"><span class="e">📈</span><div class="t">Traffic</div><div class="d">Per-tenant route usage & endpoint popularity (dashboard).</div></a>
+    <a class="card" href="/superadmin/comms"><span class="e">✉️</span><div class="t">Comms Ledger</div><div class="d">Every email send: sent / failed / skipped.</div></a>
+    <a class="card" href="/superadmin/events"><span class="e">🔔</span><div class="t">Platform Events</div><div class="d">Signups, contacts, bookings across all apps.</div></a>
+    <a class="card" href="/superadmin/security"><span class="e">🛡️</span><div class="t">Security</div><div class="d">Bans, probes, and system stats.</div></a>
+  </div>
+</div>
+</body></html>`);
+});
+
+// ── Cron health page ──
+router.get('/crons', (req, res) => {
+  res.type('html').send(`<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Cron Health · sLab</title>
+<style>
+  body{margin:0;background:#0a0a0a;color:#e5e5e5;font-family:Inter,system-ui,sans-serif}
+  header{padding:16px 24px;border-bottom:1px solid #222;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  header b{letter-spacing:.06em}header a{color:#888;text-decoration:none;font-size:.85rem}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px}
+  table{width:100%;border-collapse:collapse;background:#111;border:1px solid #222;border-radius:8px;overflow:hidden;margin-bottom:26px}
+  th,td{text-align:left;padding:9px 12px;font-size:.82rem;border-bottom:1px solid #1d1d1d;vertical-align:top}
+  th{color:#888;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em}
+  .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.66rem;text-transform:uppercase;font-weight:600}
+  .pill.ok{background:rgba(34,197,94,.15);color:#22c55e}.pill.fail{background:rgba(205,65,43,.2);color:#f0593f}
+  .pill.unknown{background:rgba(160,160,160,.15);color:#aaa}.pill.stale{background:rgba(230,184,0,.15);color:#e6b800}
+  .err{color:#f0593f;font-size:.74rem}.muted{color:#777}h2{font-weight:600;font-size:1rem;margin:0 0 12px}
+</style></head><body>
+<header><b>sLab · CRON HEALTH</b><a href="/superadmin/reports">← reports</a><a href="/superadmin/errors">errors</a><a href="/superadmin">dashboard</a></header>
+<div class="wrap">
+  <h2>Scheduled jobs</h2>
+  <table><thead><tr><th>Job</th><th>Type</th><th>Health</th><th>Last run</th><th>Duration</th><th>Runs / Fails</th><th>Last error</th></tr></thead><tbody id="jobs"></tbody></table>
+  <h2>Recent runs</h2>
+  <table><thead><tr><th>When</th><th>Job</th><th>Status</th><th>Duration</th><th>Error</th></tr></thead><tbody id="runs"></tbody></table>
+</div>
+<script>
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=d=>d?new Date(d).toLocaleString():'—';
+const ago=ms=>{if(ms==null)return 'never';const s=Math.floor(ms/1000);if(s<60)return s+'s ago';const m=Math.floor(s/60);if(m<60)return m+'m ago';const h=Math.floor(m/60);if(h<48)return h+'h ago';return Math.floor(h/24)+'d ago';};
+const dur=ms=>ms>=1000?(ms/1000).toFixed(1)+'s':ms+'ms';
+async function load(){
+  const d=await (await fetch('/superadmin/api/crons')).json();
+  document.getElementById('jobs').innerHTML=(d.jobs||[]).map(j=>{
+    let h=j.health;if(j.stale&&h==='ok')h='stale';
+    return '<tr><td><b>'+esc(j.label)+'</b><div class="muted">'+esc(j.name)+'</div></td><td>'+esc(j.kind)+'</td><td><span class="pill '+h+'">'+h+'</span>'+(j.consecutiveFailures>0?' <span class="err">×'+j.consecutiveFailures+'</span>':'')+'</td><td>'+fmt(j.lastRun)+'<div class="muted">'+ago(j.ageMs)+'</div></td><td>'+dur(j.lastDurationMs||0)+'</td><td>'+j.runs+' / '+(j.fails||0)+'</td><td>'+(j.lastError?'<span class="err">'+esc(j.lastError)+'</span>':'<span class="muted">—</span>')+'</td></tr>';
+  }).join('')||'<tr><td colspan="7" class="muted">No jobs have reported yet.</td></tr>';
+  document.getElementById('runs').innerHTML=(d.recent||[]).map(r=>'<tr><td class="muted">'+fmt(r.at)+'</td><td>'+esc(r.label||r.name)+'</td><td><span class="pill '+(r.ok?'ok':'fail')+'">'+(r.ok?'ok':'fail')+'</span></td><td>'+dur(r.durationMs||0)+'</td><td>'+(r.error?'<span class="err">'+esc(r.error)+'</span>':'<span class="muted">—</span>')+'</td></tr>').join('')||'<tr><td colspan="5" class="muted">No runs recorded yet.</td></tr>';
+}
+load();setInterval(load,15000);
+</script></body></html>`);
+});
+
+// ── Errors page (backend + front-end) ──
+router.get('/errors', (req, res) => {
+  res.type('html').send(`<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Errors · sLab</title>
+<style>
+  body{margin:0;background:#0a0a0a;color:#e5e5e5;font-family:Inter,system-ui,sans-serif}
+  header{padding:16px 24px;border-bottom:1px solid #222;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  header b{letter-spacing:.06em}header a{color:#888;text-decoration:none;font-size:.85rem}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+  .filters input{background:#141414;border:1px solid #262626;color:#e5e5e5;padding:7px 10px;border-radius:6px;font:inherit;font-size:.85rem}
+  .filters button{background:#3b82f6;border:none;color:#fff;padding:7px 14px;border-radius:6px;cursor:pointer;font-weight:600}
+  .tab{padding:7px 14px;border:1px solid #262626;border-radius:6px;cursor:pointer;font-size:.82rem;background:#141414}
+  .tab.active{background:#3b82f6;color:#fff;border-color:#3b82f6}
+  .stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+  .stat{background:#141414;border:1px solid #262626;border-radius:8px;padding:10px 16px;font-size:.8rem}
+  table{width:100%;border-collapse:collapse;background:#111;border:1px solid #222;border-radius:8px;overflow:hidden}
+  th,td{text-align:left;padding:8px 12px;font-size:.82rem;border-bottom:1px solid #1d1d1d;vertical-align:top}
+  th{color:#888;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em}
+  .msg{color:#f0593f;font-weight:500}.muted{color:#777}.mono{font-family:ui-monospace,monospace;font-size:.74rem}
+  details summary{cursor:pointer;color:#888;font-size:.72rem}pre{white-space:pre-wrap;color:#aaa;font-size:.72rem;margin:6px 0 0;max-height:220px;overflow:auto}
+</style></head><body>
+<header><b>sLab · ERRORS</b><a href="/superadmin/reports">← reports</a><a href="/superadmin/crons">crons</a><a href="/superadmin">dashboard</a></header>
+<div class="wrap">
+  <div class="filters">
+    <div class="tab active" id="tab-server" onclick="setTab('server')">Backend</div>
+    <div class="tab" id="tab-client" onclick="setTab('client')">Front-end</div>
+    <input id="q" placeholder="search message / route…" onkeydown="if(event.key==='Enter')load()">
+    <button onclick="load()">search</button>
+  </div>
+  <div class="stats" id="stats"></div>
+  <div id="table"></div>
+</div>
+<script>
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=d=>d?new Date(d).toLocaleString():'—';
+let tab='server',data={server:[],client:[],counts:{}};
+function setTab(t){tab=t;document.getElementById('tab-server').classList.toggle('active',t==='server');document.getElementById('tab-client').classList.toggle('active',t==='client');render();}
+function stack(s){return s?'<details><summary>stack</summary><pre>'+esc(s)+'</pre></details>':'';}
+function render(){
+  document.getElementById('stats').innerHTML='<div class="stat">Backend (24h): <b>'+(data.counts.serverToday||0)+'</b></div><div class="stat">Front-end (24h): <b>'+(data.counts.clientToday||0)+'</b></div>';
+  if(tab==='server'){
+    document.getElementById('table').innerHTML='<table><thead><tr><th>When</th><th>Kind</th><th>Message</th><th>Route</th><th>Tenant</th></tr></thead><tbody>'+((data.server||[]).map(e=>'<tr><td class="muted">'+fmt(e.at)+'</td><td>'+esc(e.kind||'')+'</td><td><span class="msg">'+esc(e.message)+'</span>'+stack(e.stack)+'</td><td class="mono">'+esc((e.method||'')+' '+(e.route||''))+'</td><td class="muted">'+esc(e.tenantDomain||'—')+'</td></tr>').join('')||'<tr><td colspan="5" class="muted">No backend errors.</td></tr>')+'</tbody></table>';
+  }else{
+    document.getElementById('table').innerHTML='<table><thead><tr><th>When</th><th>Kind</th><th>Message</th><th>Source</th><th>Page</th></tr></thead><tbody>'+((data.client||[]).map(e=>'<tr><td class="muted">'+fmt(e.at)+'</td><td>'+esc(e.kind||'')+'</td><td><span class="msg">'+esc(e.message)+'</span>'+stack(e.stack)+'</td><td class="mono">'+esc((e.source||'')+(e.line?(':'+e.line):''))+'</td><td class="mono muted">'+esc(e.url||'')+'</td></tr>').join('')||'<tr><td colspan="5" class="muted">No front-end errors.</td></tr>')+'</tbody></table>';
+  }
+}
+async function load(){const q=document.getElementById('q').value.trim();data=await (await fetch('/superadmin/api/errors?q='+encodeURIComponent(q))).json();render();}
+load();setInterval(load,20000);
+</script></body></html>`);
+});
+
 export default router;

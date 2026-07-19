@@ -171,3 +171,28 @@ export const BLOCK_META = {
   stats:        { icon: '#', label: 'Stats Row' },
   ticker:       { icon: '»', label: 'Ticker / Marquee' },
 };
+
+/**
+ * ── Page-only block supersets ────────────────────────────────────────────────
+ * Pages are an additive block builder: on top of the shared visual blocks above,
+ * a page can also drop in raw HTML and a "Data List" that pipes in another
+ * module's content (blog, portfolio, careers, marketplace — see plugins/pageSources.js).
+ *
+ * These live in SEPARATE exports so the Templates builder (which imports
+ * VALID_BLOCK_TYPES / BLOCK_FIELDS / BLOCK_DEFAULTS and validates against them)
+ * never gains html/datalist — those two only make sense on a standalone page.
+ * html/datalist use custom editors in the page form, so they need no BLOCK_FIELDS.
+ */
+export const PAGE_BLOCK_TYPES = [...VALID_BLOCK_TYPES, 'html', 'datalist'];
+
+export const PAGE_BLOCK_META = {
+  ...BLOCK_META,
+  html:     { icon: '</>', label: 'HTML Block' },
+  datalist: { icon: '⊞',   label: 'Data List' },
+};
+
+export const PAGE_BLOCK_DEFAULTS = {
+  ...BLOCK_DEFAULTS,
+  html:     { html: '' },
+  datalist: { heading: '', source: 'blog', pageSize: '9', group: '', paginate: 'true' },
+};

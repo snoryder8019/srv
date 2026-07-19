@@ -36,7 +36,9 @@ const TENANT_TAGS = {
 // ── Subscription-change courtesy email ──────────────────────────────────────
 const PLAN_LABELS = {
   free: 'Free',
+  trial: 'Free Trial',
   monthly: 'Monthly',
+  quarterly: 'Quarterly',
   '30day': '30-Day',
   '120day': '120-Day',
   annual: 'Annual',

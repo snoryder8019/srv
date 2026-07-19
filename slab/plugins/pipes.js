@@ -26,10 +26,13 @@
  */
 
 import Handlebars from 'handlebars';
+import { embedHtml as ytEmbedHtml } from './youtube.js';
+import { runSource, PAGE_SOURCES } from './pageSources.js';
 
 // ── Reference scanners (decide what to prefetch before sync compile) ──────────
-const FORM_REF = /\{\{\s*form\s+["']([\w-]+)["']/g;
-const IMG_REF  = /\{\{\s*img\s+["']([\w-]+)["']/g;
+const FORM_REF   = /\{\{\s*form\s+["']([\w-]+)["']/g;
+const IMG_REF    = /\{\{\s*img\s+["']([\w-]+)["']/g;
+const MODULE_REF = /\{\{\s*module\s+["']([\w-]+)["']/g;
 
 function hasPipes(s) { return typeof s === 'string' && s.indexOf('{{') >= 0; }
 
@@ -131,6 +134,29 @@ const PIPE_FORM_BOOTSTRAP = `<script>(function(){
   });
 })();</script>`;
 
+// ── Inline module list ({{module "blog" limit=3}}) ───────────────────────────
+// Renders a compact list of another module's published content inside tenant
+// text. Every field is esc()'d and hrefs come only from the source registry —
+// the tenant picks a source key from a fixed allowlist, never a raw collection.
+const PIPE_MODULE_CSS = `<style>.pipe-module{list-style:none;margin:16px 0;padding:0;display:grid;gap:10px}
+.pipe-module li{border:1px solid var(--border,#e3e3e3);border-radius:8px;padding:12px 14px;background:var(--surface,#fff)}
+.pipe-module a{display:flex;gap:12px;align-items:center;text-decoration:none;color:inherit}
+.pipe-module img{width:64px;height:48px;object-fit:cover;border-radius:5px;flex-shrink:0}
+.pipe-module .pm-t{font-weight:600;font-size:.95rem}.pipe-module .pm-x{font-size:.82rem;opacity:.7;margin-top:2px}</style>`;
+
+function renderModuleList(sourceKey, items) {
+  if (!items || !items.length) return `<!-- pipe: module "${esc(sourceKey)}" has no items -->`;
+  let h = `<ul class="pipe-module" data-pipe-module="${esc(sourceKey)}">`;
+  for (const c of items) {
+    const inner =
+      `${c.image ? `<img src="${esc(c.image)}" alt="">` : ''}` +
+      `<span><span class="pm-t">${esc(c.title)}</span>${c.excerpt ? `<span class="pm-x">${esc(String(c.excerpt).slice(0, 100))}</span>` : ''}</span>`;
+    h += c.href ? `<li><a href="${esc(c.href)}">${inner}</a></li>` : `<li>${inner}</li>`;
+  }
+  h += `</ul>`;
+  return h + PIPE_MODULE_CSS;
+}
+
 // ── Build an isolated Handlebars env + context for one render pass ────────────
 async function buildPipeEnv({ db, tenant, design, copy, strings }) {
   const env = Handlebars.create(); // isolated — never pollute the global registry
@@ -143,14 +169,15 @@ async function buildPipeEnv({ db, tenant, design, copy, strings }) {
   }
 
   // Prefetch everything the helpers need (helpers are synchronous).
-  const formSlugs = new Set(), imgSlots = new Set();
+  const formSlugs = new Set(), imgSlots = new Set(), moduleKeys = new Set();
   for (const s of strings) {
     let m;
-    FORM_REF.lastIndex = 0; while ((m = FORM_REF.exec(s))) formSlugs.add(m[1]);
-    IMG_REF.lastIndex = 0;  while ((m = IMG_REF.exec(s)))  imgSlots.add(m[1]);
+    FORM_REF.lastIndex = 0;   while ((m = FORM_REF.exec(s)))   formSlugs.add(m[1]);
+    IMG_REF.lastIndex = 0;    while ((m = IMG_REF.exec(s)))    imgSlots.add(m[1]);
+    MODULE_REF.lastIndex = 0; while ((m = MODULE_REF.exec(s))) moduleKeys.add(m[1]);
   }
 
-  const formMap = {}, imgMap = {};
+  const formMap = {}, imgMap = {}, moduleMap = {};
   if (db && formSlugs.size) {
     const forms = await db.collection('onboarding_forms')
       .find({ slug: { $in: [...formSlugs] }, status: 'active' }).toArray();
@@ -161,6 +188,15 @@ async function buildPipeEnv({ db, tenant, design, copy, strings }) {
       .find({ slot: { $in: [...imgSlots] } }).toArray();
     for (const i of imgs) imgMap[i.slot] = i.url;
   }
+  // One batched read per referenced source (cap 12 covers any {{module}} limit).
+  if (db && moduleKeys.size) {
+    await Promise.all([...moduleKeys]
+      .filter(k => PAGE_SOURCES[k])   // only known sources; unknown → helper renders a comment
+      .map(async (k) => {
+        try { moduleMap[k] = (await runSource(db, k, { page: 1, perPage: 12 })).items; }
+        catch { moduleMap[k] = []; }
+      }));
+  }
 
   env.registerHelper('form', (slug) => new env.SafeString(renderFormFields(formMap[slug])));
   env.registerHelper('copy', (key) => new env.SafeString(copy?.[key] ?? ''));
@@ -168,6 +204,19 @@ async function buildPipeEnv({ db, tenant, design, copy, strings }) {
     const url = imgMap[slot];
     if (!url) return '';
     return new env.SafeString(`<img class="pipe-img" src="${esc(url)}" alt="${esc(opts?.hash?.alt || '')}">`);
+  });
+  // {{youtube "URL-or-ID" title="…"}} — drop a responsive video into any
+  // tenant-authored body (page, blog post, portfolio item, copy block). Pure
+  // from the id, so no prefetch needed. Unrecognized input renders a comment.
+  env.registerHelper('youtube', (ref, opts) => {
+    return new env.SafeString(ytEmbedHtml(ref, { title: opts?.hash?.title }));
+  });
+  // {{module "blog" limit=3}} — embed a compact list of another module's published
+  // content inline. Source key is from a fixed allowlist; limit is clamped ≤12.
+  env.registerHelper('module', (key, opts) => {
+    const lim = Math.min(Math.max(parseInt(opts?.hash?.limit) || 3, 1), 12);
+    const items = (moduleMap[key] || []).slice(0, lim);
+    return new env.SafeString(renderModuleList(key, items));
   });
 
   const context = { brand: tenant?.brand || {}, color, font, design: design || {} };

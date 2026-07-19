@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fix Queue — Superadmin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',sans-serif; background:#0a0a0a; color:#e5e5e5; min-height:100vh; }
+    .topbar { background:#141414; border-bottom:1px solid #262626; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+    .topbar-left { display:flex; align-items:center; gap:16px; }
+    .logo { font-size:18px; font-weight:500; color:#fff; font-family:'Space Grotesk',sans-serif; letter-spacing:0.05em; } .logo span { color:#c9a848; }
+    .topbar-right a { color:#a3a3a3; text-decoration:none; font-size:12px; margin-left:16px; } .topbar-right a:hover { color:#c9a848; }
+    .container { max-width:1000px; margin:0 auto; padding:24px; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:14px; margin-bottom:24px; }
+    .stat { background:#141414; border:1px solid #262626; border-radius:8px; padding:16px; }
+    .stat-label { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#737373; margin-bottom:4px; }
+    .stat-value { font-size:24px; font-weight:700; color:#fff; }
+    .stat-value.violet { color:#c4b5fd; } .stat-value.blue { color:#7dd3fc; } .stat-value.green { color:#86efac; }
+    .filters { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
+    .filter-btn { padding:6px 14px; font-size:12px; border-radius:6px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; text-decoration:none; }
+    .filter-btn.active { background:#c9a848; color:#0a0a0a; border-color:#c9a848; font-weight:600; }
+    .handoff { background:#141414; border:1px solid #262626; border-radius:8px; padding:18px; margin-bottom:12px; }
+    .handoff-top { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+    .handoff-subj { font-size:15px; font-weight:600; color:#fff; }
+    .handoff-sub { font-size:12px; color:#737373; margin-top:2px; }
+    .handoff-sub .tenant { color:#c9a848; }
+    .status { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500; }
+    .st-queued { background:#422006; color:#fdba74; } .st-inprogress { background:#1e3a5f; color:#7dd3fc; } .st-done { background:#14532d; color:#86efac; }
+    .pill { display:inline-block; padding:2px 7px; border-radius:10px; font-size:10px; margin-left:4px; }
+    .pill-critical { background:#450a0a; color:#fca5a5; } .pill-high { background:#422006; color:#fdba74; } .pill-medium { background:#1e293b; color:#94a3b8; } .pill-low { background:#262626; color:#a3a3a3; }
+    .dg { font-size:13px; color:#d1d5db; line-height:1.55; }
+    .dg .k { color:#8b5cf6; font-size:10px; text-transform:uppercase; letter-spacing:0.6px; }
+    .dg .files code { background:#1a1030; border:1px solid #3b2a63; border-radius:4px; padding:1px 6px; font-size:11px; color:#c4b5fd; margin-right:4px; }
+    .actions { display:flex; gap:6px; flex-wrap:wrap; margin-top:12px; }
+    .btn { padding:5px 12px; font-size:12px; border-radius:5px; border:1px solid #333; background:transparent; color:#a3a3a3; cursor:pointer; font-family:'Inter',sans-serif; text-decoration:none; }
+    .btn:hover { border-color:#c9a848; color:#c9a848; }
+    .btn-green { border-color:#14532d; color:#86efac; } .btn-green:hover { background:#14532d; }
+    .empty { color:#525252; font-size:13px; padding:40px; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo">mad<span>Labs</span>lab</div>
+      <span style="color:#737373; font-size:13px;">/ Fix Queue</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/superadmin/tickets">Tickets</a>
+      <a href="/superadmin">&larr; Dashboard</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Queued</div><div class="stat-value violet"><%= stats.queued %></div></div>
+      <div class="stat"><div class="stat-label">In Progress</div><div class="stat-value blue"><%= stats.inProgress %></div></div>
+      <div class="stat"><div class="stat-label">Done</div><div class="stat-value green"><%= stats.done %></div></div>
+      <div class="stat"><div class="stat-label">Total</div><div class="stat-value"><%= stats.total %></div></div>
+    </div>
+
+    <div class="filters">
+      <a class="filter-btn <%= !filters.status ? 'active' : '' %>" href="/superadmin/fix-handoffs">All</a>
+      <a class="filter-btn <%= filters.status === 'queued' ? 'active' : '' %>" href="/superadmin/fix-handoffs?status=queued">Queued</a>
+      <a class="filter-btn <%= filters.status === 'in-progress' ? 'active' : '' %>" href="/superadmin/fix-handoffs?status=in-progress">In Progress</a>
+      <a class="filter-btn <%= filters.status === 'done' ? 'active' : '' %>" href="/superadmin/fix-handoffs?status=done">Done</a>
+    </div>
+
+    <% if (!handoffs.length) { %>
+      <div class="empty">No fix handoffs yet. Diagnose a bug ticket and save it here.</div>
+    <% } else { %>
+      <% handoffs.forEach(h => { const dg = h.diagnosis || {}; const stCls = h.status === 'in-progress' ? 'st-inprogress' : h.status === 'done' ? 'st-done' : 'st-queued'; %>
+        <div class="handoff" data-id="<%= h._id %>">
+          <div class="handoff-top">
+            <div>
+              <div class="handoff-subj">
+                <a href="/superadmin/tickets/<%= h.tenantDbName %>/<%= h.ticketId %>" style="color:#fff; text-decoration:none;"><%= h.subject %></a>
+                <span class="pill pill-<%= h.priority || 'medium' %>"><%= h.priority || 'medium' %></span>
+              </div>
+              <div class="handoff-sub">
+                <% if (h.ticketNumber) { %><%= h.ticketNumber %> · <% } %>
+                <span class="tenant"><%= h.tenantDbName %></span> · <%= h.category || 'bug' %> ·
+                updated <%= h.updatedAt ? new Date(h.updatedAt).toLocaleString() : '—' %>
+              </div>
+            </div>
+            <span class="status <%= stCls %>"><%= h.status %></span>
+          </div>
+
+          <% if (dg.rootCause || dg.suggestedFix) { %>
+            <div class="dg">
+              <% if (dg.rootCause) { %><div><span class="k">Root cause:</span> <%= dg.rootCause %></div><% } %>
+              <% if (dg.area) { %><div><span class="k">Area:</span> <%= dg.area %></div><% } %>
+              <% if (Array.isArray(dg.filesToCheck) && dg.filesToCheck.length) { %><div class="files"><span class="k">Files:</span> <% dg.filesToCheck.forEach(f => { %><code><%= f %></code><% }) %></div><% } %>
+              <% if (dg.suggestedFix) { %><div><span class="k">Fix:</span> <%= dg.suggestedFix %></div><% } %>
+              <% if (dg.confidence) { %><div><span class="k">Confidence:</span> <%= dg.confidence %></div><% } %>
+            </div>
+          <% } else if (h.notes) { %>
+            <div class="dg" style="white-space:pre-wrap;"><%= h.notes %></div>
+          <% } %>
+
+          <div class="actions">
+            <a class="btn" href="/superadmin/tickets/<%= h.tenantDbName %>/<%= h.ticketId %>">Open ticket →</a>
+            <button class="btn" data-status="queued" type="button">Queued</button>
+            <button class="btn" data-status="in-progress" type="button">In progress</button>
+            <button class="btn btn-green" data-status="done" type="button">Mark done</button>
+          </div>
+        </div>
+      <% }) %>
+    <% } %>
+  </div>
+
+  <script>
+    document.querySelectorAll('.handoff').forEach(function(card) {
+      var id = card.dataset.id;
+      card.querySelectorAll('[data-status]').forEach(function(b) {
+        b.addEventListener('click', async function() {
+          b.disabled = true;
+          try {
+            var r = await fetch('/superadmin/fix-handoffs/' + id + '/status', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: b.dataset.status }),
+            });
+            var data = await r.json();
+            if (data.ok) location.reload();
+            else { b.disabled = false; }
+          } catch (e) { b.disabled = false; }
+        });
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,271 @@
+<%- include('../partials/head', { title: 'Ledger' }) %>
+<%- include('../partials/sidebar', { page: 'ledger', user: user }) %>
+
+<div class="topbar">
+  <div class="topbar-title">Monthly Ledger</div>
+  <div class="topbar-actions">
+    <a href="/admin/ledger?month=<%= month %>" class="btn btn-ghost btn-sm">P&amp;L</a>
+    <button class="btn btn-navy btn-sm" onclick="document.getElementById('addEntry').scrollIntoView({behavior:'smooth'})">Add Entry</button>
+  </div>
+</div>
+
+<div class="content">
+  <%- include('_tabs', { active: 'entries' }) %>
+  <% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
+  <% if (error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <!-- Month nav + totals -->
+  <div class="card" style="margin-bottom:20px;padding:16px 20px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;">
+    <form method="GET" action="/admin/ledger/entries" style="display:flex;gap:8px;align-items:center;margin:0;">
+      <a href="/admin/ledger/entries?month=<%= prevMonth %>" class="btn btn-ghost btn-sm" style="padding:6px 12px;">&larr;</a>
+      <input type="month" name="month" value="<%= month %>" onchange="this.form.submit()" style="padding:6px 10px;font-size:0.85rem;">
+      <a href="/admin/ledger/entries?month=<%= nextMonth %>" class="btn btn-ghost btn-sm" style="padding:6px 12px;">&rarr;</a>
+    </form>
+    <div style="display:flex;gap:24px;align-items:center;">
+      <div style="text-align:right;"><div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);">Income</div><div style="color:var(--success);font-weight:600;"><%= money(totals.income) %></div></div>
+      <div style="text-align:right;"><div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);">Expense</div><div style="color:var(--danger);font-weight:600;"><%= money(totals.expense) %></div></div>
+      <div style="text-align:right;"><div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:.12em;color:var(--slate);">Net</div><div style="font-weight:600;color:<%= totals.net >= 0 ? 'var(--success)' : 'var(--danger)' %>;"><%= money(totals.net) %></div></div>
+      <form data-guard="button" method="POST" action="/admin/ledger/entries/sync-invoices" style="margin:0;">
+        <input type="hidden" name="month" value="<%= month %>">
+        <button class="btn btn-ghost btn-sm" title="Import paid invoices for this month as income">Sync Invoices</button>
+      </form>
+    </div>
+  </div>
+
+  <style>
+    .tagchip{display:inline-block;font-size:0.68rem;padding:2px 9px;border-radius:20px;background:var(--ivory);border:1px solid var(--border);color:var(--slate);text-decoration:none;margin:1px 2px;}
+    a.tagchip:hover{border-color:var(--gold);color:var(--navy);}
+    .tagchip.on{background:var(--navy);color:#fff;border-color:var(--navy);}
+    .tagchip.sm{font-size:0.62rem;padding:1px 7px;}
+    .gl-inline{font-size:0.8rem;padding:3px 6px;border:1px solid transparent;border-radius:5px;background:transparent;max-width:170px;cursor:pointer;color:var(--on-surface);font-weight:500;}
+    .gl-inline:hover,.gl-inline:focus{border-color:var(--border);background:var(--surface);}
+  </style>
+  <% if (allTags && allTags.length) { %>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:16px;">
+    <span class="text-slate" style="font-size:0.7rem;text-transform:uppercase;letter-spacing:.1em;">Filter by tag:</span>
+    <a href="/admin/ledger/entries?month=<%= month %>" class="tagchip <%= !activeTagFilter ? 'on' : '' %>">All</a>
+    <% allTags.forEach(function(t){ %>
+      <a href="/admin/ledger/entries?month=<%= month %>&tag=<%= encodeURIComponent(t) %>" class="tagchip <%= activeTagFilter === t ? 'on' : '' %>"><%= t %></a>
+    <% }) %>
+  </div>
+  <% } %>
+
+  <!-- Entries table -->
+  <% if (!entries.length) { %>
+    <div class="empty"><div class="empty-icon">&#8801;</div><p>No entries for <%= monthLabel %>.</p></div>
+  <% } else { %>
+  <div class="table-wrap" style="margin-bottom:24px;" data-agent-scope="bookkeeping" data-agent-kind="agent" data-agent-title="Ledger Review" data-agent-suggest="Summarize this month&#39;s entries|Find my largest expense this month|Spot any lines that look miscategorized|Which entries are missing a category?">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th><th>Category</th><th>Description</th><th>Vendor</th><th>Tags</th>
+          <th style="text-align:right;">Amount</th><th>Source</th><th></th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% for (const e of entries) { const c = catMap[String(e.categoryId)]; const isIncome = c?.type === 'income'; %>
+        <tr>
+          <td style="white-space:nowrap;font-size:0.82rem;"><%= new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) %></td>
+          <td style="font-size:0.82rem;">
+            <form method="POST" action="/admin/ledger/entries/<%= e._id %>/recategorize" style="margin:0;">
+              <input type="hidden" name="month" value="<%= month %>">
+              <select name="categoryId" class="gl-inline" onchange="this.form.submit()" title="Change GL account">
+                <% ['income','cogs','labor','fixed','expense','liability'].forEach(function(tp){
+                     const opts = categories.filter(function(x){ return x.type === tp; });
+                     if (!opts.length) return; %>
+                  <optgroup label="<%= tp.toUpperCase() %>">
+                    <% opts.forEach(function(x){ %>
+                      <option value="<%= x._id %>" <%= String(e.categoryId) === String(x._id) ? 'selected' : '' %>><%= x.name %></option>
+                    <% }) %>
+                  </optgroup>
+                <% }) %>
+                <% if (!c) { %><option value="" selected>— uncategorized —</option><% } %>
+              </select>
+            </form>
+          </td>
+          <td style="font-size:0.82rem;"><%= e.description || '—' %></td>
+          <td style="font-size:0.82rem;color:var(--slate);"><%= e.vendor || '—' %></td>
+          <td><% (e.tags||[]).forEach(function(t){ %><span class="tagchip sm"><%= t %></span><% }) %></td>
+          <td style="text-align:right;font-weight:600;font-variant-numeric:tabular-nums;color:<%= isIncome ? 'var(--success)' : 'var(--on-surface)' %>;"><%= isIncome ? '' : '-' %><%= money(e.amount).replace('-','') %></td>
+          <td>
+            <% if (e.source === 'statement' && e.sourceId && statementBatches[String(e.sourceId)]) {
+                 const b = statementBatches[String(e.sourceId)]; %>
+              <button type="button" class="badge badge-draft stmt-badge" style="font-size:0.6rem;cursor:pointer;border:none;"
+                onclick="openStmtModal('<%= b.statementId %>')" title="View all lines charged from this statement">
+                statement <span class="stmt-badge-count"><%= b.entries.length %></span>
+              </button>
+            <% } else { %>
+              <span class="badge <%= e.source === 'invoice' ? 'badge-paid' : 'badge-draft' %>" style="font-size:0.6rem;"><%= e.source %></span>
+            <% } %>
+          </td>
+          <td>
+            <% if (e.receiptKey) { %><a href="/admin/ledger/entries/<%= e._id %>/receipt" target="_blank" class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;">Receipt</a><% } %>
+          </td>
+          <td>
+            <form data-guard="button" method="POST" action="/admin/ledger/entries/<%= e._id %>/delete" onsubmit="return confirm('Delete this entry?')" style="margin:0;">
+              <input type="hidden" name="month" value="<%= month %>">
+              <button class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;color:var(--danger);">Delete</button>
+            </form>
+          </td>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+
+  <!-- Add entry -->
+  <div class="card" id="addEntry" data-agent-scope="bookkeeping" data-agent-kind="agent" data-agent-title="Ledger Entry" data-agent-suggest="Suggest a GL category for this expense|Write a clear description for this entry|Is this amount typical for this category?|Flag if this looks like a duplicate">
+    <div class="card-title">Add Ledger Entry</div>
+    <form data-guard method="POST" action="/admin/ledger/entries" enctype="multipart/form-data">
+      <input type="hidden" name="month" value="<%= month %>">
+      <div class="form-grid cols-3">
+        <div class="form-field">
+          <label>Date</label>
+          <input type="date" name="date" value="<%= todayInput %>" required>
+        </div>
+        <div class="form-field">
+          <label>Category</label>
+          <select name="categoryId" required>
+            <option value="">Select…</option>
+            <% for (const c of categories) { %>
+            <option value="<%= c._id %>"><%= c.name %> (<%= GL_TYPE_LABELS[c.type] %>)</option>
+            <% } %>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Amount ($)</label>
+          <input type="number" name="amount" step="0.01" min="0.01" required>
+        </div>
+        <div class="form-field span-2">
+          <label>Description</label>
+          <input type="text" name="description" placeholder="What was this?">
+        </div>
+        <div class="form-field">
+          <label>Vendor / Payee</label>
+          <input type="text" name="vendor" placeholder="Optional">
+        </div>
+        <div class="form-field">
+          <label>Tags</label>
+          <input type="text" name="tags" list="entryTagList" placeholder="comma,separated">
+        </div>
+        <div class="form-field span-2">
+          <label>Note</label>
+          <input type="text" name="note" placeholder="Optional">
+        </div>
+        <div class="form-field">
+          <label>Receipt</label>
+          <input type="file" name="receipt" accept="application/pdf,image/*" style="font-size:0.8rem;">
+        </div>
+      </div>
+      <div style="margin-top:16px;text-align:right;">
+        <button type="submit" class="btn btn-navy">Add Entry</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<datalist id="entryTagList"><% (allTags||[]).forEach(function(t){ %><option value="<%= t %>"></option><% }) %></datalist>
+
+<!-- Statement batch modals — one per statement referenced by this month's entries -->
+<% Object.keys(statementBatches).forEach(function(sid){
+     const b = statementBatches[sid];
+     const period = (b.periodStart || b.periodEnd)
+       ? [b.periodStart, b.periodEnd].map(function(d){ return d ? new Date(d).toLocaleDateString('en-US') : '?'; }).join(' – ')
+       : '';
+%>
+<div class="stmt-modal" id="stmtmodal-<%= b.statementId %>" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="stmt-modal-backdrop" onclick="closeStmtModal('<%= b.statementId %>')"></div>
+  <div class="stmt-modal-card">
+    <div class="stmt-modal-head">
+      <div>
+        <div class="stmt-modal-title"><%= b.bank %><% if (b.accountLast4) { %> <span class="text-slate">••••<%= b.accountLast4 %></span><% } %></div>
+        <div class="text-slate" style="font-size:0.76rem;">
+          <% if (period) { %><%= period %> &middot; <% } %><%= b.entries.length %> line<%= b.entries.length === 1 ? '' : 's' %> charged &middot; <%= money(b.total) %>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <% if (b.hasPdf) { %><a href="/admin/ledger/statements/<%= b.statementId %>/file" target="_blank" class="btn btn-ghost btn-sm" style="font-size:0.7rem;">Open PDF</a><% } %>
+        <button type="button" class="stmt-modal-x" onclick="closeStmtModal('<%= b.statementId %>')" aria-label="Close">&times;</button>
+      </div>
+    </div>
+    <div class="stmt-modal-body">
+      <table class="stmt-modal-table">
+        <thead><tr><th>Date</th><th>Account</th><th>Description</th><th style="text-align:right;">Amount</th><th></th></tr></thead>
+        <tbody>
+          <% b.entries.forEach(function(e){
+               const c = catMap[String(e.categoryId)];
+               const isIncome = c?.type === 'income';
+          %>
+          <tr>
+            <td class="nowrap"><%= new Date(e.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) %></td>
+            <td><%= c ? c.name : '—' %></td>
+            <td class="desc"><%= e.description || '—' %></td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;color:<%= isIncome ? 'var(--success)' : 'inherit' %>;">
+              <%= isIncome ? '' : '-' %><%= money(e.amount).replace('-','') %>
+            </td>
+            <td class="nowrap" style="text-align:right;">
+              <% if (e.receiptKey) { %><a href="/admin/ledger/entries/<%= e._id %>/receipt" target="_blank" class="btn btn-ghost btn-sm line-btn">PDF</a><% } %>
+              <form data-guard="button" method="POST" action="/admin/ledger/entries/<%= e._id %>/uncharge" onsubmit="return confirm('Remove this line from the ledger? It becomes private on the statement and can be re-reviewed.')" style="display:inline;margin:0;">
+                <input type="hidden" name="month" value="<%= month %>">
+                <button class="btn btn-ghost btn-sm line-btn" style="color:var(--danger);">Un-charge</button>
+              </form>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <div class="stmt-modal-foot text-slate">
+      Only these business-assigned lines were charged. Anything left private on the statement never reaches your books.
+      <a href="/admin/ledger/statements" style="margin-left:6px;">Go to Statements &rarr;</a>
+    </div>
+  </div>
+</div>
+<% }) %>
+
+<style>
+  .stmt-badge{background:var(--navy);color:#fff;display:inline-flex;align-items:center;gap:5px;}
+  .stmt-badge-count{background:rgba(255,255,255,0.25);border-radius:10px;padding:0 5px;font-weight:700;}
+  .stmt-modal{position:fixed;inset:0;z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:6vh 16px;}
+  .stmt-modal.open{display:flex;}
+  .stmt-modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,0.5);}
+  .stmt-modal-card{position:relative;background:var(--surface,#fff);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.3);width:100%;max-width:720px;max-height:84vh;display:flex;flex-direction:column;overflow:hidden;}
+  .stmt-modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 18px;border-bottom:1px solid var(--border);}
+  .stmt-modal-title{font-weight:600;color:var(--navy);font-size:1rem;}
+  .stmt-modal-x{background:none;border:none;font-size:1.5rem;line-height:1;cursor:pointer;color:var(--slate);padding:0 4px;}
+  .stmt-modal-body{overflow-y:auto;padding:6px 18px 12px;}
+  .stmt-modal-table{width:100%;font-size:0.82rem;border-collapse:collapse;}
+  .stmt-modal-table th{position:sticky;top:0;background:var(--surface,#fff);font-size:0.66rem;text-transform:uppercase;letter-spacing:.04em;color:var(--slate);text-align:left;padding:8px 6px;border-bottom:1px solid var(--border);}
+  .stmt-modal-table td{padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:middle;}
+  .stmt-modal-table .desc{max-width:260px;}
+  .stmt-modal-table .nowrap{white-space:nowrap;}
+  .line-btn{font-size:0.64rem;padding:3px 9px;margin-left:4px;}
+  .stmt-modal-foot{padding:12px 18px;border-top:1px solid var(--border);font-size:0.74rem;}
+</style>
+
+<script>
+(function(){
+  window.openStmtModal = function(id){
+    var m = document.getElementById('stmtmodal-' + id);
+    if (!m) return;
+    m.classList.add('open'); m.setAttribute('aria-hidden','false');
+    document.body.style.overflow = 'hidden';
+  };
+  window.closeStmtModal = function(id){
+    var m = document.getElementById('stmtmodal-' + id);
+    if (!m) return;
+    m.classList.remove('open'); m.setAttribute('aria-hidden','true');
+    document.body.style.overflow = '';
+  };
+  document.addEventListener('keydown', function(ev){
+    if (ev.key === 'Escape') {
+      document.querySelectorAll('.stmt-modal.open').forEach(function(m){
+        m.classList.remove('open'); m.setAttribute('aria-hidden','true'); document.body.style.overflow = '';
+      });
+    }
+  });
+})();
+</script>
+
+</div></div></body></html>

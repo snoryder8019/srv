@@ -6,6 +6,7 @@ import { ObjectId } from 'mongodb';
 import { getDb } from '../../plugins/mongo.js';
 import { brandUpload, modelUpload } from '../../middleware/upload.js';
 import { callLLM, tryParseAgentResponse, webSearch } from '../../plugins/agentMcp.js';
+import { agentLLMOpts } from '../../plugins/agentRegistry.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import { enrichDesignContrast } from '../../plugins/colorContrast.js';
 import { CUSTOM_TEMPLATES } from './sections.js';
@@ -614,7 +615,7 @@ ${designCtx}`;
     }
 
     const fullPrompt = systemPrompt + researchCtx;
-    const raw = await callLLM(messages, fullPrompt);
+    const raw = await callLLM(messages, fullPrompt, 90000, await agentLLMOpts(req.db, req.tenant, 'design'));
     const parsed = tryParseAgentResponse(raw);
 
     // The agent picks a font by NAME; enrich with the CSS2 weight spec from the

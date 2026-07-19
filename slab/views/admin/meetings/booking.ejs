@@ -4,9 +4,9 @@
 <div class="topbar">
   <div class="topbar-title">Booking Settings</div>
   <div class="topbar-actions">
-    <a href="/admin/meetings" class="btn btn-ghost">← Meetings</a>
+    <a href="/admin/meetings" class="btn btn-ghost">â Meetings</a>
     <% if (settings.enabled) { %>
-    <a href="<%= bookingUrl %>" target="_blank" class="btn btn-gold">View Public Page ↗</a>
+    <a href="<%= bookingUrl %>" target="_blank" class="btn btn-gold">View Public Page â</a>
     <% } %>
   </div>
 </div>
@@ -94,18 +94,18 @@
 
 <div class="content">
   <% if (typeof saved !== 'undefined' && saved) { %>
-  <div class="saved-banner">✓ Settings saved successfully.</div>
+  <div class="saved-banner">â Settings saved successfully.</div>
   <% } %>
 
   <% if (settings.enabled && bookingUrl) { %>
   <div class="booking-url-box">
     <span class="booking-url"><%= bookingUrl %></span>
     <button class="copy-url-btn" onclick="navigator.clipboard.writeText('<%= bookingUrl %>');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy URL',2000)">Copy URL</button>
-    <a href="<%= bookingUrl %>" target="_blank" style="font-size:12px;color:var(--gold);text-decoration:none">Open ↗</a>
+    <a href="<%= bookingUrl %>" target="_blank" style="font-size:12px;color:var(--gold);text-decoration:none">Open â</a>
   </div>
   <% } %>
 
-  <form method="POST" action="/admin/meetings/booking">
+  <form method="POST" action="/admin/meetings/booking" data-guard data-guard-label="Saving…">
     <div class="booking-grid">
 
       <!-- Left: settings -->
@@ -144,12 +144,12 @@
         <div class="panel mode-only-slots">
           <div class="panel-header">
             <span class="panel-title">Service Types</span>
-            <a href="/admin/meetings/slots" style="font-size:12px;color:var(--gold);text-decoration:none">Manage slots →</a>
+            <a href="/admin/meetings/slots" style="font-size:12px;color:var(--gold);text-decoration:none">Manage slots â</a>
           </div>
           <div class="panel-body">
             <div id="svc-types-list">
               <% if (!settings.serviceTypes || !settings.serviceTypes.length) { %>
-                <div class="svc-empty">No service types yet — add at least one.</div>
+                <div class="svc-empty">No service types yet â add at least one.</div>
               <% } else { %>
                 <% settings.serviceTypes.forEach(st => { %>
                 <div class="svc-row">
@@ -207,7 +207,7 @@
                   onchange="document.getElementById('times_<%= d %>').style.opacity=this.checked?1:0.3">
                 <span id="times_<%= d %>" style="display:flex;align-items:center;gap:6px;opacity:<%= dayAvail.enabled ? 1 : 0.3 %>">
                   <input type="time" class="time-input" name="day_<%= d %>_start" value="<%= dayAvail.start || '09:00' %>">
-                  <span class="time-dash">–</span>
+                  <span class="time-dash">â</span>
                   <input type="time" class="time-input" name="day_<%= d %>_end" value="<%= dayAvail.end || '17:00' %>">
                 </span>
               </div>
@@ -233,9 +233,9 @@
             <% bookings.forEach(b => { %>
             <div class="booking-card">
               <div>
-                <div class="booking-time"><%= new Date(b.startAt).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) %> · <%= new Date(b.startAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) %></div>
+                <div class="booking-time"><%= new Date(b.startAt).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) %> Â· <%= new Date(b.startAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) %></div>
                 <div class="booking-person"><%= b.name %></div>
-                <div class="booking-email"><%= b.email %><% if (b.company) { %> · <%= b.company %><% } %></div>
+                <div class="booking-email"><%= b.email %><% if (b.company) { %> Â· <%= b.company %><% } %></div>
                 <% if (b.message) { %><div style="font-size:11px;color:var(--ink-muted);margin-top:3px;font-style:italic"><%= b.message.slice(0,80) %></div><% } %>
               </div>
               <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
@@ -251,6 +251,42 @@
             <% }); %>
             <% } %>
           </div>
+        </div>
+
+        <!-- Past bookings â history below upcoming -->
+        <div class="panel" style="margin-top:16px">
+          <details open>
+            <summary class="panel-header" style="cursor:pointer;list-style:none;">
+              <span class="panel-title">Past Bookings</span>
+              <span style="font-size:12px;color:var(--ink-muted)"><%= (typeof pastBookings !== 'undefined' ? pastBookings.length : 0) %> shown</span>
+            </summary>
+            <div class="panel-body" style="padding:12px">
+              <% const _past = (typeof pastBookings !== 'undefined') ? pastBookings : []; %>
+              <% if (!_past.length) { %>
+              <div class="empty-bookings">No past bookings.</div>
+              <% } else { %>
+              <% _past.forEach(b => { %>
+              <div class="booking-card" style="opacity:0.82">
+                <div>
+                  <div class="booking-time"><%= new Date(b.startAt).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}) %> Â· <%= new Date(b.startAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) %></div>
+                  <div class="booking-person"><%= b.name %></div>
+                  <div class="booking-email"><%= b.email %><% if (b.company) { %> Â· <%= b.company %><% } %></div>
+                  <% if (b.message) { %><div style="font-size:11px;color:var(--ink-muted);margin-top:3px;font-style:italic"><%= b.message.slice(0,80) %></div><% } %>
+                </div>
+                <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+                  <span class="booking-status status-<%= b.status || 'pending' %>"><%= (b.status || 'pending').toUpperCase() %></span>
+                  <select style="font-size:11px;border:1px solid var(--border);border-radius:3px;padding:2px 4px" onchange="updateStatus('<%= b._id %>',this.value)">
+                    <option value="pending" <%= (b.status||'pending')==='pending'?'selected':'' %>>Pending</option>
+                    <option value="confirmed" <%= b.status==='confirmed'?'selected':'' %>>Confirm</option>
+                    <option value="cancelled" <%= b.status==='cancelled'?'selected':'' %>>Cancel</option>
+                    <option value="completed" <%= b.status==='completed'?'selected':'' %>>Complete</option>
+                  </select>
+                </div>
+              </div>
+              <% }); %>
+              <% } %>
+            </div>
+          </details>
         </div>
       </div>
 

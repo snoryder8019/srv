@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Superadmin — /srv Overview</title>
+  <title>Superadmin — Tenant Usage</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
@@ -43,21 +43,42 @@
     .cols { display:grid; grid-template-columns:1fr; gap:24px; }
     @media (min-width:1100px) { .cols { grid-template-columns:1.6fr 1fr; } }
 
-    /* ── srv directory grid ── */
-    .srv-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:12px; }
-    .srv { background:#141414; border:1px solid #262626; border-radius:8px; padding:14px; transition:border-color .15s; }
-    .srv:hover { border-color:#333; }
-    .srv.unreg { border-style:dashed; border-color:#3a3320; }
-    .srv-head { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
-    .srv-name { font-weight:600; color:#fff; font-size:14px; font-family:'Space Grotesk',sans-serif; }
-    .srv-cat { font-size:9px; text-transform:uppercase; letter-spacing:1px; padding:2px 6px; border-radius:4px; background:#1f1f1f; color:#737373; margin-left:auto; }
-    .srv-desc { font-size:12px; color:#737373; margin-bottom:8px; line-height:1.4; min-height:1.4em; }
-    .srv-meta { display:flex; flex-wrap:wrap; gap:8px 14px; font-size:11px; color:#525252; }
-    .srv-meta b { color:#a3a3a3; font-weight:500; }
-    .srv-git { margin-top:8px; padding-top:8px; border-top:1px solid #1f1f1f; font-size:11px; color:#525252; line-height:1.5; }
-    .srv-git .sha { color:#c9a848; font-family:ui-monospace,monospace; }
     .badge { font-size:9px; text-transform:uppercase; letter-spacing:1px; padding:2px 6px; border-radius:4px; }
     .badge.new { background:#2a2410; color:#c9a848; }
+
+    /* ── route-usage analytics ── */
+    .usage-card { background:#141414; border:1px solid #262626; border-radius:8px; padding:16px; }
+    .usage-controls { display:flex; align-items:center; gap:8px; margin-left:auto; font-weight:400; letter-spacing:0; text-transform:none; }
+    .usage-controls select { background:#0f0f0f; color:#e5e5e5; border:1px solid #2a2a2a; border-radius:6px; padding:5px 8px; font-size:12px; font-family:inherit; max-width:220px; }
+    .usage-controls select:focus { outline:none; border-color:#c9a848; }
+    .seg { display:inline-flex; border:1px solid #262626; border-radius:6px; overflow:hidden; }
+    .seg button { background:#0f0f0f; color:#a3a3a3; border:0; padding:5px 11px; font-size:12px; font-family:inherit; cursor:pointer; }
+    .seg button.on { background:#c9a848; color:#0a0a0a; font-weight:600; }
+    .usage-grid { display:grid; grid-template-columns:1fr; gap:24px; }
+    @media (min-width:1100px){ .usage-grid { grid-template-columns:1.55fr 1fr; } }
+
+    /* daily area chart */
+    .trend-wrap { position:relative; }
+    #trend { width:100%; height:180px; display:block; }
+    .trend-tip { position:absolute; pointer-events:none; background:#000; border:1px solid #333; border-radius:6px; padding:6px 9px; font-size:11px; color:#e5e5e5; white-space:nowrap; transform:translate(-50%,-115%); opacity:0; transition:opacity .1s; z-index:5; }
+    .trend-tip b { color:#c9a848; }
+
+    /* route leaderboard */
+    .rowbar { display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid #1a1a1a; }
+    .rowbar:last-child { border-bottom:0; }
+    .rowbar .mth { font-size:9px; font-weight:700; letter-spacing:.5px; padding:2px 5px; border-radius:4px; min-width:44px; text-align:center; }
+    .mth.GET{background:#0c2d48;color:#7dd3fc;} .mth.POST{background:#14361f;color:#86efac;}
+    .mth.PUT,.mth.PATCH{background:#3a2c08;color:#fbbf24;} .mth.DELETE{background:#3d1414;color:#fca5a5;}
+    .rowbar .rt { font-family:ui-monospace,monospace; font-size:12px; color:#e5e5e5; min-width:190px; max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .rowbar .track { flex:1; background:#0f0f0f; border:1px solid #1a1a1a; border-radius:4px; height:14px; overflow:hidden; position:relative; }
+    .rowbar .fill { height:100%; background:linear-gradient(90deg,#a8842e,#c9a848); border-radius:0 4px 4px 0; min-width:2px; }
+    .rowbar .num { min-width:120px; text-align:right; font-size:12px; color:#737373; white-space:nowrap; }
+    .rowbar .num b { color:#e5e5e5; }
+    .rowbar:hover .rt { color:#c9a848; }
+    .tn-row { display:flex; align-items:center; gap:10px; padding:6px 0; font-size:12px; border-bottom:1px solid #1a1a1a; }
+    .tn-row:last-child { border-bottom:0; }
+    .tn-row .track { flex:1; background:#0f0f0f; border:1px solid #1a1a1a; border-radius:4px; height:10px; overflow:hidden; }
+    .tn-row .fill { height:100%; background:#38bdf8; border-radius:0 4px 4px 0; }
 
     /* ── signup funnel ── */
     .funnel { background:#141414; border:1px solid #262626; border-radius:8px; padding:16px; margin-bottom:14px; }
@@ -111,83 +132,83 @@
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 %>
 
-<div class="topbar">
-  <div class="topbar-left">
-    <div class="logo">mad<span>Labs</span>lab</div>
-    <span class="sub">Superadmin · /srv Overview</span>
-    <span class="health">
-      <span><span class="dot up"></span> <%= srvSummary.running %> running</span>
-      <span><span class="dot down"></span> <%= srvSummary.down %> down</span>
-      <span><%= srvSummary.total %> dirs</span>
-    </span>
-  </div>
-  <div class="topbar-right">
-    <span class="refresh"><a href="/superadmin">↻ refresh</a></span>
-    <span><%= user && user.email %></span>
-    <a href="/superadmin/logout">Logout</a>
-  </div>
-</div>
-
-<div class="nav">
-  <a href="/superadmin/users">👥 Users</a>
-  <a href="/superadmin/all-tickets">🎫 Tickets</a>
-  <a href="/superadmin/setup-requests">⚡ Setup Requests</a>
-  <a href="/superadmin/activity">✎ Activity</a>
-  <a href="/superadmin/signups">📈 Signups</a>
-  <a href="/superadmin/scan-reports">🔍 Scan Reports</a>
-  <a href="/superadmin/security">🛡 Security</a>
-  <a href="/superadmin/permissions">🔒 Permissions</a>
-  <a href="/superadmin/features">🧪 Feature Visibility</a>
-  <a href="/superadmin/subscribers">📬 Subscribers</a>
-  <a href="/superadmin/promos">🎁 Promos</a>
-  <a href="/superadmin/announcements">📣 Announcements</a>
-  <a href="/superadmin/seo">🔎 SEO</a>
-  <a href="/superadmin/control-center" target="_blank">🖥 Control Center</a>
-</div>
+<%- include('partials/nav', { active: 'dashboard', user: user, subtitle: 'Tenant Usage' }) %>
 
 <div class="content">
 
   <!-- stats -->
   <div class="stats">
-    <div class="stat"><div class="l">/srv dirs</div><div class="v"><%= srvSummary.total %></div></div>
-    <div class="stat"><div class="l">Running</div><div class="v green"><%= srvSummary.running %></div></div>
-    <div class="stat"><div class="l">Down</div><div class="v red"><%= srvSummary.down %></div></div>
-    <div class="stat"><div class="l">Unregistered</div><div class="v <%= srvSummary.unregistered ? 'gold' : '' %>"><%= srvSummary.unregistered %></div></div>
     <div class="stat"><div class="l">Tenants</div><div class="v gold"><%= stats.total %></div></div>
     <div class="stat"><div class="l">Active</div><div class="v green"><%= stats.active %></div></div>
-    <div class="stat"><div class="l">Est. MRR</div><div class="v gold">$<%= stats.mrr %></div></div>
+    <div class="stat"><div class="l">Requests</div><div class="v" id="u-total">—</div></div>
+    <div class="stat"><div class="l">Routes hit</div><div class="v blue" id="u-routes">—</div></div>
+    <div class="stat"><div class="l">Active sites</div><div class="v" id="u-tenants">—</div></div>
+    <div class="stat"><div class="l">Error rate</div><div class="v" id="u-errpct">—</div></div>
+    <div class="stat" title="Monthly recurring revenue · <%= stats.payingCount %> paying tenants · lifetime & promo excluded">
+      <div class="l">Revenue</div>
+      <div class="v gold">$<%= stats.mrr.toLocaleString() %><span style="font-size:11px;color:#737373;font-weight:400;">/mo</span></div>
+    </div>
     <div class="stat"><div class="l">Open Tickets</div><div class="v <%= openTickets ? 'red' : '' %>"><%= openTickets %></div></div>
     <div class="stat"><div class="l">Signups 24h</div><div class="v blue"><%= signupFunnel.day.success %></div></div>
   </div>
 
-  <!-- ═══ /srv DIRECTORIES ═══ -->
+  <!-- ═══ LIVE REPORTING — testing-phase observability hub ═══ -->
   <div class="section">
-    <h2>/srv Directories <span class="count">· newest first · <%= srvSummary.registered %> registered, <%= srvSummary.unregistered %> unregistered</span></h2>
-    <div class="srv-grid">
-      <% srv.forEach(function(s){ %>
-        <div class="srv <%= s.registered ? '' : 'unreg' %>">
-          <div class="srv-head">
-            <span class="dot <%= s.alive===true ? 'up' : (s.alive===false ? 'down' : 'unknown') %>"></span>
-            <span class="srv-name"><%= s.name %></span>
-            <% if (!s.registered) { %><span class="badge new">new</span><% } %>
-            <span class="srv-cat"><%= s.category %></span>
-          </div>
-          <div class="srv-desc"><%= s.description || (s.isNodeApp ? (s.pkgName || 'Node app') : 'directory') %></div>
-          <div class="srv-meta">
-            <% if (s.port) { %><span><b>:<%= s.port %></b> <%= s.portOpen===true ? 'open' : (s.portOpen===false ? 'closed' : '') %></span><% } %>
-            <% if (s.tmux) { %><span>tmux <b><%= s.alive ? 'up' : 'down' %></b></span><% } %>
-            <% if (s.version) { %><span>v<%= s.version %></span><% } %>
-            <% if (s.domain) { %><span><a href="https://<%= s.domain %>" target="_blank" style="color:#38bdf8;"><%= s.domain %></a></span><% } %>
-          </div>
-          <% if (s.git) { %>
-            <div class="srv-git">
-              <span class="sha"><%= s.git.branch || '?' %>@<%= s.git.hash %></span> · <%= ago(s.git.committedAt) %>
-              <% if (s.git.subject) { %><br><%= esc(s.git.subject).slice(0,80) %><% } %>
-            </div>
-          <% } %>
-        </div>
-      <% }); %>
+    <h2>Live Reporting <span class="more"><a href="/superadmin/reports" style="color:#c9a848;">open hub →</a></span></h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
+      <a href="/superadmin/crons" style="background:#141414;border:1px solid #262626;border-radius:8px;padding:9px 16px;font-size:13px;">⏱️ Cron Health</a>
+      <a href="/superadmin/errors" style="background:#141414;border:1px solid #262626;border-radius:8px;padding:9px 16px;font-size:13px;">🚨 Errors (backend + front-end)</a>
+      <a href="/superadmin/comms" style="background:#141414;border:1px solid #262626;border-radius:8px;padding:9px 16px;font-size:13px;">✉️ Comms Ledger</a>
+      <a href="/superadmin/events" style="background:#141414;border:1px solid #262626;border-radius:8px;padding:9px 16px;font-size:13px;">🔔 Events</a>
+      <a href="/superadmin/security" style="background:#141414;border:1px solid #262626;border-radius:8px;padding:9px 16px;font-size:13px;">🛡️ Security</a>
     </div>
+  </div>
+
+  <!-- ═══ ROUTE USAGE — which app endpoints tenants actually use ═══ -->
+  <div class="section">
+    <h2>
+      Route Usage
+      <span class="count" id="ru-summary">· loading…</span>
+      <span class="usage-controls">
+        <select id="ru-tenant" title="Filter by tenant"><option value="all">All tenants</option></select>
+        <span class="seg" id="ru-days">
+          <button data-d="7">7d</button>
+          <button data-d="30" class="on">30d</button>
+          <button data-d="90">90d</button>
+        </span>
+      </span>
+    </h2>
+
+    <div class="usage-grid">
+      <!-- daily trend -->
+      <div class="usage-card">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#737373;margin-bottom:10px;">Requests per day</div>
+        <div class="trend-wrap">
+          <svg id="trend" viewBox="0 0 600 180" preserveAspectRatio="none" aria-label="Requests per day"></svg>
+          <div class="trend-tip" id="trend-tip"></div>
+        </div>
+      </div>
+
+      <!-- top tenants -->
+      <div class="usage-card">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#737373;margin-bottom:10px;">Busiest tenants</div>
+        <div id="ru-tenants"><div class="empty" style="padding:8px;">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- top routes leaderboard -->
+    <div class="usage-card" style="margin-top:24px;">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#737373;margin-bottom:6px;">
+        Most-used routes <span id="ru-scope" style="color:#525252;text-transform:none;letter-spacing:0;"></span>
+      </div>
+      <div id="ru-routes"><div class="empty" style="padding:14px;">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- ═══ AGENT TOOL USAGE (all sites) ═══ -->
+  <div class="section">
+    <h2>Agent Tool Usage <span class="count" id="tu-summary">· loading…</span><span class="more"><a href="#" onclick="loadToolUsage();return false;" style="color:#c9a848;">refresh ↻</a></span></h2>
+    <div class="list" id="tu-body"><div class="empty">Loading…</div></div>
   </div>
 
   <div class="cols">
@@ -283,6 +304,166 @@
 </div>
 
 <script>
+  // ── Route usage: tenant endpoint popularity ────────────────────────────────
+  var RU = { days: 30, tenantDb: 'all', tenantsLoaded: false };
+  function ruEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function fmt(n){ n = n||0; return n>=1e6 ? (n/1e6).toFixed(1)+'M' : n>=1e3 ? (n/1e3).toFixed(1)+'k' : String(n); }
+
+  async function loadRouteUsage() {
+    var qs = '?days=' + RU.days + '&tenantDb=' + encodeURIComponent(RU.tenantDb);
+    try {
+      var r = await fetch('/superadmin/route-usage' + qs);
+      if (!r.ok) throw new Error('http ' + r.status);
+      var d = await r.json();
+      renderUsageStats(d);
+      renderTrend(d.byDay || []);
+      renderRoutes(d.byRoute || []);
+      renderTenants(d.byTenant || []);
+      // populate the tenant filter once
+      if (!RU.tenantsLoaded && d.byTenant && d.byTenant.length) {
+        var sel = document.getElementById('ru-tenant');
+        d.byTenant.forEach(function(t){
+          var o = document.createElement('option'); o.value = t.tenantDb;
+          o.textContent = (t.tenantDomain || t.tenantDb) + ' (' + fmt(t.count) + ')';
+          sel.appendChild(o);
+        });
+        RU.tenantsLoaded = true;
+      }
+      var scope = RU.tenantDb === 'all' ? 'all tenants' : (d.byTenant[0] && d.byTenant[0].tenantDomain) || RU.tenantDb;
+      document.getElementById('ru-summary').textContent = '· ' + fmt(d.totals.count) + ' requests · last ' + RU.days + 'd';
+      document.getElementById('ru-scope').textContent = '· ' + scope;
+    } catch (e) {
+      document.getElementById('ru-summary').textContent = '· failed to load';
+      document.getElementById('ru-routes').innerHTML = '<div class="empty" style="padding:14px;">No usage recorded yet — data appears here as tenants use the app.</div>';
+    }
+  }
+
+  function renderUsageStats(d) {
+    var t = d.totals || {};
+    var avg = d.byDay && d.byDay.length ? Math.round(t.count / d.byDay.length) : 0;
+    var errPct = t.count ? (t.err / t.count * 100) : 0;
+    document.getElementById('u-total').textContent = fmt(t.count);
+    document.getElementById('u-routes').textContent = t.routes || 0;
+    document.getElementById('u-tenants').textContent = t.tenants || 0;
+    var ep = document.getElementById('u-errpct');
+    ep.textContent = errPct.toFixed(1) + '%';
+    ep.className = 'v ' + (errPct >= 5 ? 'red' : errPct >= 1 ? 'gold' : 'green');
+  }
+
+  function renderTrend(days) {
+    var svg = document.getElementById('trend');
+    var W = 600, H = 180, pad = 6;
+    if (!days.length) { svg.innerHTML = '<text x="300" y="90" fill="#525252" font-size="12" text-anchor="middle">No data</text>'; return; }
+    var max = Math.max.apply(null, days.map(function(x){ return x.count; })) || 1;
+    var n = days.length;
+    var x = function(i){ return pad + (n===1 ? W/2 : i * (W - pad*2) / (n - 1)); };
+    var y = function(v){ return H - pad - (v / max) * (H - pad*2 - 14); };
+    var line = '', area = '';
+    days.forEach(function(pt, i){
+      var px = x(i).toFixed(1), py = y(pt.count).toFixed(1);
+      line += (i ? 'L' : 'M') + px + ' ' + py + ' ';
+      area += (i ? 'L' : 'M') + px + ' ' + py + ' ';
+    });
+    area += 'L' + x(n-1).toFixed(1) + ' ' + (H-pad) + ' L' + x(0).toFixed(1) + ' ' + (H-pad) + ' Z';
+    var dots = days.map(function(pt,i){ return '<circle cx="'+x(i).toFixed(1)+'" cy="'+y(pt.count).toFixed(1)+'" r="9" fill="transparent" data-i="'+i+'" data-d="'+pt.day+'" data-c="'+pt.count+'" data-e="'+(pt.err||0)+'"/>'; }).join('');
+    svg.innerHTML =
+      '<defs><linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0" stop-color="#c9a848" stop-opacity="0.28"/><stop offset="1" stop-color="#c9a848" stop-opacity="0"/></linearGradient></defs>' +
+      '<path d="'+area+'" fill="url(#ga)"/>' +
+      '<path d="'+line+'" fill="none" stroke="#c9a848" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>' +
+      dots;
+    // hover crosshair/tooltip
+    var tip = document.getElementById('trend-tip');
+    var wrap = svg.parentNode;
+    svg.querySelectorAll('circle').forEach(function(c){
+      c.addEventListener('mouseenter', function(){
+        var rect = svg.getBoundingClientRect();
+        var relX = (parseFloat(c.getAttribute('cx')) / W) * rect.width;
+        var relY = (parseFloat(c.getAttribute('cy')) / H) * rect.height;
+        tip.style.left = relX + 'px'; tip.style.top = relY + 'px'; tip.style.opacity = 1;
+        tip.innerHTML = c.getAttribute('data-d') + ' · <b>' + fmt(+c.getAttribute('data-c')) + '</b> req' +
+          (+c.getAttribute('data-e') ? ' · ' + c.getAttribute('data-e') + ' err' : '');
+      });
+      c.addEventListener('mouseleave', function(){ tip.style.opacity = 0; });
+    });
+  }
+
+  function renderRoutes(rows) {
+    var el = document.getElementById('ru-routes');
+    if (!rows.length) { el.innerHTML = '<div class="empty" style="padding:14px;">No route hits recorded in this window yet.</div>'; return; }
+    var max = rows[0].count || 1;
+    el.innerHTML = rows.map(function(x){
+      var pct = Math.max(2, Math.round((x.count / max) * 100));
+      var errBit = x.err ? ' · <span style="color:#f87171;">' + fmt(x.err) + ' err</span>' : '';
+      var siteBit = x.tenants ? ' · ' + x.tenants + ' site' + (x.tenants===1?'':'s') : '';
+      var m = (x.method||'GET').toUpperCase();
+      return '<div class="rowbar">' +
+        '<span class="mth ' + ruEsc(m) + '">' + ruEsc(m) + '</span>' +
+        '<span class="rt" title="' + ruEsc(x.route) + '">' + ruEsc(x.route) + '</span>' +
+        '<span class="track"><span class="fill" style="width:' + pct + '%;"></span></span>' +
+        '<span class="num"><b>' + fmt(x.count) + '</b>' + siteBit + errBit + '</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderTenants(rows) {
+    var el = document.getElementById('ru-tenants');
+    if (!rows.length) { el.innerHTML = '<div class="empty" style="padding:8px;">No tenant traffic yet.</div>'; return; }
+    var top = rows.slice(0, 10);
+    var max = top[0].count || 1;
+    el.innerHTML = top.map(function(t){
+      var pct = Math.max(2, Math.round((t.count / max) * 100));
+      return '<div class="tn-row">' +
+        '<span style="min-width:150px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e5e5e5;" title="' + ruEsc(t.tenantDomain||t.tenantDb) + '">' + ruEsc(t.tenantDomain || t.tenantDb) + '</span>' +
+        '<span class="track"><span class="fill" style="width:' + pct + '%;"></span></span>' +
+        '<span style="min-width:78px;text-align:right;color:#737373;"><b style="color:#e5e5e5;">' + fmt(t.count) + '</b> · ' + (t.routes||0) + ' rt</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  document.getElementById('ru-days').addEventListener('click', function(e){
+    var b = e.target.closest('button'); if (!b) return;
+    RU.days = parseInt(b.getAttribute('data-d'), 10);
+    this.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
+    loadRouteUsage();
+  });
+  document.getElementById('ru-tenant').addEventListener('change', function(){
+    RU.tenantDb = this.value; loadRouteUsage();
+  });
+  loadRouteUsage();
+
+  // ── Agent tool-usage scoreboard (cross-tenant, all sites) ──────────────────
+  function tuEsc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  async function loadToolUsage() {
+    var body = document.getElementById('tu-body');
+    var summary = document.getElementById('tu-summary');
+    try {
+      var r = await fetch('/superadmin/tool-usage');
+      if (!r.ok) throw new Error('http ' + r.status);
+      var d = await r.json();
+      var t = d.totals || { calls: 0 };
+      summary.textContent = '· ' + t.calls + ' calls across all sites' + (t.successPct != null ? ' · ' + t.successPct + '% ok' : '');
+      var used = (d.tools || []).filter(function(x){ return x.calls > 0; });
+      if (!used.length) { body.innerHTML = '<div class="empty">No agent tool calls recorded yet — usage appears here as tenants run their agents.</div>'; return; }
+      var max = used[0].calls || 1;
+      body.innerHTML = used.map(function(x){
+        var pct = Math.round((x.calls / max) * 100);
+        var okColor = x.successPct == null ? '#737373' : x.successPct >= 90 ? '#34d399' : x.successPct >= 60 ? '#c9a848' : '#f87171';
+        var ok = x.successPct == null ? '' : ' · <span style="color:' + okColor + ';">' + x.successPct + '%</span>';
+        var ms = x.avgMs == null ? '' : ' · ' + (x.avgMs >= 1000 ? (x.avgMs / 1000).toFixed(1) + 's' : x.avgMs + 'ms');
+        var sites = x.tenantCount ? ' · ' + x.tenantCount + ' site' + (x.tenantCount === 1 ? '' : 's') : '';
+        return '<div class="li" style="align-items:center;">'
+          + '<span style="min-width:170px;font-family:ui-monospace,monospace;color:#e5e5e5;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + tuEsc(x.description || '') + '">' + tuEsc(x.tool) + '</span>'
+          + '<div style="flex:1;background:#0f0f0f;border:1px solid #1f1f1f;border-radius:4px;height:8px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:#c9a848;"></div></div>'
+          + '<span style="min-width:150px;text-align:right;color:#737373;font-size:12px;white-space:nowrap;"><b style="color:#e5e5e5;">' + x.calls + '</b>' + ok + ms + sites + '</span>'
+          + '</div>';
+      }).join('');
+    } catch (e) {
+      body.innerHTML = '<div class="empty">Failed to load tool usage.</div>';
+    }
+  }
+  loadToolUsage();
+
   // Light auto-refresh so the overview stays live on a wall display; opt-out via ?static
   if (!location.search.includes('static')) setTimeout(function(){ location.reload(); }, 60000);
 </script>

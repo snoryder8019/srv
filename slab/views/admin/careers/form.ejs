@@ -1,0 +1,126 @@
+<%- include('../partials/head', { title }) %>
+<%- include('../partials/sidebar', { user, page }) %>
+
+<% var j = (typeof job !== 'undefined' && job) ? job : {}; %>
+<% var isEdit = !!(j && j._id); %>
+<% function val(v){ return (v === undefined || v === null) ? '' : v; } %>
+
+<div class="topbar">
+  <div class="topbar-title"><%= title %></div>
+  <div class="topbar-actions">
+    <a href="/admin/careers" class="btn btn-ghost btn-sm">← Back</a>
+  </div>
+</div>
+<div class="content">
+  <% if (typeof error !== 'undefined' && error) { %><div class="alert alert-error"><%= error %></div><% } %>
+
+  <form data-guard action="<%= isEdit ? ('/admin/careers/' + j._id) : '/admin/careers' %>" method="post" style="max-width:860px;">
+    <div class="form-grid cols-2" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+      <div class="form-field" style="grid-column:1 / -1;">
+        <label>Title *</label>
+        <input type="text" name="title" value="<%= val(j.title) %>" required>
+      </div>
+      <div class="form-field">
+        <label>URL Slug <span style="opacity:.6;">(auto from title if blank)</span></label>
+        <input type="text" name="slug" value="<%= val(j.slug) %>" placeholder="senior-designer">
+      </div>
+      <div class="form-field">
+        <label>Department</label>
+        <input type="text" name="department" list="dept-list" value="<%= val(j.department) %>">
+        <datalist id="dept-list">
+          <% (typeof departments !== 'undefined' ? departments : []).forEach(function(d){ %><option value="<%= d %>"><% }); %>
+        </datalist>
+      </div>
+      <div class="form-field">
+        <label>City</label>
+        <input type="text" name="city" value="<%= val(j.city) %>" placeholder="Denver">
+      </div>
+      <div class="form-field">
+        <label>State / Region</label>
+        <input type="text" name="region" value="<%= val(j.region) %>" placeholder="CO">
+      </div>
+      <div class="form-field">
+        <label>Country</label>
+        <input type="text" name="country" value="<%= val(j.country) %>" placeholder="US">
+      </div>
+      <div class="form-field">
+        <label>Postal Code</label>
+        <input type="text" name="postalCode" value="<%= val(j.postalCode) %>" placeholder="80202">
+      </div>
+      <div class="form-field" style="grid-column:1 / -1;opacity:.6;font-size:.85em;">
+        Structured location powers Google Jobs &amp; board feeds. Leave blank + tick Remote for a remote-only role.
+      </div>
+      <div class="form-field">
+        <label>Employment Type</label>
+        <select name="employmentType">
+          <% (typeof employmentTypes !== 'undefined' ? employmentTypes : []).forEach(function(t){ %>
+            <option value="<%= t %>" <%= j.employmentType === t ? 'selected' : '' %>><%= t %></option>
+          <% }); %>
+        </select>
+      </div>
+      <div class="form-field">
+        <label style="display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" name="remote" <%= j.remote ? 'checked' : '' %> style="width:auto;"> Remote OK
+        </label>
+      </div>
+      <div class="form-field">
+        <label>Status</label>
+        <select name="status">
+          <option value="draft" <%= j.status === 'open' ? '' : 'selected' %>>Draft (hidden)</option>
+          <option value="open" <%= j.status === 'open' ? 'selected' : '' %>>Open (public)</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label>Salary Min</label>
+        <input type="number" name="salaryMin" min="0" value="<%= val(j.salaryMin) %>">
+      </div>
+      <div class="form-field">
+        <label>Salary Max</label>
+        <input type="number" name="salaryMax" min="0" value="<%= val(j.salaryMax) %>">
+      </div>
+      <div class="form-field">
+        <label>Currency</label>
+        <input type="text" name="salaryCurrency" maxlength="8" value="<%= val(j.salaryCurrency) || 'USD' %>">
+      </div>
+      <div class="form-field">
+        <label>Closes At <span style="opacity:.6;">(optional)</span></label>
+        <input type="date" name="closesAt" value="<%= j.closesAt ? (new Date(j.closesAt).toISOString().slice(0,10)) : '' %>">
+      </div>
+
+      <div class="form-field" style="grid-column:1 / -1;">
+        <label>Description</label>
+        <textarea name="description" rows="8"><%= val(j.description) %></textarea>
+      </div>
+      <div class="form-field">
+        <label>Requirements <span style="opacity:.6;">(one per line)</span></label>
+        <textarea name="requirements" rows="6"><%= Array.isArray(j.requirements) ? j.requirements.join('\n') : val(j.requirements) %></textarea>
+      </div>
+      <div class="form-field">
+        <label>Benefits <span style="opacity:.6;">(one per line)</span></label>
+        <textarea name="benefits" rows="6"><%= Array.isArray(j.benefits) ? j.benefits.join('\n') : val(j.benefits) %></textarea>
+      </div>
+
+      <div class="form-field" style="grid-column:1 / -1;border-top:1px solid var(--border,#e5e2dc);padding-top:14px;">
+        <label>How to Apply</label>
+        <select name="applyMode" id="applyMode">
+          <option value="internal" <%= j.applyMode === 'internal' || !j.applyMode ? 'selected' : '' %>>On-site form (collects applications here)</option>
+          <option value="external" <%= j.applyMode === 'external' ? 'selected' : '' %>>External link (ATS / job board)</option>
+          <option value="email" <%= j.applyMode === 'email' ? 'selected' : '' %>>Email (mailto)</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label>Apply URL <span style="opacity:.6;">(external mode)</span></label>
+        <input type="url" name="applyUrl" value="<%= val(j.applyUrl) %>" placeholder="https://…">
+      </div>
+      <div class="form-field">
+        <label>Apply Email <span style="opacity:.6;">(email mode)</span></label>
+        <input type="email" name="applyEmail" value="<%= val(j.applyEmail) %>" placeholder="jobs@…">
+      </div>
+    </div>
+
+    <div style="margin-top:22px;display:flex;gap:10px;">
+      <button type="submit" class="btn btn-navy"><%= isEdit ? 'Save Posting' : 'Create Posting' %></button>
+      <a href="/admin/careers" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>

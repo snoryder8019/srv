@@ -5,7 +5,7 @@ import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getDb } from '../../plugins/mongo.js';
 import { s3Client, BUCKET, bucketUrl } from '../../plugins/s3.js';
 import { config } from '../../config/config.js';
-import { callLLM, webSearch, runTool, handleMcpRequest } from '../../plugins/agentMcp.js';
+import { callLLM, webSearch, runTool, handleMcpRequest, readToolUsage } from '../../plugins/agentMcp.js';
 import { executeDepartment } from '../../plugins/agentRouter.js';
 import { generateInvoiceNumber, generatePaymentToken, calculateTotal } from '../../plugins/invoiceHelpers.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
@@ -18,7 +18,7 @@ Analyze the user's request and determine which department should handle it.
 
 Output ONLY raw JSON — no prose, no fences:
 {
-  "department": "blog" | "copy" | "section" | "page" | "design" | "asset" | "email" | "social" | "print" | "invoice" | "outreach" | "research" | "onboarding" | "navigate",
+  "department": "blog" | "copy" | "section" | "page" | "theme" | "typography" | "visibility" | "design" | "asset" | "email" | "social" | "print" | "invoice" | "outreach" | "research" | "onboarding" | "navigate",
   "task": "concise task description for the specialist",
   "section_type": "text" | "split" | "cta" | "cards" | "faq",
   "page_type": "content" | "landing" | "data-list",
@@ -34,7 +34,10 @@ Department guide:
 - copy: WRITING or UPDATING website headline, hero text, services descriptions, about blurb
 - section: CREATING a new website section (text block, split, CTA banner, cards, FAQ)
 - page: CREATING a standalone website page (content, landing, data-list)
-- design: CHANGING site colors, fonts, layouts, section visibility, theme/branding
+- theme: CHANGING site COLORS / palette (primary, accent, background) — "make it navy", "warmer palette", "change the colors"
+- typography: CHANGING FONTS — heading or body typeface ("use a serif heading", "change the font")
+- visibility: SHOWING or HIDING homepage SECTIONS ("hide the blog section", "show reviews on the homepage", "turn off portfolio")
+- design: CHANGING LAYOUT style (portfolio/blog grid vs list vs masonry) or logo display (text/image/both)
 - asset: CREATING a social-platform GRAPHIC/IMAGE (Instagram post image, Facebook cover, story graphic) — the rendered picture itself, NOT print pieces
 - social: DRAFTING a social media POST (text/caption) for Facebook, Instagram, Threads, X, LinkedIn — what to actually say in the post
 - print: A PRINT PIECE — flyer, poster, business card, sticker, brochure, menu, letterhead, postcard. Use this for anything printed, EVEN when the user says "design" (e.g. "design a flyer"). Drafts headline, body, offer, CTA.
@@ -64,6 +67,9 @@ const DEPT_ACTIONS = {
   copy:       { label: 'Go to Site Copy',      url: '/admin/copy',             color: '#1C2B4A' },
   section:    { label: 'Go to Sections',       url: '/admin/sections',         color: '#5B3E2B' },
   page:       { label: 'Open Page Editor',     url: '/admin/pages/new',        color: '#2E5B3E' },
+  theme:      { label: 'Go to Design',         url: '/admin/design',           color: '#6B3FA0' },
+  typography: { label: 'Go to Design',         url: '/admin/design',           color: '#6B3FA0' },
+  visibility: { label: 'Go to Design',         url: '/admin/design',           color: '#6B3FA0' },
   design:     { label: 'Go to Design',         url: '/admin/design',           color: '#6B3FA0' },
   asset:      { label: 'Open Asset Center',    url: '/admin/assets',           color: '#C9A848' },
   social:     { label: 'Open Social',          url: '/admin/social',           color: '#3B5998' },
@@ -117,7 +123,7 @@ Output ONLY raw JSON — no prose, no fences:
   "title": "short title (3-6 words)",
   "tasks": [
     {
-      "department": "blog" | "copy" | "section" | "page" | "design" | "asset" | "social" | "print" | "email" | "invoice" | "outreach" | "research" | "onboarding",
+      "department": "blog" | "copy" | "section" | "page" | "theme" | "typography" | "visibility" | "design" | "asset" | "social" | "print" | "email" | "invoice" | "outreach" | "research" | "onboarding",
       "task": "specific instruction for the specialist agent",
       "label": "2-5 word human label",
       "section_type": "text" | "split" | "cta" | "cards" | "faq",
@@ -138,7 +144,10 @@ Department capabilities:
 - blog: write articles, blog posts, content pieces
 - section: create new website section (text block, split layout, CTA banner, feature cards, FAQ)
 - page: create standalone page (content article, visual landing page, data list)
-- design: change colors, fonts, layouts, toggle section visibility
+- theme: change site colors / palette (primary, accent, background)
+- typography: change heading or body fonts
+- visibility: show or hide homepage sections
+- design: change layout style (grid/list/masonry) or logo display
 - asset: create a social-platform graphic/image (the rendered picture itself), NOT print pieces
 - social: draft the text/caption of a social media post (Facebook, Instagram, Threads, X, LinkedIn)
 - print: a print piece — flyer, poster, business card, sticker, brochure, menu, postcard (route here even if the user says "design")
@@ -183,6 +192,21 @@ function getSuggestions(department, task, fill, brand = {}) {
       `Switch to a modern color palette`,
       `Show the blog section on the homepage`,
       `Create a social graphic with the new brand colors`,
+    ],
+    theme: [
+      `Pair these colors with a matching font`,
+      `Create a social graphic with the new brand colors`,
+      `Adjust the accent color to pop more`,
+    ],
+    typography: [
+      `Refresh the color palette to match these fonts`,
+      `Preview the homepage with the new type`,
+      `Pick a heading font with more character`,
+    ],
+    visibility: [
+      `Reorder the homepage sections`,
+      `Refresh the copy in the sections you kept`,
+      `Switch to a modern color palette`,
     ],
     asset: [
       `Create an Instagram story promoting ${svc}`,
@@ -431,6 +455,15 @@ router.post('/run-task', async (req, res) => {
     } else if (department === 'page') {
       toolName = 'write_page';
       toolArgs = { title: task, page_type: page_type || 'content', task, context, brandContext: brandCtx };
+    } else if (department === 'theme') {
+      toolName = 'update_theme';
+      toolArgs = { task, context, brandContext: brandCtx };
+    } else if (department === 'typography') {
+      toolName = 'update_typography';
+      toolArgs = { task, context, brandContext: brandCtx };
+    } else if (department === 'visibility') {
+      toolName = 'set_section_visibility';
+      toolArgs = { task, context, brandContext: brandCtx };
     } else if (department === 'design') {
       toolName = 'update_design';
       toolArgs = { task, context, brandContext: brandCtx };
@@ -463,7 +496,7 @@ router.post('/run-task', async (req, res) => {
       toolArgs = { task, section: 'all', context, brandContext: brandCtx };
     }
 
-    const result = await runTool(toolName, toolArgs);
+    const result = await runTool(toolName, toolArgs, { db: req.db, tenant: req.tenant });
     const action = DEPT_ACTIONS[department] || DEPT_ACTIONS.copy;
     const suggestions = getSuggestions(department, task, result.fill, req.tenant?.brand);
 
@@ -528,6 +561,15 @@ router.post('/', async (req, res) => {
     } else if (route.department === 'page') {
       toolName = 'write_page';
       toolArgs = { title: route.task, page_type: route.page_type || 'content', task: route.task, context, brandContext: brandCtx };
+    } else if (route.department === 'theme') {
+      toolName = 'update_theme';
+      toolArgs = { task: route.task, context, brandContext: brandCtx };
+    } else if (route.department === 'typography') {
+      toolName = 'update_typography';
+      toolArgs = { task: route.task, context, brandContext: brandCtx };
+    } else if (route.department === 'visibility') {
+      toolName = 'set_section_visibility';
+      toolArgs = { task: route.task, context, brandContext: brandCtx };
     } else if (route.department === 'design') {
       toolName = 'update_design';
       toolArgs = { task: route.task, context, brandContext: brandCtx };
@@ -560,7 +602,7 @@ router.post('/', async (req, res) => {
       toolArgs = { task: route.task, section: 'all', context, brandContext: brandCtx };
     }
 
-    const result = await runTool(toolName, toolArgs);
+    const result = await runTool(toolName, toolArgs, { db: req.db, tenant: req.tenant });
     const action = DEPT_ACTIONS[route.department] || DEPT_ACTIONS.copy;
     const suggestions = getSuggestions(route.department, route.task, result.fill, req.tenant?.brand);
 
@@ -754,6 +796,36 @@ router.get('/usage', async (req, res) => {
     });
   } catch (err) {
     console.error('[master-agent/usage] error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Tool-usage scoreboard — GET /admin/master-agent/tool-usage ───────────────
+// The MCP tool-usage counter. Per-tenant by default (this site's own agent tool
+// usage). Superadmins may pass ?scope=global for the cross-tenant platform
+// roll-up — "where are users actually spending agent calls" — which is what
+// drives tool right-sizing (split the heavy ones, cut the dead ones, add where
+// there's demand). Reads the aggregated counters written by runTool().
+router.get('/tool-usage', async (req, res) => {
+  try {
+    const wantGlobal = req.query.scope === 'global' && !!req.isSuperAdmin;
+    const tenantKey = wantGlobal
+      ? null
+      : (req.tenant?.db || req.tenant?.s3Prefix || (req.tenant?._id ? String(req.tenant._id) : null));
+    const tools = await readToolUsage({ tenantKey });
+    const totals = tools.reduce((a, t) => {
+      a.calls += t.calls; a.ok += t.ok; a.err += t.err; return a;
+    }, { calls: 0, ok: 0, err: 0 });
+    totals.successPct = totals.calls ? Math.round((totals.ok / totals.calls) * 100) : null;
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      scope: wantGlobal ? 'global' : 'tenant',
+      canGlobal: !!req.isSuperAdmin,
+      totals,
+      tools,
+    });
+  } catch (err) {
+    console.error('[master-agent/tool-usage] error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -998,9 +1070,16 @@ Output ONLY the briefing text — no JSON, no preamble, no "Here is your briefin
 });
 
 // ── MCP HTTP endpoint — POST /admin/master-agent/mcp ─────────────────────────
+// Threads the caller's tenant scope + brand context so stateful social tools can
+// reach the right DB and every tool produces on-brand output. Brand context is
+// loaded only for tool calls (not initialize/list) to keep those cheap.
 router.post('/mcp', async (req, res) => {
   try {
-    const response = await handleMcpRequest(req.body);
+    let ctx = { db: req.db, tenant: req.tenant };
+    if (req.body?.method === 'tools/call' && req.tenant && req.db) {
+      try { ctx.brandContext = await loadBrandContext(req.tenant, req.db); } catch { /* on-brand best-effort */ }
+    }
+    const response = await handleMcpRequest(req.body, ctx);
     if (response === null) return res.status(202).end();
     res.json(response);
   } catch (err) {

@@ -7,6 +7,7 @@ import { config } from '../../config/config.js';
 import { sendClientEmail, resolveSmtp, getTenantTransporter } from '../../plugins/mailer.js';
 import { s3Client, BUCKET } from '../../plugins/s3.js';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { buildClientNotes } from '../../plugins/clientNotes.js';
 
 const router = express.Router();
 
@@ -220,10 +221,16 @@ router.get('/booking', async (req, res) => {
     if (!settings.mode) settings.mode = 'meeting';
     if (!Array.isArray(settings.serviceTypes)) settings.serviceTypes = [];
 
+    const nowTs = new Date();
     // Upcoming bookings
     const bookings = await db.collection('bookings')
-      .find({ startAt: { $gte: new Date() }, status: { $nin: ['cancelled'] } })
+      .find({ startAt: { $gte: nowTs }, status: { $nin: ['cancelled'] } })
       .sort({ startAt: 1 }).limit(20).toArray();
+    // Past bookings — most recent first (a valid startAt in the past; excludes the
+    // epoch-zero junk and cancelled).
+    const pastBookings = await db.collection('bookings')
+      .find({ startAt: { $lt: nowTs, $gte: new Date('2000-01-01') }, status: { $nin: ['cancelled'] } })
+      .sort({ startAt: -1 }).limit(30).toArray();
 
     const domain = req.tenant?.domain ? 'https://' + req.tenant.domain : '';
 
@@ -233,6 +240,7 @@ router.get('/booking', async (req, res) => {
       title: 'Booking Settings',
       settings,
       bookings,
+      pastBookings,
       bookingUrl: domain + '/book',
       saved: req.query.saved === '1',
       error: req.query.error === '1',
@@ -598,12 +606,23 @@ router.get('/:id', async (req, res) => {
       .sort({ sentAt: -1 })
       .toArray();
 
+    // Client-context notes: the tagged client's unified engine notes, so a
+    // meeting shows (and can add to) the client's note history in place.
+    const clientNotePanels = await Promise.all(
+      taggedClients.map(async cl => ({
+        cid: cl._id.toString(),
+        name: cl.name || cl.company || cl.email || 'Client',
+        notes: await buildClientNotes(db, cl),
+      }))
+    );
+
     res.render('admin/meetings/detail', {
       user: req.adminUser,
       page: 'meetings',
       title: meeting.title,
       meeting,
       taggedClients,
+      clientNotePanels,
       taggedUsers,
       allClients,
       allUsers,

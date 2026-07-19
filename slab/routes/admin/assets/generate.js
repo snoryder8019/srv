@@ -18,6 +18,10 @@ import {
   resourceSlotsFor, findResourceSlot, slotSupportsPush, pushResource,
 } from '../../../plugins/socialPublish.js';
 import {
+  generateGridMural, sliceGridImage, buildMuralPosts, setGridLock,
+  GRID_CELLS, MURAL_SPACING_DEFAULT, MURAL_SPACING_MIN, MURAL_DAILY_CAP, cellLabel,
+} from '../../../plugins/socialGrid.js';
+import {
   assetMem, uploadToLinode, uploadThumbnail, tryThumb, deleteThumb,
   uploadWebVariant, tryWebVariant, deleteWebVariant, streamToBuffer,
   fetchPackIndex, SIZE_PRESETS, renderLayersToPng, normaliseFolders,
@@ -28,10 +32,36 @@ import {
 
 const router = express.Router();
 
+// Resolve a canvas size preset to a GPU-safe SD generation size ("WxH").
+// Named presets keep their tuned small sizes; panorama presets ('pano-N') and
+// very wide/large customs are capped to a ≤768px long edge (the SD box is
+// TDR-prone) with the aspect preserved — the editor cover-fits/upscales the
+// result across the full canvas, so a wide-but-moderate SD image fills it.
+function sdSizeFor(sizePreset) {
+  const SD_MAP = {
+    'ig-post': '512x512', 'ig-story': '384x640', 'ig-portrait': '384x512',
+    'fb-post': '640x384', 'fb-cover': '640x256', 'twitter': '640x384',
+    'pinterest': '384x576', 'yt-thumb': '640x384', 'linkedin': '640x384',
+  };
+  if (SD_MAP[sizePreset]) return SD_MAP[sizePreset];
+  let W = 0, H = 0;
+  const pano = /^pano-(\d+)$/.exec(String(sizePreset || ''));
+  const wxh = /^(\d+)x(\d+)$/.exec(String(sizePreset || ''));
+  if (pano) { const n = Math.max(2, Math.min(10, +pano[1])); W = 1080 * n; H = 1350; }
+  else if (wxh) { W = +wxh[1]; H = +wxh[2]; }
+  if (!W || !H) return '512x512';
+  const aspect = W / H;
+  const q = (v) => Math.max(256, Math.min(768, Math.round(v / 64) * 64));
+  const w2 = aspect >= 1 ? 768 : q(768 * aspect);
+  const h2 = aspect >= 1 ? q(768 / aspect) : 768;
+  return `${w2}x${h2}`;
+}
+
 router.post('/generate-bg', express.json(), async (req, res) => {
   try {
     const { prompt, negative_prompt, sizePreset, enrich = true } = req.body;
     const presetKey = sizePreset || 'ig-post';
+    const sdSize = sdSizeFor(presetKey);   // GPU-safe (handles pano-N / wide customs)
 
     let finalPrompt = (prompt || '').trim();
     let finalNeg = (negative_prompt || '').trim();
@@ -48,7 +78,7 @@ router.post('/generate-bg', express.json(), async (req, res) => {
     if (!finalPrompt) return res.status(400).json({ error: 'prompt required' });
     if (!finalNeg) finalNeg = 'text, words, letters, numbers, watermark, blurry, low quality, deformed, ugly';
 
-    const pngBuffer = await generateSdImage(finalPrompt, finalNeg, presetKey);
+    const pngBuffer = await generateSdImage(finalPrompt, finalNeg, sdSize);
     const { key, url } = await uploadToLinode(pngBuffer, 'ai-backgrounds', `sd-bg-${Date.now()}.png`, 'image/png', req.tenant?.s3Prefix);
 
     recordTrainingCandidate({
@@ -99,7 +129,7 @@ router.post('/agent', express.json({ limit: '2mb' }), async (req, res) => {
     if (isImageRequest) {
       // Step 1: Get LLM to design the image (now may include sd_prompt)
       const brandContext = await loadBrandContext(req.tenant, req.db);
-      const result = await runTool('generate_social_image', { prompt: lastMsg, brandContext });
+      const result = await runTool('generate_social_image', { prompt: lastMsg, brandContext }, { db: req.db, tenant: req.tenant });
       const fill = result.fill || {};
       const sizeKey = fill.size || 'ig-post';
       const title = fill.title || 'Social Asset';
@@ -208,7 +238,7 @@ router.post('/agent', express.json({ limit: '2mb' }), async (req, res) => {
       });
     } else {
       // Asset management chat — use manage_assets tool
-      const result = await runTool('manage_assets', { action: lastMsg, query: lastMsg, brandContext: await loadBrandContext(req.tenant, req.db) });
+      const result = await runTool('manage_assets', { action: lastMsg, query: lastMsg, brandContext: await loadBrandContext(req.tenant, req.db) }, { db: req.db, tenant: req.tenant });
       const planned = result.fill || {};
 
       // Execute the planned action
@@ -259,6 +289,113 @@ router.post('/agent', express.json({ limit: '2mb' }), async (req, res) => {
   }
 });
 
-// Helper: normalise legacy folder (string) → folders (array)
+// ── 9-GRID MURAL ──────────────────────────────────────────────────────────────
+// One square 3240×3240 design → 9 feed-post tiles, published in reverse reading
+// order so Instagram's profile grid reassembles them into a single image. See
+// plugins/socialGrid.js for the slice + reverse-schedule math.
+
+// Draft AI copy for a mural: a full cover caption + one short line per cell.
+router.post('/grid-mural/copy', express.json(), async (req, res) => {
+  try {
+    const out = await generateGridMural(req.tenant, req.db, {
+      direction: (req.body?.direction || '').toString().slice(0, 400),
+      bgUrl: (req.body?.bgUrl || '').toString(),
+      useSd: false,                 // copy pass only — background is designed in the editor
+      noText: !!req.body?.noText,
+      aiCopy: true,
+    });
+    res.json({ ok: true, cover: out.cover, cells: out.cells });
+  } catch (e) {
+    console.error('[grid-mural] copy error:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Schedule a mural: take the flattened 3240×3240 canvas (baked design, text and
+// all), slice it into 9 tiles, and create 9 reverse-ordered scheduled single-post
+// rows that the per-minute scheduler cron publishes. Bottom-right fires first;
+// top-left (the cover, full caption) fires last. Instagram only — the grid trick
+// is an IG profile-grid effect.
+router.post('/grid-mural/schedule', assetMem.single('image'), async (req, res) => {
+  try {
+    const db = req.db;
+    // Instagram must be connected — the mural is an IG profile-grid effect.
+    const ig = await db.collection('social_accounts').findOne({ platform: 'instagram' });
+    if (!ig || ig.enabled === false || !isAccountConfigured(ig)) {
+      return res.status(400).json({ ok: false, error: 'Connect an Instagram account first — the 9-grid mural is an Instagram profile-grid effect.' });
+    }
+
+    // ── Daily cap: 4 murals per rolling 24h ──────────────────────────────────
+    // Each mural is NINE feed posts, so 4 murals already = 36 posts/day. Instagram's
+    // hard limit is 100 API posts/24h, but sustained high-volume posting — and
+    // especially many near-identical grid tiles in a short window — trips its spam/
+    // shadowban heuristics well BELOW that hard cap. There's also no display upside:
+    // only one mural can occupy the top of the grid at a time; a new one pushes the
+    // previous down and knocks it out of alignment. So 4/day is both spam-safety and
+    // simply the point past which extra murals do nothing but add risk.
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentMurals = await db.collection('social_posts')
+      .distinct('muralId', { source: 'grid-mural', muralId: { $ne: null }, createdAt: { $gte: since } });
+    if (recentMurals.length >= MURAL_DAILY_CAP) {
+      return res.status(429).json({ ok: false, error: `Daily mural limit reached (${MURAL_DAILY_CAP} per 24h). Each mural is 9 posts — more than this in a day risks Instagram's spam/shadowban filters and can't all sit aligned on your grid anyway. Try again later.` });
+    }
+
+    // Source image: the uploaded flattened canvas, or a previously-stored bgUrl.
+    let srcUrl = (req.body?.bgUrl || '').toString();
+    if (req.file?.buffer?.length) {
+      const up = await uploadToLinode(req.file.buffer, 'mural', `mural-${Date.now()}.png`, 'image/png', req.tenant?.s3Prefix);
+      srcUrl = up.url;
+    }
+    if (!srcUrl) return res.status(400).json({ ok: false, error: 'No mural image — design the 3240×3240 grid and try again.' });
+
+    // Cut into 9 tiles in reading order (top-left → bottom-right).
+    const tiles = await sliceGridImage(srcUrl, req.tenant?.s3Prefix);
+    if (tiles.length !== GRID_CELLS) return res.status(500).json({ ok: false, error: 'Could not slice the mural into 9 tiles — try re-saving the design.' });
+
+    // Captions: cover (top-left, publishes last) + one short line per cell.
+    let cells = req.body?.cells;
+    if (typeof cells === 'string') { try { cells = JSON.parse(cells); } catch { cells = []; } }
+    if (!Array.isArray(cells)) cells = [];
+    const cover = (req.body?.cover || '').toString().slice(0, 2000);
+
+    // Timing: start now-ish (or a caller-supplied start), spacing ≥60s (cron floor).
+    const spacingSec = Math.max(MURAL_SPACING_MIN, parseInt(req.body?.spacingSec, 10) || MURAL_SPACING_DEFAULT);
+    const startAt = req.body?.startAt ? new Date(req.body.startAt) : new Date(Date.now() + 60 * 1000); // first tile ~next cron tick
+    const muralId = new ObjectId().toString();
+
+    const base = {
+      source: 'grid-mural',
+      kind: 'mural',
+      muralImageUrl: srcUrl,
+      dims: `9 × 1080×1080 grid`,
+      createdBy: req.adminUser?.email || 'grid-mural',
+    };
+    const posts = buildMuralPosts(base, tiles, {
+      startAt, spacingSec, cover, cells, platforms: ['instagram'], muralId,
+    });
+
+    await db.collection('social_posts').insertMany(posts);
+
+    // Deploying a mural auto-arms grid-lock: from now on, non-mural IG feed posts are
+    // sandbagged and released in rows of 3 so this mural stays aligned (until the
+    // admin turns protection off). See socialCron.runDuePosts + socialGrid.
+    await setGridLock(db, true, muralId);
+
+    // Report the human-readable plan back (publish order = reverse reading order).
+    const plan = posts.map(p => ({
+      cell: p.muralCell, order: p.muralOrder, readIndex: p.muralIndex,
+      scheduledAt: p.scheduledAt, cover: p.muralCover,
+    }));
+    res.json({
+      ok: true, muralId, count: posts.length, spacingSec,
+      firstAt: posts[0]?.scheduledAt || null,
+      lastAt: posts[posts.length - 1]?.scheduledAt || null,
+      plan,
+    });
+  } catch (e) {
+    console.error('[grid-mural] schedule error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 
 export default router;

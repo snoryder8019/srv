@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= e.title %> — <%= brand?.name || 'Engagement' %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    :root { --navy:<%= design.color_primary %>; --gold:<%= design.color_accent %>; --ivory:<%= design.color_bg %>; --slate:#6B7380; --white:#FDFCFA; --gold-light:<%= design.color_accent_light %>; }
+    body { font-family:'<%= design.font_body || 'Jost' %>',sans-serif; background:var(--ivory); color:var(--on-surface); min-height:100vh; padding:24px; display:flex; justify-content:center; }
+    .letter { background:var(--surface); max-width:760px; width:100%; border-radius:6px; overflow:hidden; box-shadow:0 2px 20px rgba(0,0,0,.07); height:fit-content; }
+    .hdr { background:var(--navy); padding:28px 36px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+    .hdr-brand { font-family:'<%= design.font_heading || 'Cormorant Garamond' %>',serif; font-size:22px; color:var(--white); font-weight:300; }
+    .hdr-label { font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:2px; }
+    .gold-bar { height:3px; background:var(--gold); }
+    .body { padding:36px; }
+    .meta { display:flex; gap:32px; flex-wrap:wrap; margin-bottom:24px; }
+    .meta-label { font-size:11px; color:var(--slate); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:2px; }
+    .meta-value { font-size:15px; font-weight:500; }
+    h2.section { font-family:'<%= design.font_heading || 'Cormorant Garamond' %>',serif; font-size:22px; font-weight:600; margin:28px 0 12px; color:var(--navy); }
+    .intro, .terms { font-size:14px; line-height:1.7; color:var(--on-surface); }
+    .terms-list { margin:0; padding-left:20px; }
+    .terms-list li { margin-bottom:14px; font-size:13px; }
+    .terms-h { font-weight:600; color:var(--navy); margin-bottom:3px; }
+    .terms-b { color:var(--slate); line-height:1.65; white-space:pre-line; }
+    .status-banner { padding:12px 16px; border-radius:4px; font-size:13px; font-weight:600; text-align:center; margin-bottom:20px; }
+    .sb-signed { background:rgba(21,128,61,.1); color:#15803D; border:1px solid #15803D; }
+    .sb-declined { background:rgba(239,68,68,.08); color:#b91c1c; border:1px solid #ef4444; }
+    .sb-expired { background:#FEF3C7; color:#92400E; border:1px solid #F59E0B; }
+    .sb-revision { background:rgba(14,165,233,.08); color:#0369a1; border:1px solid #0ea5e9; }
+
+    /* Packages */
+    .pkg { margin-bottom:24px; }
+    .pkg-label { font-size:11px; color:var(--slate); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px; }
+    .opt { border:2px solid var(--border); border-radius:6px; padding:16px 18px; margin-bottom:10px; cursor:pointer; transition:border-color .15s, background .15s; position:relative; display:block; }
+    .opt:hover { border-color:var(--gold); }
+    .opt.selected { border-color:var(--gold); background:rgba(201,168,72,.06); }
+    .opt input { position:absolute; opacity:0; pointer-events:none; }
+    .opt-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; }
+    .opt-name { font-size:15px; font-weight:600; }
+    .opt-total { font-family:'<%= design.font_heading || 'Cormorant Garamond' %>',serif; font-size:22px; color:var(--navy); white-space:nowrap; }
+    .rec-badge { display:inline-block; background:var(--gold); color:var(--navy); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; padding:2px 8px; border-radius:10px; margin-left:8px; vertical-align:middle; }
+    .rec-note { font-size:12px; color:var(--gold); font-style:italic; margin-top:2px; }
+    .item { padding:10px 0 0; }
+    .item-name { font-size:13px; font-weight:600; }
+    .item-price { font-size:12px; color:var(--slate); }
+    .item-tf { font-size:12px; color:var(--slate); }
+    .item-deliv { font-size:12px; color:var(--slate); margin-top:3px; line-height:1.6; }
+    .expired .opt-total, .expired .item-price { text-decoration:line-through; opacity:.55; }
+    .expired .opt { cursor:default; }
+
+    /* Selection summary — adjacent to the sign button. Acceptance is acceptance. */
+    .sel-summary { background:var(--navy); border-radius:6px; padding:20px 24px; margin:24px 0 16px; color:var(--white); }
+    .sel-summary h3 { font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:10px; }
+    .sel-line { display:flex; justify-content:space-between; font-size:14px; padding:4px 0; gap:12px; }
+    .sel-line .amt { white-space:nowrap; }
+    .sel-empty { font-size:13px; opacity:.7; font-style:italic; }
+
+    /* THREE WAYS OUT — visually equal. If Sign gets a treatment, all three get it. */
+    .actions { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-top:8px; }
+    .act-btn { padding:16px 20px; border:none; border-radius:4px; font-family:inherit; font-size:15px; font-weight:600; cursor:pointer; letter-spacing:.4px; transition:filter .15s; }
+    .act-btn:hover { filter:brightness(1.08); }
+    .act-sign    { background:var(--gold); color:var(--navy); }
+    .act-revise  { background:var(--navy); color:var(--white); }
+    .act-decline { background:#6B7380; color:#fff; }
+    .act-renew   { background:var(--gold); color:var(--navy); }
+
+    /* Notes */
+    .notes-wrap { margin-top:28px; border-top:1px solid var(--border); padding-top:20px; }
+    .note { border-left:3px solid var(--border); padding:8px 12px; margin-bottom:10px; font-size:13px; }
+    .note.client { border-color:var(--gold); }
+    .note.revision_request { border-color:#0ea5e9; }
+    .note-meta { font-size:11px; color:var(--slate); margin-bottom:2px; }
+    .note-add textarea { width:100%; min-height:70px; border:1px solid var(--border); border-radius:4px; padding:10px 12px; font-family:inherit; font-size:13px; resize:vertical; background:var(--ivory); color:var(--on-surface); }
+    .note-add button { margin-top:8px; padding:9px 20px; background:var(--navy); color:var(--white); border:none; border-radius:3px; font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; }
+
+    /* Modal */
+    .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:100; padding:20px; }
+    .modal-bg.open { display:flex; }
+    .modal { background:var(--surface); border-radius:8px; padding:28px; max-width:440px; width:100%; }
+    .modal h3 { font-family:'<%= design.font_heading || 'Cormorant Garamond' %>',serif; font-size:22px; margin-bottom:14px; color:var(--navy); }
+    .modal label { display:block; font-size:12px; color:var(--slate); margin:12px 0 4px; }
+    .modal input[type=text] { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:4px; font-family:inherit; font-size:14px; background:var(--ivory); color:var(--on-surface); }
+    .modal textarea { width:100%; min-height:80px; padding:10px 12px; border:1px solid var(--border); border-radius:4px; font-family:inherit; font-size:13px; background:var(--ivory); color:var(--on-surface); resize:vertical; }
+    .consent-row { display:flex; gap:10px; align-items:flex-start; margin:16px 0 4px; font-size:12px; line-height:1.55; color:var(--on-surface); }
+    .consent-row input { margin-top:3px; flex-shrink:0; }
+    .modal-actions { display:flex; gap:10px; margin-top:18px; }
+    .modal-actions button { flex:1; padding:12px; border:none; border-radius:4px; font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; }
+    .m-cancel { background:var(--ivory); color:var(--slate); border:1px solid var(--border) !important; }
+    .m-confirm { background:var(--gold); color:var(--navy); }
+    .m-err { color:#b91c1c; font-size:12px; margin-top:10px; display:none; }
+
+    .sig-block { margin-top:24px; border:1px solid var(--border); border-radius:6px; padding:18px 20px; background:rgba(21,128,61,.04); }
+    .sig-name { font-family:'<%= design.font_heading || 'Cormorant Garamond' %>',serif; font-size:26px; }
+    .sig-meta { font-size:12px; color:var(--slate); margin-top:4px; line-height:1.6; word-break:break-all; }
+    .w9-row { margin-top:16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .w9-btn { padding:10px 18px; background:var(--navy); color:var(--white); border:none; border-radius:3px; font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; }
+    .w9-note { font-size:12px; color:var(--slate); }
+    .ftr { background:var(--ivory); padding:16px 36px; text-align:center; font-size:12px; color:var(--slate); }
+    @media(max-width:520px){ .body{padding:22px;} .hdr{padding:20px 22px;} }
+    @media print { body{padding:0;background:#fff;} .letter{box-shadow:none;max-width:100%;} .actions,.note-add,.w9-row{display:none!important;} }
+  </style>
+</head>
+<body>
+<div class="letter <%= expired ? 'expired' : '' %>">
+  <div class="hdr">
+    <div class="hdr-brand"><%- brand?.name || '' %></div>
+    <div class="hdr-label">Letter of Engagement</div>
+  </div>
+  <div class="gold-bar"></div>
+
+  <div class="body">
+    <div class="meta">
+      <div><div class="meta-label">Reference</div><div class="meta-value"><%= e.engagementNumber %></div></div>
+      <div><div class="meta-label">Prepared for</div><div class="meta-value"><%= cl?.name || '—' %><%= cl?.company ? ' · ' + cl.company : '' %></div></div>
+      <% if (e.validUntil) { %>
+      <div><div class="meta-label">Valid through</div><div class="meta-value"><%= new Date(e.validUntil).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) %></div></div>
+      <% } %>
+    </div>
+
+    <% if (e.status === 'signed' || e.status === 'acknowledged') { %>
+      <div class="status-banner sb-signed">✓ Signed<%= e.status === 'acknowledged' ? ' & Confirmed' : '' %> — <%= new Date(e.signature.signedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) %></div>
+    <% } else if (e.status === 'declined') { %>
+      <div class="status-banner sb-declined">This engagement was declined.</div>
+    <% } else if (expired) { %>
+      <div class="status-banner sb-expired">These terms have expired. The letter remains for your reference — pricing shown is no longer on offer. A renewed letter can be issued on request below.</div>
+    <% } else if (e.status === 'revision_requested') { %>
+      <div class="status-banner sb-revision">Revision requested — we're on it. You can still sign the letter as written if you're ready.</div>
+    <% } %>
+
+    <% if (e.intro) { %><div class="intro" style="white-space:pre-line;"><%= e.intro %></div><% } %>
+
+    <% (e.packages || []).forEach(pkg => { %>
+    <div class="pkg" data-pkg="<%= pkg.key %>" data-mode="<%= pkg.selectMode %>">
+      <h2 class="section"><%= pkg.label %></h2>
+      <div class="pkg-label"><%= pkg.selectMode === 'many' ? 'Select any that apply' : 'Select one' %></div>
+      <% (pkg.options || []).forEach(opt => {
+           const chosen = (e.selections?.[pkg.key] || []).includes(opt.key); %>
+      <label class="opt <%= chosen ? 'selected' : '' %>" data-opt="<%= opt.key %>">
+        <input type="<%= pkg.selectMode === 'many' ? 'checkbox' : 'radio' %>" name="pkg-<%= pkg.key %>" value="<%= opt.key %>" <%= chosen ? 'checked' : '' %> <%= (signable) ? '' : 'disabled' %>>
+        <div class="opt-head">
+          <div class="opt-name"><%= opt.name %><% if (opt.recommended) { %><span class="rec-badge">Recommended</span><% } %></div>
+          <% if (opt.total > 0) { %><div class="opt-total">$<%= opt.total.toFixed(2) %></div><% } %>
+        </div>
+        <% if (opt.recommendedNote) { %><div class="rec-note"><%= opt.recommendedNote %></div><% } %>
+        <% (opt.items || []).forEach(item => { %>
+        <div class="item">
+          <span class="item-name"><%= item.name %></span>
+          <span class="item-price"> — <%= priceLabel(item.pricing) %></span>
+          <% if (item.timeframe && timeframeLabel(item.timeframe)) { %><div class="item-tf">⏱ <%= item.timeframe.label ? item.timeframe.label + ': ' : '' %><%= timeframeLabel(item.timeframe) %></div><% } %>
+          <% if (item.deliverables?.length) { %><div class="item-deliv"><%= item.deliverables.join(' · ') %></div><% } %>
+        </div>
+        <% }) %>
+      </label>
+      <% }) %>
+    </div>
+    <% }) %>
+
+    <% if (e.termsSections && e.termsSections.length) { %>
+      <h2 class="section">Terms</h2>
+      <ol class="terms-list">
+        <% e.termsSections.forEach(s => { %>
+        <li>
+          <div class="terms-h"><%= s.heading %></div>
+          <div class="terms-b"><%= s.body %></div>
+        </li>
+        <% }) %>
+      </ol>
+    <% } %>
+
+    <% if (e.signature) { %>
+    <div class="sig-block">
+      <div class="meta-label">Signed by</div>
+      <div class="sig-name"><%= e.signature.typedName %></div>
+      <div class="sig-meta">
+        <%= e.signature.title ? e.signature.title + ' · ' : '' %><%= new Date(e.signature.signedAt).toLocaleString('en-US',{month:'long',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}) %><br>
+        Document hash: <%= e.signature.documentHash %>
+      </div>
+      <% if (!(typeof printMode !== "undefined" && printMode)) { %>
+      <div class="w9-row">
+        <% if (e.w9?.releasedAt) { %>
+          <span class="w9-note">✓ Our W-9 has been released to your file portal.</span>
+        <% } else if (e.w9?.requestedAt) { %>
+          <span class="w9-note">✓ W-9 requested — it will be released to your portal shortly.</span>
+        <% } else { %>
+          <button class="w9-btn" onclick="requestW9(this)">Request <%= brand?.name || 'our' %> W-9</button>
+          <span class="w9-note">For your tax records. Released to your secure portal.</span>
+        <% } %>
+      </div>
+      <% } %>
+      <div style="margin-top:12px;"><a href="/engage/<%= e.accessToken %>/copy" style="font-size:13px;color:var(--navy);">View / print signed copy</a></div>
+    </div>
+    <% } %>
+
+    <% if (signable) { %>
+    <div class="sel-summary" id="selSummary">
+      <h3>You are agreeing to</h3>
+      <div id="selLines"><div class="sel-empty">Make your selections above.</div></div>
+    </div>
+
+    <!-- Three ways out — equal weight, by design -->
+    <div class="actions">
+      <button class="act-btn act-sign" onclick="openModal('signModal')">Sign Engagement Letter</button>
+      <button class="act-btn act-revise" onclick="openModal('reviseModal')">Request Revision</button>
+      <button class="act-btn act-decline" onclick="openModal('declineModal')">Decline</button>
+    </div>
+    <% } else if (expired && !e.signature && e.status !== 'declined' && e.status !== 'void') { %>
+    <div class="actions" style="grid-template-columns:1fr;">
+      <button class="act-btn act-renew" onclick="requestRenewal(this)">Request a Renewed Letter of Engagement</button>
+    </div>
+    <% } %>
+
+    <% if (!(typeof printMode !== "undefined" && printMode) && sharedNotes.length) { %>
+    <div class="notes-wrap">
+      <h2 class="section" style="margin-top:0;">Notes</h2>
+      <% sharedNotes.forEach(n => { %>
+      <div class="note <%= n.author %> <%= n.kind %>">
+        <div class="note-meta"><%= n.authorName %> · <%= new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) %><%= n.kind === 'revision_request' ? ' · Revision request' : '' %></div>
+        <%= n.body %>
+      </div>
+      <% }) %>
+    </div>
+    <% } %>
+
+    <% if (!(typeof printMode !== "undefined" && printMode) && !terminal && !expired) { %>
+    <div class="note-add" style="margin-top:16px;">
+      <textarea id="noteBody" placeholder="Questions or comments? Leave a note — we'll see it right away."></textarea>
+      <button onclick="addNote(this)">Add Note</button>
+    </div>
+    <% } %>
+  </div>
+
+  <div class="ftr"><%= brand?.name || '' %><%= brand?.location ? ' · ' + brand.location : '' %></div>
+</div>
+
+<!-- SIGN modal -->
+<div class="modal-bg" id="signModal">
+  <div class="modal">
+    <h3>Sign this letter</h3>
+    <div style="font-size:13px;color:var(--slate);line-height:1.6;">Signing binds you to the selections shown in the summary. Review them before continuing.</div>
+    <label>Full legal name</label>
+    <input type="text" id="signName" placeholder="Your full name" autocomplete="name">
+    <label>Title (optional)</label>
+    <input type="text" id="signTitle" placeholder="e.g. Owner, Managing Partner">
+    <div class="consent-row">
+      <input type="checkbox" id="signConsent">
+      <span>I agree to do business electronically and to sign this letter of engagement electronically. I have reviewed the selected services and terms.</span>
+    </div>
+    <div class="m-err" id="signErr"></div>
+    <div class="modal-actions">
+      <button class="m-cancel" onclick="closeModals()">Cancel</button>
+      <button class="m-confirm" onclick="doSign(this)">Sign Engagement Letter</button>
+    </div>
+  </div>
+</div>
+
+<!-- REVISE modal -->
+<div class="modal-bg" id="reviseModal">
+  <div class="modal">
+    <h3>Request a revision</h3>
+    <div style="font-size:13px;color:var(--slate);line-height:1.6;">Tell us what you'd like changed — pricing, scope, timing, anything. This doesn't commit you to anything, and the letter stays open.</div>
+    <label>What would you like adjusted?</label>
+    <textarea id="reviseBody"></textarea>
+    <div class="m-err" id="reviseErr"></div>
+    <div class="modal-actions">
+      <button class="m-cancel" onclick="closeModals()">Cancel</button>
+      <button class="m-confirm" onclick="doRevise(this)">Send Request</button>
+    </div>
+  </div>
+</div>
+
+<!-- DECLINE modal -->
+<div class="modal-bg" id="declineModal">
+  <div class="modal">
+    <h3>Decline this engagement</h3>
+    <div style="font-size:13px;color:var(--slate);line-height:1.6;">No hard feelings. If you'd like to tell us why, it helps — but it's entirely optional.</div>
+    <label>Reason (optional)</label>
+    <textarea id="declineBody"></textarea>
+    <div class="m-err" id="declineErr"></div>
+    <div class="modal-actions">
+      <button class="m-cancel" onclick="closeModals()">Cancel</button>
+      <button class="m-confirm" style="background:#6B7380;color:#fff;" onclick="doDecline(this)">Decline</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOKEN = '<%= e.accessToken %>';
+const PACKAGES = <%- JSON.stringify((e.packages || []).map(p => ({ key:p.key, label:p.label, mode:p.selectMode, options:(p.options||[]).map(o=>({key:o.key,name:o.name,total:o.total,recurring:(o.items||[]).filter(i=>['monthly','annual'].includes(i.pricing&&i.pricing.model)).map(i=>({name:i.name,label:(i.pricing.model==='monthly'?('$'+Number(i.pricing.amount||0).toFixed(2)+' / month'):('$'+Number(i.pricing.amount||0).toFixed(2)+' / year'))}))})) }))) %>;
+
+function currentSelections() {
+  const sel = {};
+  document.querySelectorAll('.pkg').forEach(pkg => {
+    const key = pkg.dataset.pkg;
+    sel[key] = [...pkg.querySelectorAll('input:checked')].map(i => i.value);
+  });
+  return sel;
+}
+
+// The summary sits adjacent to the sign button and reflects EXACTLY what
+// signing binds. Acceptance is acceptance — the client must be looking at it.
+function renderSummary() {
+  const el = document.getElementById('selLines');
+  if (!el) return;
+  const sel = currentSelections();
+  const lines = [];
+  let oneTimeTotal = 0;
+  for (const pkg of PACKAGES) {
+    for (const optKey of (sel[pkg.key] || [])) {
+      const opt = pkg.options.find(o => o.key === optKey);
+      if (!opt) continue;
+      if (opt.total > 0) { lines.push({ name: opt.name, amt: '$' + opt.total.toFixed(2) }); oneTimeTotal += opt.total; }
+      for (const r of (opt.recurring || [])) lines.push({ name: r.name, amt: r.label });
+      if (opt.total === 0 && !(opt.recurring||[]).length) lines.push({ name: opt.name, amt: '—' });
+    }
+  }
+  if (!lines.length) { el.innerHTML = '<div class="sel-empty">Make your selections above.</div>'; return; }
+  el.innerHTML = lines.map(l => `<div class="sel-line"><span>${l.name}</span><span class="amt">${l.amt}</span></div>`).join('')
+    + (oneTimeTotal > 0 ? `<div class="sel-line" style="border-top:1px solid rgba(255,255,255,.25);margin-top:6px;padding-top:8px;font-weight:600;"><span>One-time total</span><span class="amt">$${oneTimeTotal.toFixed(2)}</span></div>` : '');
+}
+
+let saveTimer = null;
+document.querySelectorAll('.pkg input').forEach(input => {
+  input.addEventListener('change', () => {
+    document.querySelectorAll('.pkg').forEach(pkg => {
+      pkg.querySelectorAll('.opt').forEach(o => {
+        const inp = o.querySelector('input');
+        o.classList.toggle('selected', inp.checked);
+      });
+    });
+    renderSummary();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      try {
+        await fetch(`/engage/${TOKEN}/select`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ selections: currentSelections() }),
+        });
+      } catch(_) {}
+    }, 600);
+  });
+});
+renderSummary();
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModals() { document.querySelectorAll('.modal-bg').forEach(m => m.classList.remove('open')); }
+document.querySelectorAll('.modal-bg').forEach(m => m.addEventListener('click', e => { if (e.target === m) closeModals(); }));
+
+async function post(path, body) {
+  const r = await fetch(`/engage/${TOKEN}/${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  return r.json().catch(() => ({ error: 'Request failed' }));
+}
+
+function busy(btn, on, label) {
+  btn.disabled = on;
+  if (on) { btn.dataset.orig = btn.textContent; btn.textContent = label || 'Working…'; }
+  else if (btn.dataset.orig) btn.textContent = btn.dataset.orig;
+}
+
+async function doSign(btn) {
+  const err = document.getElementById('signErr');
+  err.style.display = 'none';
+  busy(btn, true, 'Signing…');
+  const r = await post('sign', {
+    typedName: document.getElementById('signName').value,
+    title: document.getElementById('signTitle').value,
+    consent: document.getElementById('signConsent').checked,
+  });
+  busy(btn, false);
+  if (r.ok) { location.reload(); return; }
+  err.textContent = r.error || 'Signing failed.';
+  err.style.display = 'block';
+}
+
+async function doRevise(btn) {
+  const err = document.getElementById('reviseErr');
+  err.style.display = 'none';
+  busy(btn, true, 'Sending…');
+  const r = await post('revise', { body: document.getElementById('reviseBody').value });
+  busy(btn, false);
+  if (r.ok) { location.reload(); return; }
+  err.textContent = r.error || 'Failed.';
+  err.style.display = 'block';
+}
+
+async function doDecline(btn) {
+  const err = document.getElementById('declineErr');
+  err.style.display = 'none';
+  busy(btn, true, 'Declining…');
+  const r = await post('decline', { reason: document.getElementById('declineBody').value });
+  busy(btn, false);
+  if (r.ok) { location.reload(); return; }
+  err.textContent = r.error || 'Failed.';
+  err.style.display = 'block';
+}
+
+async function addNote(btn) {
+  const ta = document.getElementById('noteBody');
+  if (!ta.value.trim()) return;
+  busy(btn, true, 'Adding…');
+  const r = await post('note', { body: ta.value });
+  busy(btn, false);
+  if (r.ok) location.reload();
+}
+
+async function requestRenewal(btn) {
+  busy(btn, true, 'Requesting…');
+  const r = await post('renew', {});
+  busy(btn, false);
+  if (r.ok) { btn.textContent = '✓ Renewal requested — we\'ll be in touch shortly'; btn.disabled = true; }
+}
+
+async function requestW9(btn) {
+  busy(btn, true, 'Requesting…');
+  const r = await post('request-w9', {});
+  busy(btn, false);
+  if (r.ok) { btn.outerHTML = '<span class="w9-note">✓ W-9 requested — it will be released to your portal shortly.</span>'; }
+}
+</script>
+</body>
+</html>

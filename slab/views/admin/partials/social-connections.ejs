@@ -23,6 +23,27 @@
 <div class="sm-setup" style="margin-bottom:18px;">
   <strong>How it works:</strong> enter each platform's API credentials below. Secrets are encrypted (AES-256-GCM) before storage and never shown again — only a masked hint. See the per-platform setup notes for where to obtain each key.
 </div>
+
+<!-- ═══ Analytics readiness — live probe of what each connection can actually report ═══ -->
+<style>
+  .sm-ah { border:1px solid var(--border); border-radius:6px; padding:14px 16px; margin-bottom:18px; background:var(--surface); }
+  .sm-ah h4 { margin:0 0 4px; font-size:0.9rem; font-family:var(--font-heading); color:var(--on-surface); }
+  .sm-ah .sub { font-size:0.68rem; color:var(--slate); margin-bottom:10px; }
+  .sm-ah-row { display:flex; align-items:flex-start; gap:9px; padding:7px 0; border-top:1px solid var(--border); font-size:0.74rem; }
+  .sm-ah-row .ic { font-size:1rem; flex-shrink:0; }
+  .sm-ah-row .nm { font-weight:600; color:var(--on-surface); min-width:88px; flex-shrink:0; }
+  .sm-ah-row .st { flex:1; min-width:0; color:var(--slate); line-height:1.5; }
+  .sm-ah-badge { font-size:0.6rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; padding:2px 7px; border-radius:3px; white-space:nowrap; }
+  .sm-ah-badge.ok { background:rgba(21,128,61,0.14); color:#15803D; }
+  .sm-ah-badge.warn { background:rgba(180,83,9,0.14); color:#b45309; }
+  .sm-ah-badge.err { background:rgba(220,38,38,0.13); color:var(--danger,#dc2626); }
+  .sm-ah-fix { display:block; margin-top:2px; color:var(--danger,#dc2626); }
+</style>
+<div class="sm-ah" id="smAnalyticsHealth">
+  <h4>📊 Analytics readiness</h4>
+  <div class="sub">What each connected account can actually report on the Social → Analytics tab — probed live from the platform APIs.</div>
+  <div id="smAhBody" style="font-size:0.74rem;color:var(--slate);">Checking connected accounts…</div>
+</div>
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;">
 <%
   // Facebook, Instagram & Threads all come from ONE Meta app — group them into
@@ -64,7 +85,7 @@
             <div style="font-size:0.6rem;color:var(--slate);margin-top:5px;">Auto-fills your IG User ID from the linked Page. The fields below are optional overrides.</div>
           </div>
         <% } %>
-        <form method="POST" action="/admin/social/connections/<%= p.key %>">
+        <form data-guard method="POST" action="/admin/social/connections/<%= p.key %>">
           <% p.fields.forEach(f => { const isSet = acc.secretsSet && acc.secretsSet[f.key]; const val = (!f.secret && acc.credentials) ? (acc.credentials[f.key]||'') : ''; %>
           <div class="form-field" style="margin-bottom:10px;">
             <label><%= f.label %></label>
@@ -92,13 +113,14 @@
         <% } %>
         <% if (p.key === 'threads') { const thCb = (typeof publicWebhookUrl !== 'undefined' ? publicWebhookUrl.replace('/webhooks/meta', '/admin/social/threads/callback') : '/admin/social/threads/callback'); %>
           <a href="/admin/social/threads/connect" class="btn btn-gold btn-sm" style="margin-top:8px;display:inline-block;">Connect with Threads →</a>
+          <a href="/admin/social/threads/connect?insights=1" class="btn btn-ghost btn-sm" style="margin-top:8px;margin-left:6px;display:inline-block;" title="Use only after threads_manage_insights shows 'Ready for testing'">Connect + insights →</a>
           <div style="font-size:0.62rem;color:var(--slate);margin-top:5px;line-height:1.5;">
-            Uses the <strong>same Meta app</strong> (App ID/Secret entered under Facebook). One click grants a long-lived token that auto-renews.
-            In your Meta app → <strong>Use cases → Threads → Settings</strong>, add this redirect URI:<br><code><%= thCb %></code>
+            <strong>Important:</strong> Threads uses its own <strong>Threads App ID &amp; Secret</strong> (different from your Facebook App ID) — enter them in the <strong>Facebook Page</strong> card above (Meta app → <strong>Use cases → Access the Threads API → Settings</strong>), where you also add this redirect URI:<br><code><%= thCb %></code>
+            <br>Use plain <strong>Connect</strong> first (publishing). Switch to <strong>Connect + insights</strong> only once <code>threads_manage_insights</code> shows <em>“Ready for testing”</em> in your app, or the authorization will be rejected.
           </div>
         <% } %>
         <% if (configured) { %>
-        <form method="POST" action="/admin/social/connections/<%= p.key %>/disconnect" style="margin-top:8px;" onsubmit="return confirm('Disconnect <%= p.name %>?')">
+        <form data-guard="button" method="POST" action="/admin/social/connections/<%= p.key %>/disconnect" style="margin-top:8px;" onsubmit="return confirm('Disconnect <%= p.name %>?')">
           <button class="btn btn-danger btn-sm" style="font-size:0.62rem;">Disconnect</button>
           <span class="sm-test-result" id="smtest-<%= p.key %>" style="font-size:0.7rem;margin-left:8px;"></span>
         </form>
@@ -142,7 +164,7 @@
         <% if (p.key === 'youtube') { %>
           <div style="font-size:0.62rem;color:var(--slate);margin-bottom:8px;">Reuses your Google OAuth client (entered under <strong>Google Business</strong>). Just enable the <strong>YouTube Data API v3</strong> in the same Cloud project, then connect. Video-upload publishing is coming.</div>
         <% } %>
-        <form method="POST" action="/admin/social/connections/<%= p.key %>">
+        <form data-guard method="POST" action="/admin/social/connections/<%= p.key %>">
           <% p.fields.forEach(f => { const isSet = acc.secretsSet && acc.secretsSet[f.key]; const val = (!f.secret && acc.credentials) ? (acc.credentials[f.key]||'') : ''; %>
           <div class="form-field" style="margin-bottom:10px;">
             <label><%= f.label %></label>
@@ -169,7 +191,7 @@
           <div style="font-size:0.62rem;color:var(--slate);margin-top:5px;line-height:1.5;">Uses the OAuth client from <strong>Google Business</strong> (set that up first). Same redirect URI:<br><code><%= gCallbackUrl %></code></div>
         <% } %>
         <% if (!p.comingSoon && configured) { %>
-        <form method="POST" action="/admin/social/connections/<%= p.key %>/disconnect" style="margin-top:8px;" onsubmit="return confirm('Disconnect <%= p.name %>?')">
+        <form data-guard="button" method="POST" action="/admin/social/connections/<%= p.key %>/disconnect" style="margin-top:8px;" onsubmit="return confirm('Disconnect <%= p.name %>?')">
           <button class="btn btn-danger btn-sm" style="font-size:0.62rem;">Disconnect</button>
           <span class="sm-test-result" id="smtest-<%= p.key %>" style="font-size:0.7rem;margin-left:8px;"></span>
         </form>
@@ -199,7 +221,7 @@
       <% }) %>
     </div>
     <% } %>
-    <form method="POST" action="/admin/social/connections/<%= p.key %>">
+    <form data-guard method="POST" action="/admin/social/connections/<%= p.key %>">
       <% p.fields.forEach(f => { const isSet = acc.secretsSet && acc.secretsSet[f.key]; const val = (!f.secret && acc.credentials) ? (acc.credentials[f.key]||'') : ''; %>
       <div class="form-field" style="margin-bottom:10px;">
         <label><%= f.label %></label>
@@ -240,7 +262,7 @@
       </div>
     <% } %>
     <% if (!p.comingSoon && configured) { %>
-    <form method="POST" action="/admin/social/connections/<%= p.key %>/disconnect" style="margin-top:8px;" onsubmit="return confirm('Disconnect <%= p.name %>?')">
+    <form data-guard="button" method="POST" action="/admin/social/connections/<%= p.key %>/disconnect" style="margin-top:8px;" onsubmit="return confirm('Disconnect <%= p.name %>?')">
       <button class="btn btn-danger btn-sm" style="font-size:0.64rem;">Disconnect</button>
       <span class="sm-test-result" id="smtest-<%= p.key %>" style="font-size:0.7rem;margin-left:8px;"></span>
     </form>
@@ -288,7 +310,7 @@
         <td style="font-size:0.76rem;white-space:nowrap;"><%= new Date(d.createdAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) %></td>
         <td style="white-space:nowrap;">
           <% if (d.status !== 'completed') { %>
-          <form method="POST" action="/admin/social/deletion/<%= d._id %>/complete" style="display:inline;" onsubmit="return confirm('Mark this deletion request as completed? Make sure the user\'s data has actually been removed.')"><button class="btn btn-gold btn-sm" style="font-size:0.66rem;">Mark done</button></form>
+          <form data-guard="button" method="POST" action="/admin/social/deletion/<%= d._id %>/complete" style="display:inline;" onsubmit="return confirm('Mark this deletion request as completed? Make sure the user\'s data has actually been removed.')"><button class="btn btn-gold btn-sm" style="font-size:0.66rem;">Mark done</button></form>
           <% } else { %>
           <span style="font-size:0.7rem;color:var(--success);">✓ <%= d.completedAt ? new Date(d.completedAt).toLocaleDateString() : '' %></span>
           <% } %>
@@ -301,6 +323,42 @@
 <% } %>
 
 <script>
+// ── Analytics readiness — reuse the enriched /admin/analytics/social probe so
+// the tenant sees WHY a platform reports (or doesn't) before opening Analytics.
+(function(){
+  const body = document.getElementById('smAhBody'); if (!body) return;
+  const esc = (s)=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const NAMES = { facebook:'Facebook', instagram:'Instagram', threads:'Threads', linkedin:'LinkedIn', bluesky:'Bluesky', youtube:'YouTube' };
+  const ICONS = { facebook:'📘', instagram:'📷', threads:'@', linkedin:'💼', bluesky:'🦋', youtube:'▶' };
+  fetch('/admin/analytics/social?range=month').then(r=>r.json()).then(data=>{
+    if (data.error) { body.innerHTML = '<span style="color:var(--danger)">Could not probe analytics: '+esc(data.error)+'</span>'; return; }
+    const platforms = data.platforms || {};
+    const keys = Object.keys(platforms);
+    if (!keys.length) { body.innerHTML = 'No analytics-capable account connected yet. Facebook, Instagram, Threads, LinkedIn, Bluesky and YouTube can report here once connected.'; return; }
+    let html = '';
+    const t = data.totals || {};
+    if (t.reachBlocked) html += '<div class="sm-ah-fix" style="margin:0 0 8px;font-weight:600;">⚠️ Reach is blocked — Instagram (the only reach source) denied insights. Fix below.</div>';
+    keys.forEach(k => {
+      const p = platforms[k] || {};
+      const metricCount = Object.keys(p.metrics || {}).length;
+      const hasSeries = Object.keys(p.series || {}).length > 0;
+      let badge, cls, msg;
+      if (p.error) {
+        cls='err'; badge='Blocked'; msg = esc(p.error);
+      } else if (metricCount || hasSeries) {
+        cls='ok'; badge='Active'; msg = metricCount+' metric'+(metricCount===1?'':'s')+' reporting'+(hasSeries?' · trend available':'')+'.';
+      } else {
+        cls='warn'; badge='Limited'; msg = esc(p.note || 'Connected — no analytics data returned.');
+      }
+      html += '<div class="sm-ah-row"><span class="ic">'+esc(ICONS[k]||'')+'</span>'
+        + '<span class="nm">'+esc(NAMES[k]||k)+'</span>'
+        + '<span class="st">'+msg+'</span>'
+        + '<span class="sm-ah-badge '+cls+'">'+badge+'</span></div>';
+    });
+    body.innerHTML = html;
+  }).catch(()=>{ body.innerHTML = '<span style="color:var(--danger)">Analytics probe failed to load.</span>'; });
+})();
+
 // ── Connection actions (shared with the /admin/social backend routes) ────────
 async function smTest(key, btn) {
   const out = document.getElementById('smtest-' + key);

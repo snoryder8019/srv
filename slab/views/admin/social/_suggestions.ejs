@@ -176,24 +176,24 @@ function ssCtrls(design) {
     wrap.appendChild(g); });
 }
 function ssUpd(i,k,v){ EDIT.design.layers[i][k]=v; ssRender(EDIT.design); }
-function ssEdit(id){ const s=byId[id]; if(!s||!s.design){alert('No editable design stored.');return;} EDIT={id,design:JSON.parse(JSON.stringify(s.design))}; ssRender(EDIT.design); ssCtrls(EDIT.design); document.getElementById('ssModal').classList.add('open'); }
+function ssEdit(id){ const s=byId[id]; if(!s||!s.design){SlabFlash.error('No editable design stored.');return;} EDIT={id,design:JSON.parse(JSON.stringify(s.design))}; ssRender(EDIT.design); ssCtrls(EDIT.design); document.getElementById('ssModal').classList.add('open'); }
 function ssCloseModal(){ document.getElementById('ssModal').classList.remove('open'); EDIT=null; }
 async function ssSave(){ if(!EDIT)return; const b=document.getElementById('ssSaveBtn'); b.disabled=true; b.textContent='Rendering…'; const cap=document.querySelector('.ss-cap[data-id="'+EDIT.id+'"]');
   try{ const r=await fetch('/admin/social/suggestions/'+EDIT.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({body:cap?cap.value:undefined,design:EDIT.design})}); const d=await r.json();
-    if(d.ok){ if(d.mediaUrl){const img=document.querySelector('.ss-card[data-id="'+EDIT.id+'"] .ss-img'); if(img)img.src=d.mediaUrl+'?t='+Date.now(); byId[EDIT.id].mediaUrls=[d.mediaUrl];} byId[EDIT.id].design=EDIT.design; ssCloseModal(); } else alert(d.error||'Save failed'); }
-  catch(e){ alert('Save failed'); } b.disabled=false; b.textContent='Save changes'; }
+    if(d.ok){ if(d.mediaUrl){const img=document.querySelector('.ss-card[data-id="'+EDIT.id+'"] .ss-img'); if(img)img.src=d.mediaUrl+'?t='+Date.now(); byId[EDIT.id].mediaUrls=[d.mediaUrl];} byId[EDIT.id].design=EDIT.design; ssCloseModal(); } else SlabFlash.error(d.error||'Save failed'); }
+  catch(e){ SlabFlash.error('Save failed'); } b.disabled=false; b.textContent='Save changes'; }
 async function ssApprove(id,btn){ btn.disabled=true; btn.textContent='Posting…'; const cap=document.querySelector('.ss-cap[data-id="'+id+'"]');
   try{ if(cap) await fetch('/admin/social/suggestions/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({body:cap.value})}); const r=await fetch('/admin/social/suggestions/'+id+'/approve',{method:'POST'}); const d=await r.json();
-    if(d.ok){const card=document.querySelector('.ss-card[data-id="'+id+'"]'); if(card){card.style.opacity=.5; card.querySelector('.ss-actions').innerHTML='<span style="color:var(--success);font-size:0.75rem;font-weight:600;">✓ Posted</span>';}} else {btn.disabled=false;btn.textContent='Approve & Post';alert(d.error||'Publish failed');} }
-  catch(e){ btn.disabled=false; btn.textContent='Approve & Post'; alert('Publish failed'); } }
+    if(d.ok){SlabFlash.success('Posted — it went live.');const card=document.querySelector('.ss-card[data-id="'+id+'"]'); if(card){card.style.opacity=.5; card.querySelector('.ss-actions').innerHTML='<span style="color:var(--success);font-size:0.75rem;font-weight:600;">✓ Posted</span>';}} else {btn.disabled=false;btn.textContent='Approve & Post';SlabFlash.error(d.error||'Publish failed');} }
+  catch(e){ btn.disabled=false; btn.textContent='Approve & Post'; SlabFlash.error('Publish failed'); } }
 async function ssDismiss(id,btn){ if(!confirm('Dismiss this suggestion? Its draft + image will be removed.'))return; btn.disabled=true;
-  try{ const r=await fetch('/admin/social/suggestions/'+id+'/dismiss',{method:'POST'}); const d=await r.json(); if(d.ok){const c=document.querySelector('.ss-card[data-id="'+id+'"]'); if(c)c.remove();} else {btn.disabled=false;alert(d.error||'Failed');} }
-  catch(e){ btn.disabled=false; alert('Failed'); } }
+  try{ const r=await fetch('/admin/social/suggestions/'+id+'/dismiss',{method:'POST'}); const d=await r.json(); if(d.ok){const c=document.querySelector('.ss-card[data-id="'+id+'"]'); if(c)c.remove();} else {btn.disabled=false;SlabFlash.error(d.error||'Failed');} }
+  catch(e){ btn.disabled=false; SlabFlash.error('Failed'); } }
 document.getElementById('ssGenerate').addEventListener('click', async function(){ const btn=this; const count=+document.getElementById('ssCount').value||5; btn.disabled=true; btn.textContent='Generating…';
-  try{ const r=await fetch('/admin/social/suggestions/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({count, useTrends: document.getElementById('ssTrends')?.checked || false})}); const d=await r.json(); if(d.ok) location.href='?tab=suggestions'; else {btn.disabled=false;btn.textContent='✦ Generate fresh';alert(d.error||'Generation failed');} }
-  catch(e){ btn.disabled=false; btn.textContent='✦ Generate fresh'; alert('Generation failed'); } });
+  try{ const r=await fetch('/admin/social/suggestions/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({count, useTrends: document.getElementById('ssTrends')?.checked || false})}); const d=await r.json(); if(d.ok) location.href='?tab=suggestions'; else {btn.disabled=false;btn.textContent='✦ Generate fresh';SlabFlash.error(d.error||'Generation failed');} }
+  catch(e){ btn.disabled=false; btn.textContent='✦ Generate fresh'; SlabFlash.error('Generation failed'); } });
 async function ssSaveToggles(){ const enabled=document.getElementById('ssCron').checked; const autoPublish=document.getElementById('ssAutoPub').checked; const count=+document.getElementById('ssCount').value||5;
-  try{ await fetch('/admin/social/auto-toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled,autoPublish,count})}); } catch(e){ alert('Could not update cron setting'); } }
+  try{ await fetch('/admin/social/auto-toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled,autoPublish,count})}); } catch(e){ SlabFlash.error('Could not update cron setting'); } }
 document.getElementById('ssCron').addEventListener('change', ssSaveToggles);
 document.getElementById('ssAutoPub').addEventListener('change', ssSaveToggles);
 document.getElementById('ssCount').addEventListener('change', ssSaveToggles);
@@ -209,7 +209,7 @@ async function ssSpotGo(){
   try{
     const r=await fetch('/admin/social/suggestions/spotlight',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ kind:document.getElementById('spotKind').value, subject:document.getElementById('spotSubject').value, role:document.getElementById('spotRole').value, quote })});
     const d=await r.json();
-    if(d.ok) location.href='?tab=suggestions'; else { btn.disabled=false; btn.textContent='Create spotlight'; alert(d.error||'Failed'); }
-  }catch(e){ btn.disabled=false; btn.textContent='Create spotlight'; alert('Failed'); }
+    if(d.ok) location.href='?tab=suggestions'; else { btn.disabled=false; btn.textContent='Create spotlight'; SlabFlash.error(d.error||'Failed'); }
+  }catch(e){ btn.disabled=false; btn.textContent='Create spotlight'; SlabFlash.error('Failed'); }
 }
 </script>

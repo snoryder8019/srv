@@ -20,6 +20,8 @@ import { bustTenantCache } from '../middleware/tenant.js';
 import { createLoginToken } from '../middleware/jwtAuth.js';
 import { logActivity } from '../plugins/activityLog.js';
 import { notifyAdmin } from '../plugins/notify.js';
+import { PLANS as PRICING_PLANS, TRIAL_DAYS } from '../config/pricing.js';
+import { recordPlatformSubscriptionRevenue } from '../plugins/platformLedger.js';
 import bcrypt from 'bcrypt';
 
 const router = express.Router();
@@ -43,6 +45,24 @@ function logSignupStage(action, { slug, email, brandName, method, reason, error,
     error: error || null,
     ip: req?.ip || null,
   });
+
+  // Alert scott@madladslab.com on scrutiny stages — rejections (validation
+  // bounces) and errors (server-side failures). Attempts stay funnel-only.
+  // Fire-and-forget: never blocks or breaks the signup path.
+  if (action === 'signup_rejected' || action === 'signup_failed') {
+    notifyAdmin({
+      type: action, app: 'slab',
+      email: email || '', name: brandName || slug || '',
+      data: {
+        Subdomain: slug || '—',
+        Brand: brandName || '—',
+        Method: method || '—',
+        ...(reason ? { Reason: reason } : {}),
+        ...(error ? { Error: error } : {}),
+      },
+      ip: req?.ip || '',
+    }).catch(() => {});
+  }
 }
 
 function getStripe() {
@@ -50,12 +70,16 @@ function getStripe() {
   return new Stripe(config.SLAB_STRIPE_SECRET);
 }
 
-// ── Platform-level PayPal helpers ──────────────────────────────────────────
+// ── Platform-level plan table ──────────────────────────────────────────────
+// Prices come from the single source of truth in config/pricing.js.
+// `trial` is intentionally excluded — it is a no-payment flow (see POST /trial).
+// `lifetime` stays here so superadmin-assigned lifetime tenants resolve at
+// checkout/return, but it is never a public card.
 const PP_PLANS = {
-  monthly:   { label: 'Monthly',     amount: '50.00',   days: 30 },
-  quarterly: { label: 'Quarterly',   amount: '120.00',  days: 90 },   // ~$40/mo
-  annual:    { label: 'Annual',      amount: '300.00',  days: 365 },  // $25/mo — half off
-  lifetime:  { label: 'Lifetime',    amount: '499.00',  days: null },  // one-time, ~$20.79/mo equiv over 24 mo
+  monthly:   PRICING_PLANS.monthly,
+  quarterly: PRICING_PLANS.quarterly,
+  annual:    PRICING_PLANS.annual,
+  lifetime:  PRICING_PLANS.lifetime,
 };
 
 let _ppToken = null;
@@ -823,10 +847,12 @@ router.get('/paypal-return', async (req, res) => {
             status: 'active',
             isPreview: false,
             'meta.plan': plan,
+            'meta.isTrial': false,
             'meta.paypalOrderId': orderId,
             'meta.paypalCaptureId': captureId,
             'meta.activatedAt': now,
             'meta.expiresAt': expiresAt,
+            'perks.trialEndsAt': null, // paid → trial over, delegate commission starts
             updatedAt: now,
           },
         }
@@ -839,6 +865,15 @@ router.get('/paypal-return', async (req, res) => {
         tenantDomain, status: 'success',
         details: { plan, amount: planInfo.amount, orderId, captureId },
       });
+
+      // Post the platform's own revenue into the madladslab house ledger.
+      const paidAmount = parseFloat(
+        capture.purchase_units?.[0]?.payments?.captures?.[0]?.amount?.value ?? planInfo.amount,
+      );
+      recordPlatformSubscriptionRevenue({
+        processor: 'paypal', txnId: captureId, amount: paidAmount, plan,
+        subscriberDomain: tenantDomain, paidAt: now,
+      }).catch(() => {});
     }
 
     res.redirect('/admin?activated=1');
@@ -851,6 +886,185 @@ router.get('/paypal-return', async (req, res) => {
       error: err.message,
     });
     res.redirect('/admin?error=payment_error');
+  }
+});
+
+// ── Go Live — Stripe Checkout to activate ──────────────────────────────────
+// Mirrors the PayPal flow: a one-time Checkout (mode:'payment') that grants the
+// same access window. Uses the MadLadsLab platform Stripe account (config keys).
+router.post('/go-live-stripe', async (req, res) => {
+  const stripe = getStripe();
+  if (!stripe) return res.status(500).json({ error: 'Card billing not configured' });
+
+  const { plan } = req.body;
+  const planInfo = PP_PLANS[plan || 'monthly'];
+  if (!planInfo || parseFloat(planInfo.amount) <= 0) return res.status(400).json({ error: 'Unknown plan' });
+
+  const tenant = req.tenant;
+  if (!tenant) return res.status(400).json({ error: 'No tenant context' });
+
+  try {
+    const ownerEmail = tenant.meta?.ownerEmail;
+    const existingCount = ownerEmail ? await countSlabsForEmail(ownerEmail) : 0;
+    const otherSlabs = Math.max(0, existingCount - 1);
+    const pricing = calcSlabPrice(plan || 'monthly', otherSlabs);
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          product_data: { name: `sLab ${planInfo.label} — Go Live` + (pricing.discount ? ` (${pricing.label})` : '') },
+          unit_amount: Math.round(parseFloat(pricing.amount) * 100),
+        },
+        quantity: 1,
+      }],
+      customer_email: ownerEmail || undefined,
+      client_reference_id: tenant.domain,
+      metadata: { domain: tenant.domain, plan: plan || 'monthly', discount: String(pricing.discount) },
+      success_url: `https://${tenant.domain}/start/stripe-return?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `https://${tenant.domain}/admin?cancelled=1`,
+    });
+
+    logActivity({
+      category: 'payment', action: 'go_live_initiated',
+      tenantDomain: tenant.domain, tenantId: tenant._id, status: 'success',
+      actor: { email: ownerEmail, role: 'owner' },
+      details: { plan: plan || 'monthly', amount: pricing.amount, baseAmount: planInfo.amount, discount: pricing.discount, processor: 'stripe', sessionId: session.id },
+      ip: req.ip,
+    });
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error('[onboarding] Stripe session error:', err);
+    logActivity({
+      category: 'payment', action: 'go_live_initiated',
+      tenantDomain: tenant?.domain, tenantId: tenant?._id, status: 'failed',
+      actor: { email: tenant?.meta?.ownerEmail, role: 'owner' },
+      details: { plan: plan || 'monthly', processor: 'stripe' },
+      error: err.message, ip: req.ip,
+    });
+    res.status(500).json({ error: 'Payment setup failed' });
+  }
+});
+
+// ── Stripe Return — confirm payment & activate tenant ──────────────────────
+router.get('/stripe-return', async (req, res) => {
+  const sessionId = req.query.session_id;
+  if (!sessionId) return res.redirect('/admin?error=missing_session');
+
+  try {
+    const stripe = getStripe();
+    if (!stripe) return res.redirect('/admin?error=payment_error');
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.payment_status !== 'paid') {
+      return res.redirect('/admin?error=payment_failed');
+    }
+
+    const tenantDomain = session.metadata?.domain || req.tenant?.domain;
+    const plan = session.metadata?.plan || 'monthly';
+
+    if (tenantDomain) {
+      const slab = getSlabDb();
+      const now = new Date();
+      const planInfo = PP_PLANS[plan] || PP_PLANS.monthly;
+      const expiresAt = planInfo.days
+        ? new Date(now.getTime() + planInfo.days * 24 * 60 * 60 * 1000)
+        : null;
+
+      await slab.collection('tenants').updateOne(
+        { domain: tenantDomain },
+        {
+          $set: {
+            status: 'active',
+            isPreview: false,
+            'meta.plan': plan,
+            'meta.isTrial': false,
+            'meta.stripeSessionId': sessionId,
+            'meta.stripePaymentIntent': session.payment_intent || null,
+            'meta.activatedAt': now,
+            'meta.expiresAt': expiresAt,
+            'perks.trialEndsAt': null, // paid → trial over, delegate commission starts
+            updatedAt: now,
+          },
+        }
+      );
+
+      bustTenantCache(tenantDomain);
+      console.log(`[onboarding] Tenant activated via Stripe: ${tenantDomain} (${plan} — $${planInfo.amount})`);
+      logActivity({
+        category: 'payment', action: 'payment_captured',
+        tenantDomain, status: 'success',
+        details: { plan, amount: planInfo.amount, processor: 'stripe', sessionId },
+      });
+
+      // Post the platform's own revenue into the madladslab house ledger.
+      // amount_total is in cents and reflects the real charge (multi-slab discount included).
+      const paidAmount = (session.amount_total || 0) / 100 || parseFloat(planInfo.amount);
+      recordPlatformSubscriptionRevenue({
+        processor: 'stripe', txnId: sessionId, amount: paidAmount, plan,
+        subscriberDomain: tenantDomain, subscriberEmail: session.customer_details?.email || session.customer_email,
+        paidAt: now,
+      }).catch(() => {});
+    }
+
+    res.redirect('/admin?activated=1');
+  } catch (err) {
+    console.error('[onboarding] Stripe return error:', err);
+    logActivity({
+      category: 'payment', action: 'payment_captured',
+      tenantDomain: req.tenant?.domain, status: 'failed',
+      details: { sessionId, processor: 'stripe' },
+      error: err.message,
+    });
+    res.redirect('/admin?error=payment_error');
+  }
+});
+
+// ── Free Trial — activate live with no payment (try free → pay → add domain) ─
+router.post('/trial', async (req, res) => {
+  const tenant = req.tenant;
+  if (!tenant) return res.status(400).json({ error: 'No tenant context' });
+
+  // One free trial per slab.
+  if (tenant.meta?.trialUsedAt) {
+    return res.status(400).json({ error: 'Free trial already used — choose a paid plan to go live.' });
+  }
+
+  try {
+    const slab = getSlabDb();
+    const now = new Date();
+    const trialEndsAt = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+
+    await slab.collection('tenants').updateOne(
+      { domain: tenant.domain },
+      {
+        $set: {
+          status: 'active',
+          isPreview: false,
+          'meta.plan': 'trial',
+          'meta.isTrial': true,
+          'meta.activatedAt': now,
+          'meta.trialUsedAt': now,
+          'meta.expiresAt': trialEndsAt,
+          'perks.trialEndsAt': trialEndsAt,
+          updatedAt: now,
+        },
+      }
+    );
+
+    bustTenantCache(tenant.domain);
+    logActivity({
+      category: 'payment', action: 'trial_started',
+      tenantDomain: tenant.domain, tenantId: tenant._id, status: 'success',
+      actor: { email: tenant.meta?.ownerEmail, role: 'owner' },
+      details: { trialDays: TRIAL_DAYS, trialEndsAt },
+      ip: req.ip,
+    });
+    res.json({ url: '/admin?trial=1' });
+  } catch (err) {
+    console.error('[onboarding] Free-trial activation error:', err);
+    res.status(500).json({ error: 'Could not start free trial' });
   }
 });
 

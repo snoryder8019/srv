@@ -6,6 +6,7 @@ import { getDb } from '../../plugins/mongo.js';
 import { sendCampaignEmail, renderCampaignEmail } from '../../plugins/mailer.js';
 import { config } from '../../config/config.js';
 import { webSearch, callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
+import { agentLLMOpts } from '../../plugins/agentRegistry.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 
 const router = express.Router();
@@ -15,6 +16,22 @@ const FUNNELS = new Set(['lead', 'prospect', 'customer']);
 const FORM_STYLES = new Set(['inline', 'footer', 'popup', 'hosted']);
 function newFormToken() { return crypto.randomBytes(9).toString('base64url'); }
 function parseTags(raw) { return (raw || '').split(',').map(t => t.trim()).filter(Boolean); }
+
+// Normalized engagement numbers for a single campaign, from the pre-aggregated
+// campaign_events map. Used to hang analytics off every card + follow-up row.
+function campAnalytics(camp, analyticsMap) {
+  const a = analyticsMap[camp._id.toString()] || {};
+  const opens = a.open || { total: 0, unique: 0 };
+  const clicks = a.click || { total: 0, unique: 0 };
+  const sent = camp.sentCount || 0;
+  return {
+    sent,
+    opensUnique: opens.unique, opensTotal: opens.total,
+    clicksUnique: clicks.unique, clicksTotal: clicks.total,
+    openRate: sent ? Math.round(opens.unique / sent * 100) : 0,
+    clickRate: sent ? Math.round(clicks.unique / sent * 100) : 0,
+  };
+}
 
 // ── Dashboard ──
 router.get('/', async (req, res) => {
@@ -109,11 +126,48 @@ router.get('/', async (req, res) => {
     campSeries: campSeries.slice(0, 8),
   };
 
+  // ── Campaign card tree: parents (original emails) with nested follow-ups ──
+  // Parents render as side-by-side cards; each follow-up threads beneath its
+  // parent with its own granular per-segment analytics. Pinned float to top;
+  // archived are hidden behind a toggle. Orphaned follow-ups (parent deleted)
+  // fall back to top-level so they never vanish.
+  const showArchived = req.query.archived === '1';
+  const byId = new Map(campaigns.map(c => [c._id.toString(), c]));
+  for (const c of campaigns) c._analytics = campAnalytics(c, analyticsMap);
+
+  const followUpsByParent = new Map();
+  const parents = [];
+  for (const c of campaigns) {
+    const pid = c.parentCampaignId ? c.parentCampaignId.toString() : null;
+    if (pid && byId.has(pid)) {
+      if (!followUpsByParent.has(pid)) followUpsByParent.set(pid, []);
+      followUpsByParent.get(pid).push(c);
+    } else {
+      parents.push(c);
+    }
+  }
+  for (const p of parents) {
+    p._followUps = (followUpsByParent.get(p._id.toString()) || [])
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  }
+  const archivedCount = parents.filter(p => p.archived).length;
+  const campaignTree = parents
+    .filter(p => (showArchived ? p.archived : !p.archived))
+    .sort((a, b) => {
+      if (!!b.pinned !== !!a.pinned) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
+      return new Date(b.sentAt || b.createdAt) - new Date(a.sentAt || a.createdAt);
+    });
+  const templates = campaigns.filter(c => c.isTemplate);
+
   res.render('admin/email-marketing/index', {
     user: req.adminUser,
     tab,
     contacts,
     campaigns,
+    campaignTree,
+    templates,
+    archivedCount,
+    showArchived,
     clients,
     forms,
     analyticsMap,
@@ -389,7 +443,7 @@ Rules for welcomeBody:
 
 The admin's brief: "${(prompt || 'a general newsletter signup form').slice(0, 400)}"`;
 
-    const raw = await callLLM([{ role: 'user', content: prompt || 'Write newsletter signup form copy.' }], systemPrompt);
+    const raw = await callLLM([{ role: 'user', content: prompt || 'Write newsletter signup form copy.' }], systemPrompt, 90000, await agentLLMOpts(req.db, req.tenant, 'email'));
     const parsed = tryParseAgentResponse(raw);
     res.json(parsed);
   } catch (err) {
@@ -520,7 +574,7 @@ Rules for the body field:
 Tailor content to the business and audience described above.
 ${campaignCtx}${researchCtx}`;
 
-    const raw = await callLLM(messages, systemPrompt);
+    const raw = await callLLM(messages, systemPrompt, 90000, await agentLLMOpts(req.db, req.tenant, 'email'));
     console.log('[email-agent] raw LLM response length:', raw.length);
 
     const parsed = tryParseAgentResponse(raw);
@@ -648,6 +702,76 @@ router.post('/campaigns/:id/test', async (req, res) => {
   } catch (err) {
     console.error('Test send error:', err);
     res.redirect(`/admin/email-marketing?tab=campaigns&error=${encodeURIComponent(err.message || 'Test send failed')}`);
+  }
+});
+
+// ── Card state toggles (pin / archive / save-as-template) ──
+// These flip a boolean and bounce back to wherever the admin was (referer),
+// so the archived-view toggle state is preserved without extra plumbing.
+function backTo(req) { return req.get('referer') || '/admin/email-marketing?tab=campaigns'; }
+
+router.post('/campaigns/:id/pin', async (req, res) => {
+  try {
+    const db = req.db;
+    const camp = await db.collection('campaigns').findOne({ _id: new ObjectId(req.params.id) });
+    if (camp) await db.collection('campaigns').updateOne({ _id: camp._id }, { $set: { pinned: !camp.pinned, updatedAt: new Date() } });
+    res.redirect(backTo(req));
+  } catch (err) {
+    console.error('Pin toggle error:', err);
+    res.redirect('/admin/email-marketing?tab=campaigns&error=Pin+failed');
+  }
+});
+
+router.post('/campaigns/:id/archive', async (req, res) => {
+  try {
+    const db = req.db;
+    const camp = await db.collection('campaigns').findOne({ _id: new ObjectId(req.params.id) });
+    // Archiving a card also unpins it — a hidden card shouldn't hold a top slot.
+    if (camp) await db.collection('campaigns').updateOne(
+      { _id: camp._id },
+      { $set: { archived: !camp.archived, ...(camp.archived ? {} : { pinned: false }), updatedAt: new Date() } }
+    );
+    res.redirect(backTo(req));
+  } catch (err) {
+    console.error('Archive toggle error:', err);
+    res.redirect('/admin/email-marketing?tab=campaigns&error=Archive+failed');
+  }
+});
+
+router.post('/campaigns/:id/template', async (req, res) => {
+  try {
+    const db = req.db;
+    const camp = await db.collection('campaigns').findOne({ _id: new ObjectId(req.params.id) });
+    if (camp) await db.collection('campaigns').updateOne({ _id: camp._id }, { $set: { isTemplate: !camp.isTemplate, updatedAt: new Date() } });
+    res.redirect(backTo(req));
+  } catch (err) {
+    console.error('Template toggle error:', err);
+    res.redirect('/admin/email-marketing?tab=campaigns&error=Save+failed');
+  }
+});
+
+// Clone any campaign/template into a fresh, standalone draft the admin can edit.
+router.post('/campaigns/:id/clone', async (req, res) => {
+  try {
+    const db = req.db;
+    const camp = await db.collection('campaigns').findOne({ _id: new ObjectId(req.params.id) });
+    if (!camp) return res.redirect('/admin/email-marketing?tab=campaigns&error=Campaign+not+found');
+    await db.collection('campaigns').insertOne({
+      subject: `Copy of ${camp.subject || 'Untitled'}`.slice(0, 200),
+      preheader: camp.preheader || '',
+      body: camp.body || '',
+      targetFunnel: camp.parentCampaignId ? 'all' : (camp.targetFunnel || 'all'),
+      targetTags: camp.parentCampaignId ? [] : (camp.targetTags || []),
+      status: 'draft',
+      sentCount: 0,
+      sentAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    res.redirect('/admin/email-marketing?tab=campaigns&success=Copied+to+a+new+draft');
+  } catch (err) {
+    console.error('Clone error:', err);
+    res.redirect('/admin/email-marketing?tab=campaigns&error=Copy+failed');
   }
 });
 

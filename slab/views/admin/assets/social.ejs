@@ -1,6 +1,47 @@
 <%- include('../partials/head', { title: 'Social Media Generator' }) %>
 <%- include('../partials/sidebar', { page: 'assets', user: user }) %>
 
+<%
+  // ── Studio font roster ──────────────────────────────────────────────────
+  //  ONE source of truth for every font <select> in the studio: the curated
+  //  families PLUS this tenant's actual brand fonts (which may be any Google
+  //  family). Loaded via a single Google Fonts request so every option truly
+  //  renders on the canvas — no more offering a font that falls back to
+  //  sans-serif, and no more brand fonts missing from the picker.
+  const _sd = typeof brandDesign !== 'undefined' ? brandDesign : {};
+  const _studioFontMap = {
+    'Cormorant Garamond': 'Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400',
+    'Playfair Display': 'Playfair+Display:wght@400;600;700',
+    'Lora': 'Lora:wght@400;600;700',
+    'Merriweather': 'Merriweather:wght@300;400;700',
+    'Libre Baskerville': 'Libre+Baskerville:wght@400;700',
+    'Jost': 'Jost:wght@300;400;500;600',
+    'Inter': 'Inter:wght@300;400;500;600;700',
+    'Poppins': 'Poppins:wght@300;400;500;600;700',
+    'Raleway': 'Raleway:wght@300;400;500;600;700',
+    'Nunito': 'Nunito:wght@300;400;500;600;700',
+    'DM Sans': 'DM+Sans:wght@300;400;500;600;700',
+  };
+  // System families always render locally — offered but never fetched.
+  const _studioSystemFonts = ['Arial', 'Georgia', 'Impact', 'Courier New'];
+  const _bareFamily = (n) => String(n || '').trim().replace(/\s+/g, '+');
+  const _brandFontPairs = [
+    [String(_sd.font_heading || '').trim(), _sd.font_heading_spec],
+    [String(_sd.font_body || '').trim(),    _sd.font_body_spec],
+  ];
+  // Build the fetch list: curated specs + brand specs (deduped by family).
+  const _fetchSpecs = { ..._studioFontMap };
+  _brandFontPairs.forEach(([n, spec]) => {
+    if (!n || _studioSystemFonts.includes(n) || _fetchSpecs[n]) return;
+    _fetchSpecs[n] = (spec && spec.trim()) || _bareFamily(n);
+  });
+  const _studioFontsLink = Object.values(_fetchSpecs).map(s => 'family=' + s).join('&');
+  // Ordered roster shown in every studio font <select> — brand fonts first.
+  const _brandNames = _brandFontPairs.map(([n]) => n).filter(Boolean);
+  const _studioFontList = [...new Set([..._brandNames, ...Object.keys(_studioFontMap), ..._studioSystemFonts])];
+%>
+<link href="https://fonts.googleapis.com/css2?<%= _studioFontsLink %>&display=swap" rel="stylesheet">
+
 <!-- Resolve the bare "onnxruntime-web" specifier the @imgly/background-removal
      bundle dynamically imports (used by the layer "remove background" tool). -->
 <script type="importmap">
@@ -95,11 +136,17 @@
   }
   .pal-swatch:hover { border-color: var(--on-surface); transform: scale(1.15); }
   .pal-swatch.active { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(201,168,72,0.3); }
+  /* Brand-color quick swatches injected beside every native color input — the big
+     mobile win, since the OS color picker is hard to use on a phone. */
+  .sg-swatches { display: inline-flex; gap: 3px; flex-wrap: wrap; align-items: center; margin-left: 4px; vertical-align: middle; }
+  .sg-swatch { width: 20px; height: 20px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.25); cursor: pointer; padding: 0; flex-shrink: 0; }
+  .sg-swatch:hover { transform: scale(1.15); box-shadow: 0 0 0 1px var(--on-surface); }
+  @media (max-width: 820px) { .sg-swatch { width: 28px; height: 28px; } }
 
   /* ── CANVAS AREA ── */
   .sg-canvas-area {
     background: #E8E5DF; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; overflow: auto; padding: 20px;
+    align-items: safe center; justify-content: safe center; overflow: auto; padding: 20px;
     position: relative;
   }
   .sg-canvas-wrap { position: relative; box-shadow: 0 4px 24px rgba(15,27,48,0.15); }
@@ -118,6 +165,12 @@
     margin-top: 8px; font-size: 0.65rem; color: var(--slate); text-align: center;
   }
   .sg-canvas-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .sg-canvas-bar { margin-top: 10px; display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; }
+  .sg-canvas-bar .tool-btn { padding: 4px 9px; font-size: 0.8rem; line-height: 1; min-width: 30px; }
+  .sg-canvas-bar #zoomFitBtn { min-width: 48px; font-size: 0.66rem; }
+  .sg-bar-sep { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
+  .sg-canvas-bar input[type=range] { accent-color: var(--navy); cursor: pointer; }
+  .sg-canvas-bar button:disabled { opacity: 0.4; cursor: default; }
 
   /* ── LAYERS PANEL ── */
   .layer-item {
@@ -143,6 +196,11 @@
   /* ── LAYER PROPS (bottom of right panel) ── */
   .lp-section { padding: 10px 14px; border-top: 1px solid var(--border); }
   .lp-title { font-size: 0.58rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--slate); margin-bottom: 8px; }
+  /* Reserve clearance for the collapsed corner dock (bottom-right, ~68px tall)
+     so the last props row — e.g. the image Recolor / Apply controls — is never
+     hidden beneath it. Applies on desktop (internal props scroll) and mobile
+     (whole-sheet scroll) alike. */
+  #propsContent { padding-bottom: 80px; }
 
   /* Desktop: pin Properties to the bottom of the right panel and give its
      fields their own scroll so the tooling (rotation, font, color rows) never
@@ -173,29 +231,49 @@
   }
   .sg-drop-overlay.visible { display: flex; }
 
-  /* ── BOTTOM DOCK (mobile) ── */
+  /* ── BOTTOM TOOL RAIL (mobile) — futuristic contextual dock ──
+     One chip per tool, horizontally scrollable. Each chip pops a focused,
+     content-sized sheet (see .mob-focus below) instead of a giant accordion.
+     The rail is dark frosted glass and stays visible over the sheet so tools
+     can be swapped in place — Canva/Figma-mobile pattern. */
   .sg-bot-dock {
     display: none; position: fixed; bottom: 0; left: 0; right: 0;
-    z-index: 55; background: var(--surface); border-top: 1px solid var(--border);
-    padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
-    gap: 4px; align-items: stretch;
-    box-shadow: 0 -2px 16px rgba(15,27,48,0.08);
+    z-index: 62;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+    gap: 6px; align-items: stretch;
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    background: linear-gradient(180deg, rgba(17,29,52,0.88), rgba(12,21,39,0.95));
+    backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    border-top: 1px solid rgba(201,168,72,0.16);
+    box-shadow: 0 -10px 34px rgba(9,16,30,0.4);
     font-family: 'Jost', sans-serif;
   }
+  .sg-bot-dock::-webkit-scrollbar { display: none; }
   .sg-bd-btn {
-    flex: 1; padding: 8px 4px; border: none; background: transparent;
-    font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--slate); cursor: pointer; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 3px; border-radius: 4px;
-    transition: all 0.12s; font-family: inherit;
+    flex: 0 0 auto; min-width: 60px;
+    padding: 7px 10px; border: 1px solid transparent; background: transparent;
+    font-size: 0.55rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+    color: rgba(245,243,239,0.6); cursor: pointer; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 4px; border-radius: 13px;
+    transition: color .18s, background .18s, border-color .18s, transform .12s cubic-bezier(.2,.8,.3,1.1);
+    font-family: inherit; position: relative; white-space: nowrap;
   }
-  .sg-bd-btn .ico { font-size: 1.15rem; line-height: 1; }
-  .sg-bd-btn:hover, .sg-bd-btn.active { color: var(--navy); background: rgba(28,43,74,0.06); }
+  .sg-bd-btn .ico { font-size: 1.18rem; line-height: 1; transition: transform 0.18s cubic-bezier(.2,.8,.3,1.1); }
+  .sg-bd-btn:active { transform: scale(0.9); }
+  .sg-bd-btn.active {
+    color: #fff;
+    background: linear-gradient(158deg, rgba(201,168,72,0.30), rgba(201,168,72,0.08));
+    border-color: rgba(201,168,72,0.5);
+    box-shadow: inset 0 0 0 1px rgba(201,168,72,0.18), 0 6px 20px rgba(201,168,72,0.22);
+  }
+  .sg-bd-btn.active .ico { transform: translateY(-2px) scale(1.1); }
   .sg-bd-btn.primary {
-    background: var(--gold); color: var(--on-surface);
-    box-shadow: 0 1px 3px rgba(201,168,72,0.4);
+    color: var(--on-surface);
+    background: linear-gradient(158deg, #E7C878, var(--gold));
+    box-shadow: 0 5px 18px rgba(201,168,72,0.42);
   }
-  .sg-bd-btn.primary:hover, .sg-bd-btn.primary.active { background: var(--gold); color: var(--on-surface); transform: translateY(-1px); }
+  .sg-bd-btn.primary.active { box-shadow: 0 0 0 2px rgba(255,255,255,0.45), 0 6px 20px rgba(201,168,72,0.5); }
 
   /* ── SHEET BACKDROP ── */
   .sg-sheet-backdrop {
@@ -221,29 +299,46 @@
       grid-template-columns: 1fr; grid-template-rows: 1fr;
       height: calc(100vh - 64px); height: calc(100dvh - 64px); overflow: hidden;
     }
-    /* Left and right panels become bottom-sheets containing the REAL elements (no cloning). */
+    /* Panels become FLOATING contextual sheets that hover above the tool rail
+       (the REAL elements move — no cloning, no duplicate IDs). Height is sized
+       to the content so a short tool (Size) yields a short sheet and a tall one
+       (AI BG) scrolls internally. Anchored above the ~64px rail. */
     .sg-panel-left, .sg-panel-right {
-      position: fixed; left: 0; right: 0; bottom: 0;
-      width: 100%; height: 78vh; height: 78dvh; max-height: 720px;
-      z-index: 60; transform: translateY(100%);
-      transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
-      border: none !important;
-      border-top-left-radius: 16px; border-top-right-radius: 16px;
-      box-shadow: 0 -8px 32px rgba(15,27,48,0.2);
+      position: fixed; left: 8px; right: 8px;
+      bottom: calc(66px + env(safe-area-inset-bottom, 0px));
+      width: auto; max-width: none;
+      height: auto; max-height: 72dvh;
+      z-index: 60; transform: translateY(calc(100% + 88px)); opacity: 0;
+      transition: transform 0.36s cubic-bezier(.2,.9,.25,1.08), opacity 0.22s ease;
+      border: 1px solid rgba(201,168,72,0.2) !important;
+      border-radius: 22px;
+      box-shadow: 0 18px 48px rgba(9,16,30,0.34), 0 0 0 1px rgba(255,255,255,0.03);
       background: var(--surface);
-      will-change: transform;
+      overflow: hidden;
+      display: flex; flex-direction: column;
+      will-change: transform, opacity;
     }
-    .sg-panel-left.mob-open, .sg-panel-right.mob-open { transform: translateY(0); }
+    .sg-panel-left.mob-open, .sg-panel-right.mob-open { transform: translateY(0); opacity: 1; }
+
+    /* Focused single-tool mode: hide every section except the active one and
+       drop its accordion header (the sheet header shows the tool name). */
+    .sg-panel-left.mob-focus .sg-sec { display: none; }
+    .sg-panel-left.mob-focus .sg-sec.sg-sec--focus { display: block; margin-bottom: 0; }
+    .sg-panel-left.mob-focus .sg-sec--focus .sg-sec-head { display: none; }
+    .sg-panel-left.mob-focus .sg-sec--focus .sg-sec-body { display: block !important; padding: 2px 0 4px; }
     .sg-panel-head {
-      padding: 18px 16px 10px; font-size: 0.72rem;
-      position: relative;
+      padding: 18px 16px 11px; font-size: 0.74rem; letter-spacing: 0.18em;
+      position: relative; color: var(--on-surface);
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(201,168,72,0.05), transparent);
     }
     .sg-panel-head::before {
       content: ''; position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
-      width: 40px; height: 4px; background: var(--border); border-radius: 2px;
+      width: 44px; height: 4px; border-radius: 2px;
+      background: linear-gradient(90deg, var(--gold), rgba(201,168,72,0.4));
     }
     .sg-panel-close { display: inline-block; }
-    .sg-panel-scroll { padding: 8px 16px 100px; }
+    .sg-panel-scroll { padding: 10px 16px 16px; }
     .sg-sec-head { padding: 12px 0; font-size: 0.7rem; }
     .sg-sec-body { padding: 12px 0; }
     .sg-input, .sg-select { font-size: 0.88rem; padding: 9px 10px; }
@@ -253,7 +348,7 @@
     .sz-btn { padding: 10px 6px; font-size: 0.65rem; }
     .pal-swatch { width: 32px; height: 32px; }
     .sg-lbl { font-size: 0.65rem; min-width: 52px; }
-    .lp-section { padding: 14px 16px 100px; }
+    .lp-section { padding: 14px 16px 16px; }
     .sg-canvas-area {
       display: flex; overflow: auto;
       padding: 10px 10px 70px;
@@ -271,7 +366,7 @@
   @media (max-width: 520px) {
     .sg-bd-btn { font-size: 0.55rem; padding: 6px 2px; }
     .sg-bd-btn .ico { font-size: 1rem; }
-    .sg-panel-left, .sg-panel-right { height: 82vh; height: 82dvh; }
+    .sg-panel-left, .sg-panel-right { height: auto; max-height: 76dvh; }
     .sg-canvas-wrap { max-width: calc(100vw - 16px); }
     .sz-grid { grid-template-columns: 1fr 1fr; }
   }
@@ -355,13 +450,19 @@
 <div style="padding:0 16px;">
   <%- include('../partials/advisory', { needs: 'ai,s3' }) %>
 </div>
-<!-- Mobile bottom dock -->
+<!-- Mobile tool rail — one focused sheet per tool, horizontally scrollable -->
 <div class="sg-bot-dock">
-  <button class="sg-bd-btn" data-side="left" title="All tools">
-    <span class="ico">☰</span><span>Tools</span>
-  </button>
   <button class="sg-bd-btn primary" data-side="left" data-section="secAdd" title="Add a layer">
-    <span class="ico">+</span><span>Layer</span>
+    <span class="ico">&#65291;</span><span>Add</span>
+  </button>
+  <button class="sg-bd-btn" data-side="right" title="Layers list">
+    <span class="ico">&#9776;</span><span>Layers</span>
+  </button>
+  <button class="sg-bd-btn" data-side="left" data-section="secSize" title="Canvas size">
+    <span class="ico">&#9645;</span><span>Size</span>
+  </button>
+  <button class="sg-bd-btn" data-side="left" data-section="secBg" title="Background color">
+    <span class="ico">&#9635;</span><span>BG</span>
   </button>
   <button class="sg-bd-btn" data-side="left" data-section="secGradBg" title="Gradient background">
     <span class="ico">&#9684;</span><span>Gradient</span>
@@ -372,11 +473,14 @@
   <button class="sg-bd-btn" data-side="left" data-section="secPal" title="Colors">
     <span class="ico">&#9670;</span><span>Color</span>
   </button>
-  <button class="sg-bd-btn" data-side="right" title="Layers list">
-    <span class="ico">&#9711;</span><span>Layers</span>
+  <button class="sg-bd-btn" data-side="left" data-section="secFonts" title="Brand fonts">
+    <span class="ico">A</span><span>Fonts</span>
   </button>
-  <button class="sg-bd-btn" data-side="left" data-section="secExport" title="Export">
-    <span class="ico">&#8595;</span><span>Save</span>
+  <button class="sg-bd-btn" data-side="left" data-section="secPresets" title="Saved presets">
+    <span class="ico">&#9733;</span><span>Presets</span>
+  </button>
+  <button class="sg-bd-btn" data-side="left" data-section="secExport" title="Save / export">
+    <span class="ico">&#8615;</span><span>Export</span>
   </button>
 </div>
 <div class="sg-sheet-backdrop" id="sgSheetBackdrop"></div>
@@ -410,6 +514,13 @@
             <span class="sg-lbl">W</span><input type="number" class="sg-input" id="customW" value="1080" style="width:70px;">
             <span class="sg-lbl">H</span><input type="number" class="sg-input" id="customH" value="1080" style="width:70px;">
             <button class="tool-btn" id="applySizeBtn">Set</button>
+          </div>
+          <div class="sg-row" style="margin-top:6px;align-items:center;">
+            <span class="sg-lbl">Pano</span>
+            <input type="number" class="sg-input" id="panoSlidesInput" min="2" max="10" value="4" style="width:52px;" title="Carousel slides (2–10)">
+            <button class="tool-btn" id="applyPanoBtn" style="background:var(--gold);color:var(--on-surface);border-color:var(--gold);" title="Seamless carousel: one wide 1080×N canvas, split into tiles on publish">↔ Carousel</button>
+            <button class="tool-btn" id="applyGridBtn" style="background:var(--navy);color:#fff;border-color:var(--navy);" title="9-post grid mural: one 3240×3240 canvas → 9 feed tiles, posted in reverse so your IG profile grid becomes one image">⊞ 9-Grid</button>
+            <label style="font-size:0.6rem;display:flex;align-items:center;gap:4px;color:var(--slate);"><input type="checkbox" id="panoGuidesChk" checked> guides</label>
           </div>
         </div>
       </div>
@@ -602,33 +713,13 @@
           <div class="sg-row">
             <span class="sg-lbl">Heading</span>
             <select class="sg-select" id="brandFontHeading" style="flex:1;">
-              <option value="Cormorant Garamond">Cormorant Garamond</option>
-              <option value="Playfair Display">Playfair Display</option>
-              <option value="Lora">Lora</option>
-              <option value="Merriweather">Merriweather</option>
-              <option value="Libre Baskerville">Libre Baskerville</option>
-              <option value="Jost">Jost</option>
-              <option value="Inter">Inter</option>
-              <option value="Poppins">Poppins</option>
-              <option value="Raleway">Raleway</option>
-              <option value="Nunito">Nunito</option>
-              <option value="DM Sans">DM Sans</option>
+              <% _studioFontList.forEach(function(f){ %><option value="<%= f %>" <%= f === (_sd.font_heading || 'Cormorant Garamond') ? 'selected' : '' %>><%= f %></option><% }) %>
             </select>
           </div>
           <div class="sg-row">
             <span class="sg-lbl">Body</span>
             <select class="sg-select" id="brandFontBody" style="flex:1;">
-              <option value="Jost">Jost</option>
-              <option value="Inter">Inter</option>
-              <option value="Poppins">Poppins</option>
-              <option value="Raleway">Raleway</option>
-              <option value="Nunito">Nunito</option>
-              <option value="DM Sans">DM Sans</option>
-              <option value="Cormorant Garamond">Cormorant Garamond</option>
-              <option value="Playfair Display">Playfair Display</option>
-              <option value="Lora">Lora</option>
-              <option value="Merriweather">Merriweather</option>
-              <option value="Libre Baskerville">Libre Baskerville</option>
+              <% _studioFontList.forEach(function(f){ %><option value="<%= f %>" <%= f === (_sd.font_body || 'Jost') ? 'selected' : '' %>><%= f %></option><% }) %>
             </select>
           </div>
           <div style="font-size:0.6rem;color:var(--slate);margin-top:2px;">New text layers will use these fonts.</div>
@@ -681,6 +772,35 @@
         </div>
       </div>
 
+      <!-- 9-GRID MURAL — shown only in grid mode (3240×3240). Slices the canvas into
+           9 tiles and schedules them bottom-right→top-left so the IG profile grid
+           reassembles the image. -->
+      <div class="sg-sec" id="muralSec" style="display:none;">
+        <div class="sg-sec-head" data-toggle="secMural">9-Grid Mural <span>▾</span></div>
+        <div class="sg-sec-body" id="secMural">
+          <div style="font-size:0.65rem;color:var(--slate);line-height:1.5;margin-bottom:8px;">
+            You're designing at the <b>portrait grid crop</b> (2592×3240) — exactly what Instagram's 4:5 grid shows. On publish each tile is padded to a square post with <b>dimmed side margins</b>, so the grid stays clean and each individual post looks framed. Posts as <b>9 separate feed posts</b>, bottom-right → top-left, so your profile grid becomes one image. Instagram only.
+          </div>
+          <div style="font-size:0.62rem;color:var(--slate);line-height:1.5;margin-bottom:8px;padding:6px 8px;background:rgba(201,168,72,0.08);border-radius:6px;">
+            <b>Design tips:</b> horizontal &amp; vertical lines cross tiles cleanly; <b>diagonals and text that span tiles will break</b> at the seams — keep text inside a single tile. Max <b>4 murals per day</b> (each is 9 posts — more risks IG's spam filters).
+          </div>
+          <div class="sg-row" style="align-items:center;">
+            <span class="sg-lbl" title="Seconds between each tile (≥60s — keeps under Instagram's burst limits)">Spacing</span>
+            <input type="number" class="sg-input" id="muralSpacing" min="60" max="3600" step="30" value="90" style="width:70px;"> <span style="font-size:0.6rem;color:var(--slate);">sec/tile</span>
+          </div>
+          <div style="margin-top:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+              <span class="sg-lbl">Captions</span>
+              <button class="tool-btn" id="muralAiCopyBtn" style="font-size:0.66rem;padding:3px 8px;" title="AI-draft a cover caption + one line per tile">✨ AI copy</button>
+            </div>
+            <textarea id="muralCover" placeholder="Cover caption (top-left tile — posts last, carries hashtags)…" style="width:100%;margin-top:6px;min-height:64px;font-size:0.72rem;padding:6px;border:1px solid var(--border,#ccc);border-radius:6px;resize:vertical;"></textarea>
+            <div id="muralCells" style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;"></div>
+          </div>
+          <button class="tool-btn" id="scheduleMuralBtn" style="margin-top:10px;width:100%;background:var(--gold);color:var(--on-surface);border-color:var(--gold);font-weight:600;">📅 Schedule Mural (9 posts)</button>
+          <div id="muralStatus" style="font-size:0.68rem;color:var(--slate);margin-top:6px;"></div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -689,6 +809,15 @@
     <div class="sg-drop-overlay" id="dropOverlay">Drop images here</div>
     <div class="sg-canvas-wrap" id="canvasWrap">
       <canvas id="sgCanvas" width="1080" height="1080"></canvas>
+    </div>
+    <div class="sg-canvas-bar">
+      <button type="button" class="tool-btn" id="undoBtn" title="Undo (Ctrl+Z)" disabled>↶</button>
+      <button type="button" class="tool-btn" id="redoBtn" title="Redo (Ctrl+Y)" disabled>↷</button>
+      <span class="sg-bar-sep"></span>
+      <button type="button" class="tool-btn" id="zoomOutBtn" title="Zoom out (Ctrl+-)">−</button>
+      <input type="range" id="zoomSlider" min="25" max="400" step="5" value="100" title="Zoom" style="width:120px;">
+      <button type="button" class="tool-btn" id="zoomInBtn" title="Zoom in (Ctrl+=)">+</button>
+      <button type="button" class="tool-btn" id="zoomFitBtn" title="Fit (Ctrl+0)"><span id="zoomVal">100%</span></button>
     </div>
     <div class="sg-canvas-info" id="canvasInfo">1080 x 1080 · ig-post</div>
   </div>
@@ -752,9 +881,10 @@ function sgExpandSection(secId) {
 }
 
 function sgClosePanels() {
-  sgPanelLeft?.classList.remove('mob-open');
-  sgPanelRight?.classList.remove('mob-open');
+  sgPanelLeft?.classList.remove('mob-open', 'mob-focus');
+  sgPanelRight?.classList.remove('mob-open', 'mob-focus');
   sgBackdrop?.classList.remove('open');
+  document.querySelectorAll('.sg-sec--focus').forEach(s => s.classList.remove('sg-sec--focus'));
   document.querySelectorAll('.sg-bd-btn').forEach(b => b.classList.remove('active'));
 }
 
@@ -762,11 +892,35 @@ function sgOpenPanel(side, sectionId) {
   const panel = side === 'right' ? sgPanelRight : sgPanelLeft;
   const other = side === 'right' ? sgPanelLeft  : sgPanelRight;
   if (!panel) return;
-  other?.classList.remove('mob-open');
+  other?.classList.remove('mob-open', 'mob-focus');
   panel.classList.add('mob-open');
   sgBackdrop?.classList.add('open');
-  if (sectionId) sgExpandSection(sectionId);
-  // Highlight the matching dock button(s).
+
+  // Focused single-tool mode: show ONLY the requested section (no accordion).
+  // The real elements + their handlers stay put — we just toggle visibility.
+  panel.querySelectorAll('.sg-sec--focus').forEach(s => s.classList.remove('sg-sec--focus'));
+  if (side === 'left' && sectionId) {
+    const body = document.getElementById(sectionId);
+    const sec  = body && body.closest('.sg-sec');
+    if (sec) {
+      panel.classList.add('mob-focus');
+      sec.classList.add('sg-sec--focus');
+      body.classList.remove('collapsed');
+      // Surface the tool's name in the sheet header.
+      const head  = sec.querySelector('.sg-sec-head');
+      const title = head ? (head.firstChild && head.firstChild.textContent || '').trim() : '';
+      const headSpan = panel.querySelector('.sg-panel-head > span:first-child');
+      if (headSpan && title) headSpan.textContent = title;
+      const scroller = panel.querySelector('.sg-panel-scroll');
+      if (scroller) scroller.scrollTop = 0;
+    }
+  } else if (side === 'left') {
+    panel.classList.remove('mob-focus'); // full accordion fallback
+    const headSpan = panel.querySelector('.sg-panel-head > span:first-child');
+    if (headSpan) headSpan.textContent = 'Tools';
+  }
+
+  // Highlight the matching dock chip.
   document.querySelectorAll('.sg-bd-btn').forEach(b => {
     const matchSide = b.dataset.side === side;
     const matchSec  = (b.dataset.section || '') === (sectionId || '');
@@ -805,6 +959,10 @@ let multiSel = new Set(); // full selection set — group/multi ops act on this
 let nextId = 1;
 let nextGroup = 1;      // group-id counter for layer grouping
 let canvasW = 1080, canvasH = 1080, sizeName = 'ig-post';
+let viewZoom = 1;          // canvas view zoom (display only — never changes export size)
+let panoSlides = 0;        // >0 → seamless-carousel canvas (N tiles of 1080×1350)
+let panoGuides = true;     // draw tile-boundary guides (never baked into exports)
+let gridMode = false;      // true → 9-grid mural canvas (3240×3240, split into 9 tiles)
 let bgColor = '#F5F3EF';
 let bgTransparent = false;
 let activeColor = '#1C2B4A';
@@ -838,6 +996,49 @@ const PALETTES = {
 };
 let currentPalette = [];
 let currentBrandKit = null;  // { type, name, colors, fonts, presets }
+
+// ═══════════════════════════════════════════
+//  FONTS — single roster feeds every font <select> (brand fonts included)
+// ═══════════════════════════════════════════
+const STUDIO_FONTS = <%- JSON.stringify(_studioFontList) %>;
+const STUDIO_SYSTEM_FONTS = <%- JSON.stringify(_studioSystemFonts) %>;
+
+// Build <option>s from the roster, keeping `selected` present even when it's an
+// arbitrary layer font not on the roster — otherwise the <select> would silently
+// snap to the first option ("stale out").
+function fontOptionsHtml(selected) {
+  const sel = String(selected || '');
+  const list = STUDIO_FONTS.slice();
+  if (sel && !list.includes(sel)) list.unshift(sel);
+  return list.map(f => '<option value="' + f + '"' + (f === sel ? ' selected' : '') + '>' + f + '</option>').join('');
+}
+
+// Lazily pull a Google font into the page so a brand/client font renders on the
+// canvas even when it wasn't in the server-rendered <link>. System fonts skip.
+function loadStudioFont(name) {
+  name = String(name || '').trim();
+  if (!name || STUDIO_SYSTEM_FONTS.includes(name)) return;
+  const id = 'sgfont-' + name.replace(/\W+/g, '-').toLowerCase();
+  if (document.getElementById(id)) return;
+  const link = document.createElement('link');
+  link.id = id; link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=' + name.replace(/\s+/g, '+') + ':wght@300;400;500;600;700&display=swap';
+  document.head.appendChild(link);
+}
+
+// Ensure `font` is a selectable option on a static <select>, then select it —
+// so setting a brand's font actually takes even when it's off-roster.
+function ensureFontOption(select, font) {
+  font = String(font || '').trim();
+  if (!select || !font) return;
+  if (![...select.options].some(o => o.value === font)) {
+    const o = document.createElement('option');
+    o.value = font; o.textContent = font;
+    select.insertBefore(o, select.firstChild);
+  }
+  select.value = font;
+  loadStudioFont(font);
+}
 let buildForType = 'tenant';
 let buildForId = null;
 
@@ -908,8 +1109,31 @@ document.getElementById('applySizeBtn').addEventListener('click', () => {
   document.querySelectorAll('.sz-btn').forEach(x=>x.classList.remove('active'));
   setCanvasSize(w, h, `${w}x${h}`);
 });
+// Seamless carousel (panorama): one wide canvas of N × 1080 tiles (each 1080×1350).
+// You design the WHOLE width here; it's split into tiles when posted.
+document.getElementById('applyPanoBtn')?.addEventListener('click', () => {
+  const n = Math.max(2, Math.min(10, parseInt(document.getElementById('panoSlidesInput').value, 10) || 4));
+  document.querySelectorAll('.sz-btn').forEach(x=>x.classList.remove('active'));
+  setCanvasSize(1080 * n, 1350, 'pano-' + n);
+});
+document.getElementById('panoGuidesChk')?.addEventListener('change', (e) => { panoGuides = e.target.checked; render(); });
+// 9-grid mural: one 3240×3240 square. Design the whole thing here; it's sliced into
+// 9 × 1080 feed tiles at schedule time and posted bottom-right→top-left.
+document.getElementById('applyGridBtn')?.addEventListener('click', () => {
+  document.querySelectorAll('.sz-btn').forEach(x=>x.classList.remove('active'));
+  // Portrait design canvas: 3×3 of 864×1080 tiles (what IG's 4:5 grid crop shows).
+  // Each tile is padded to a 1080² square with dimmed margins at publish.
+  setCanvasSize(2592, 3240, 'grid-9');
+  buildMuralCells();
+  document.getElementById('secMural')?.classList.remove('collapsed');   // ensure expanded
+});
 function setCanvasSize(w, h, name) {
   canvasW = w; canvasH = h; sizeName = name;
+  const pm = /^pano-(\d+)$/.exec(name || '');
+  panoSlides = pm ? Math.max(2, Math.min(10, +pm[1])) : 0;   // panorama mode iff a pano-N size
+  gridMode = name === 'grid-9';                              // 3×3 mural mode
+  const muralSec = document.getElementById('muralSec');
+  if (muralSec) muralSec.style.display = gridMode ? '' : 'none';
   canvas.width = w; canvas.height = h;
   document.getElementById('customW').value = w;
   document.getElementById('customH').value = h;
@@ -923,10 +1147,13 @@ function scaleCanvas() {
   const padY = isMob ? 40 : 100;
   const maxW = area.clientWidth - padX;
   const maxH = area.clientHeight - padY;
-  const scale = Math.min(1, maxW / canvasW, maxH / canvasH);
+  // Fit-to-area, then multiply by the user's view zoom. Zoomed-in canvases exceed
+  // the area and scroll (canvasArea is overflow:auto).
+  const fit = Math.min(1, maxW / canvasW, maxH / canvasH);
+  const scale = fit * (viewZoom || 1);
   canvas.style.width = Math.max(60, canvasW * scale) + 'px';
   canvas.style.height = Math.max(60, canvasH * scale) + 'px';
-  document.getElementById('canvasInfo').textContent = `${canvasW} x ${canvasH} · ${sizeName}`;
+  document.getElementById('canvasInfo').textContent = `${canvasW} x ${canvasH} · ${sizeName} · ${Math.round((viewZoom||1)*100)}%`;
 }
 window.addEventListener('resize', scaleCanvas);
 
@@ -934,7 +1161,8 @@ window.addEventListener('resize', scaleCanvas);
 //  BACKGROUND
 // ═══════════════════════════════════════════
 document.getElementById('bgColor').addEventListener('input', e => { bgColor = e.target.value; document.getElementById('bgColorHex').value = bgColor; render(); });
-document.getElementById('bgColorHex').addEventListener('change', e => { bgColor = e.target.value; document.getElementById('bgColor').value = bgColor; render(); });
+document.getElementById('bgColor').addEventListener('change', () => { if (typeof histPush === 'function') histPush(); });
+document.getElementById('bgColorHex').addEventListener('change', e => { bgColor = e.target.value; document.getElementById('bgColor').value = bgColor; render(); if (typeof histPush === 'function') histPush(); });
 document.getElementById('bgTransparent').addEventListener('change', e => {
   bgTransparent = e.target.checked;
   // dim color pickers visually so it's obvious bg color is bypassed
@@ -1315,10 +1543,12 @@ async function loadBrandKit(type, id) {
     PALETTES.brand = data.colors?.length ? [...data.colors] : ['#1C2B4A','#C9A848','#F5F3EF'];
     currentPalette = [...PALETTES.brand];
     if (typeof grSeedFromBrand === 'function') grSeedFromBrand();
+    if (typeof enhanceColorInputs === 'function') enhanceColorInputs(document, true);  // refresh swatches with real brand colors
 
-    // Set font dropdowns
-    if (data.fonts?.heading) document.getElementById('brandFontHeading').value = data.fonts.heading;
-    if (data.fonts?.body) document.getElementById('brandFontBody').value = data.fonts.body;
+    // Set font dropdowns — add the option (and load the webfont) first so an
+    // off-roster brand/client font actually takes instead of silently no-op'ing.
+    if (data.fonts?.heading) ensureFontOption(document.getElementById('brandFontHeading'), data.fonts.heading);
+    if (data.fonts?.body) ensureFontOption(document.getElementById('brandFontBody'), data.fonts.body);
 
     // Force palette preset to "brand"
     document.getElementById('palPreset').value = 'brand';
@@ -1469,6 +1699,7 @@ function addLayer(layer) {
   setSelection(layer.id);
   renderLayerList();
   render();
+  if (typeof histPush === 'function') histPush();
   return layer;
 }
 function selLayer() { return layers.find(l => l.id === selId); }
@@ -1500,10 +1731,12 @@ function groupSelected() {
   const g = nextGroup++;
   ls.forEach(l => l.group = g);
   renderLayerList(); renderProps();
+  if (typeof histPush === 'function') histPush();
 }
 function ungroupSelected() {
   selectionLayers().forEach(l => delete l.group);
   renderLayerList(); renderProps();
+  if (typeof histPush === 'function') histPush();
 }
 function groupColor(g) { return `hsl(${(g * 67) % 360} 70% 55%)`; }
 
@@ -1514,6 +1747,7 @@ function removeLayer(id) {
   if (selId === id) selId = multiSel.size ? [...multiSel][multiSel.size - 1] : null;
   renderLayerList();
   render();
+  if (typeof histPush === 'function') histPush();
 }
 function removeSelection() {           // delete every selected layer at once
   if (!multiSel.size) return;
@@ -1522,6 +1756,7 @@ function removeSelection() {           // delete every selected layer at once
   layers = layers.filter(l => !multiSel.has(l.id));
   clearSelection();
   renderLayerList(); renderProps(); render();
+  if (typeof histPush === 'function') histPush();
 }
 
 // Clone the whole selection at once, preserving relative positions; if the
@@ -1546,6 +1781,7 @@ function cloneSelection() {
   multiSel = new Set(copies.map(c => c.id));
   selId = copies[copies.length - 1].id;
   renderLayerList(); renderProps(); render();
+  if (typeof histPush === 'function') histPush();
   return copies;
 }
 
@@ -1568,6 +1804,7 @@ function cloneLayer(id) {
   layers.splice(idx + 1, 0, copy); // sit directly above the original in the stack
   setSelection(copy.id);
   renderLayerList(); renderProps(); render();
+  if (typeof histPush === 'function') histPush();
   return copy;
 }
 
@@ -1620,7 +1857,7 @@ async function removeLayerBg(id, btn) {
     renderLayerList(); render();
   } catch (err) {
     console.error('Background removal failed:', err);
-    alert('Background removal failed: ' + (err && err.message ? err.message : err));
+    SlabFlash.error('Background removal failed: ' + (err && err.message ? err.message : err));
   } finally {
     if (bgOverlay) bgOverlay.done();
     if (btn && window.SlabLoader && btn._slabBusy) { SlabLoader.button(btn, false); btn.title = 'Remove background'; }
@@ -1850,6 +2087,64 @@ function render() {
       }
     }
   }
+  drawFrameGuides();
+}
+
+// Panorama tile-boundary guides: dashed seams every 1080px + a numbered chip per
+// tile, plus a subtle text-safe band. Edit chrome only — beginExportRender()
+// turns panoGuides off so this never bakes into a saved/exported PNG.
+function drawFrameGuides() {
+  // 9-grid mural: 3×3 seams over PORTRAIT tiles (864×1080 = the IG 4:5 grid crop),
+  // numbered chips 1–9 in READING order (top-left→bottom-right). Numbers show reading
+  // position; posts fire in reverse (bottom-right first). The published square adds
+  // dimmed left/right margins outside each tile — but the design canvas IS the
+  // portrait grid, so what you see here is what the grid shows.
+  if (gridMode && panoGuides) {
+    const tw = 864, th = 1080;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(201,168,72,0.9)';
+    ctx.lineWidth = Math.max(2, canvasW * 0.0016);
+    ctx.setLineDash([18, 12]);
+    for (let i = 1; i < 3; i++) {
+      ctx.beginPath(); ctx.moveTo(i * tw, 0); ctx.lineTo(i * tw, canvasH); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i * th); ctx.lineTo(canvasW, i * th); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    const chip = Math.round(tw * 0.16);
+    ctx.font = `bold ${Math.round(chip * 0.55)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let i = 0; i < 9; i++) {
+      const row = Math.floor(i / 3), col = i % 3;
+      const cx = col * tw + chip * 0.85, cy = row * th + chip * 0.85;
+      ctx.fillStyle = 'rgba(15,27,48,0.72)';
+      ctx.beginPath(); ctx.arc(cx, cy, chip / 2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#C9A848'; ctx.fillText(String(i + 1), cx, cy);
+    }
+    ctx.restore();
+    return;
+  }
+  if (!panoSlides || panoSlides < 2 || !panoGuides) return;
+  const tileW = 1080;
+  ctx.save();
+  // Dashed seams between tiles.
+  ctx.strokeStyle = 'rgba(201,168,72,0.9)';
+  ctx.lineWidth = Math.max(2, canvasW * 0.0016);
+  ctx.setLineDash([18, 12]);
+  for (let i = 1; i < panoSlides; i++) {
+    ctx.beginPath(); ctx.moveTo(i * tileW, 0); ctx.lineTo(i * tileW, canvasH); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  // Per-tile number chip (top-left of each tile) so slide order is obvious.
+  const chip = Math.round(canvasH * 0.05);
+  ctx.font = `bold ${Math.round(chip * 0.6)}px sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let i = 0; i < panoSlides; i++) {
+    const cx = i * tileW + chip * 0.9, cy = chip * 0.9;
+    ctx.fillStyle = 'rgba(15,27,48,0.72)';
+    ctx.beginPath(); ctx.arc(cx, cy, chip / 2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#C9A848'; ctx.fillText(String(i + 1), cx, cy);
+  }
+  ctx.restore();
 }
 
 // ═══════════════════════════════════════════
@@ -2281,22 +2576,134 @@ canvas.addEventListener('mousemove', e => {
   else if (hitTest(x, y)) { canvas.style.cursor = 'move'; }
   else { canvas.style.cursor = 'default'; }
 });
-canvas.addEventListener('mouseup', () => { drag = null; resize = null; cropDrag = null; if (!cropMode) renderProps(); });
+canvas.addEventListener('mouseup', () => { const changed = !!(drag || resize); drag = null; resize = null; cropDrag = null; if (!cropMode) renderProps(); if (changed && typeof histPush === 'function') histPush(); });
 canvas.addEventListener('mouseleave', () => { drag = null; resize = null; cropDrag = null; });
 
 // Keyboard
+// ═══════════════════════════════════════════
+//  UNDO / REDO · CLIPBOARD · ZOOM
+// ═══════════════════════════════════════════
+let _hist = [], _hp = -1, _clip = null;
+const HIST_MAX = 60;
+function _snapshot() { return JSON.stringify({ layers: serializeLayers(), bgColor, sizeName, canvasW, canvasH }); }
+function histReset() { _hist = [_snapshot()]; _hp = 0; updateHistUI(); }
+function histPush() {
+  const s = _snapshot();
+  if (_hp >= 0 && _hist[_hp] === s) return;         // nothing actually changed
+  _hist = _hist.slice(0, _hp + 1);
+  _hist.push(s);
+  if (_hist.length > HIST_MAX) _hist.shift();
+  _hp = _hist.length - 1;
+  updateHistUI();
+}
+function _histApply(s) {
+  const d = JSON.parse(s);
+  bgColor = d.bgColor || bgColor;
+  const bc = document.getElementById('bgColor'); if (bc) bc.value = bgColor;
+  const bch = document.getElementById('bgColorHex'); if (bch) bch.value = bgColor;
+  if (d.canvasW && d.canvasH && (d.canvasW !== canvasW || d.canvasH !== canvasH)) setCanvasSize(d.canvasW, d.canvasH, d.sizeName || sizeName);
+  deserializeLayers(d.layers || []);                 // rebuilds layers (+async images) and renders
+  renderLayerList(); renderProps();
+}
+function undo() { if (_hp > 0) { _hp--; _histApply(_hist[_hp]); updateHistUI(); } }
+function redo() { if (_hp < _hist.length - 1) { _hp++; _histApply(_hist[_hp]); updateHistUI(); } }
+function updateHistUI() {
+  const u = document.getElementById('undoBtn'), r = document.getElementById('redoBtn');
+  if (u) u.disabled = _hp <= 0;
+  if (r) r.disabled = _hp >= _hist.length - 1;
+}
+
+// Clipboard — copy/cut/paste layers (session-local, survives across selections).
+function _stripDom(l) { const s = { ...l }; delete s.img; delete s.vid; delete s._origImg; return s; }
+function copySelection() { const ls = selectionLayers(); if (ls.length) _clip = JSON.stringify(ls.map(_stripDom)); }
+function cutSelection() { if (!multiSel.size) return; copySelection(); removeSelection(); histPush(); }
+function pasteClipboard() {
+  if (!_clip) return;
+  let arr; try { arr = JSON.parse(_clip); } catch { return; }
+  if (!Array.isArray(arr) || !arr.length) return;
+  const gmap = new Map();
+  clearSelection();
+  arr.forEach(data => {
+    const l = { ...data, id: nextId++, x: (data.x || 0) + 24, y: (data.y || 0) + 24, visible: true, opacity: data.opacity ?? 1 };
+    if (data.group != null) { if (!gmap.has(data.group)) gmap.set(data.group, nextGroup++); l.group = gmap.get(data.group); }
+    if (l.type === 'image' && l.src) { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => render(); im.src = corsSrc(l.src); l.img = im; }
+    else if (l.type === 'video' && l.src) { const v = document.createElement('video'); v.crossOrigin = 'anonymous'; v.src = corsSrc(l.src); v.muted = true; v.loop = true; v.playsInline = true; v.addEventListener('loadedmetadata', () => { v.play().catch(() => {}); render(); }); l.vid = v; }
+    layers.push(l); multiSel.add(l.id); selId = l.id;
+  });
+  renderLayerList(); renderProps(); render(); histPush();
+}
+
+// Zoom — display only, never changes the export dimensions.
+function setZoom(z) {
+  viewZoom = Math.max(0.1, Math.min(4, z));
+  scaleCanvas();
+  const sl = document.getElementById('zoomSlider'); if (sl) sl.value = Math.round(viewZoom * 100);
+  const zv = document.getElementById('zoomVal'); if (zv) zv.textContent = Math.round(viewZoom * 100) + '%';
+}
+function zoomBy(f) { setZoom(viewZoom * f); }
+function zoomFit() { setZoom(1); }
+// Wire the canvas toolbar (undo/redo + zoom).
+document.getElementById('undoBtn')?.addEventListener('click', undo);
+document.getElementById('redoBtn')?.addEventListener('click', redo);
+document.getElementById('zoomOutBtn')?.addEventListener('click', () => zoomBy(1 / 1.2));
+document.getElementById('zoomInBtn')?.addEventListener('click', () => zoomBy(1.2));
+document.getElementById('zoomFitBtn')?.addEventListener('click', zoomFit);
+document.getElementById('zoomSlider')?.addEventListener('input', e => setZoom((+e.target.value || 100) / 100));
+
+// ── Brand-color quick swatches beside every native color input ───────────────
+// The OS color picker is clumsy (esp. on mobile), so we drop a tappable row of
+// the tenant's brand palette next to each <input type=color>. One helper, applied
+// to the props panel on every renderProps() and to the static pickers on load.
+function brandSwatchColors() {
+  const pal = (typeof currentPalette !== 'undefined' && Array.isArray(currentPalette) && currentPalette.length)
+    ? currentPalette
+    : ((typeof PALETTES !== 'undefined' && PALETTES.brand) ? PALETTES.brand : ['#1C2B4A', '#C9A848', '#F5F3EF']);
+  return [...new Set(pal.concat(['#FFFFFF', '#000000']))].slice(0, 10);
+}
+function enhanceColorInputs(root, force) {
+  (root || document).querySelectorAll('input[type=color]').forEach(inp => {
+    if (inp.dataset.swatched && !force) return;
+    if (inp.dataset.swatched && force) { const nx = inp.nextElementSibling; if (nx && nx.classList.contains('sg-swatches')) nx.remove(); }
+    inp.dataset.swatched = '1';
+    const strip = document.createElement('span');
+    strip.className = 'sg-swatches';
+    brandSwatchColors().forEach(c => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'sg-swatch'; b.style.background = c; b.title = c;
+      b.addEventListener('click', () => {
+        inp.value = c;
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      strip.appendChild(b);
+    });
+    inp.insertAdjacentElement('afterend', strip);
+  });
+}
+
 document.addEventListener('keydown', e => {
   if (cropMode) {
     if (e.key === 'Enter') { e.preventDefault(); applyCrop(); }
     if (e.key === 'Escape') { e.preventDefault(); cancelCrop(); }
     return;
   }
+  const mod = e.metaKey || e.ctrlKey;
+  // Zoom shortcuts work even when a field is focused; edit shortcuts do not.
+  if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); zoomBy(1.2); return; }
+  if (mod && e.key === '-') { e.preventDefault(); zoomBy(1 / 1.2); return; }
+  if (mod && e.key === '0') { e.preventDefault(); zoomFit(); return; }
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
-  if ((e.key === 'Delete' || e.key === 'Backspace') && multiSel.size) { removeSelection(); }
-  if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D') && multiSel.size) { e.preventDefault(); cloneSelection(); }
-  if ((e.metaKey || e.ctrlKey) && (e.key === 'g' || e.key === 'G')) {
+  if (mod && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (mod && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); return; }
+  if (mod && (e.key === 'c' || e.key === 'C') && multiSel.size) { e.preventDefault(); copySelection(); return; }
+  if (mod && (e.key === 'x' || e.key === 'X') && multiSel.size) { e.preventDefault(); cutSelection(); return; }
+  if (mod && (e.key === 'v' || e.key === 'V')) { e.preventDefault(); pasteClipboard(); return; }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && multiSel.size) { removeSelection(); histPush(); }
+  if (mod && (e.key === 'd' || e.key === 'D') && multiSel.size) { e.preventDefault(); cloneSelection(); histPush(); }
+  if (mod && (e.key === 'g' || e.key === 'G')) {
     e.preventDefault();
     if (e.shiftKey) ungroupSelected(); else groupSelected();
+    histPush();
   }
 });
 
@@ -2436,8 +2843,7 @@ function renderProps() {
       <div class="sg-col"><span class="sg-lbl">Text</span><textarea class="sg-textarea" data-prop="text" rows="3" style="min-height:54px;">${esc(l.text)}</textarea></div>
       <div class="sg-row"><span class="sg-lbl">Size</span><input type="number" class="sg-input" data-prop="fontSize" value="${l.fontSize}" style="width:55px">
       <span class="sg-lbl">Font</span><select class="sg-select" data-prop="fontFamily" style="flex:1">
-        ${['Cormorant Garamond','Playfair Display','Lora','Merriweather','Libre Baskerville','Jost','Inter','Poppins','Raleway','Nunito','DM Sans','Arial','Georgia','Impact','Courier New']
-          .map(f => '<option value="'+f+'" '+(l.fontFamily===f?'selected':'')+'>'+f+'</option>').join('')}
+        ${fontOptionsHtml(l.fontFamily)}
       </select></div>
       <div class="sg-row"><span class="sg-lbl">Color</span><input type="color" data-prop="color" value="${l.color}" style="width:32px;height:24px;border:1px solid var(--border);cursor:pointer;">
       <span class="sg-lbl">Align</span><select class="sg-select" data-prop="align" style="width:70px">
@@ -2495,6 +2901,7 @@ function renderProps() {
   }
 
   wrap.innerHTML = html;
+  if (typeof enhanceColorInputs === 'function') enhanceColorInputs(wrap);   // brand swatches beside each color input
 
   // Bind prop inputs
   wrap.querySelectorAll('[data-prop]').forEach(el => {
@@ -2507,6 +2914,11 @@ function renderProps() {
       if (boolProps.includes(prop)) l[prop] = el.checked;
       else if (numProps.includes(prop)) l[prop] = parseFloat(el.value) || 0;
       else l[prop] = el.value;
+      if (prop === 'fontFamily') {
+        // Pull the webfont in, then repaint once it's ready (fonts load async).
+        loadStudioFont(l[prop]);
+        if (document.fonts?.load) document.fonts.load(`24px "${l[prop]}"`).then(render).catch(() => {});
+      }
       // Keep sibling controls bound to the same prop in sync (e.g. the rotation
       // slider + number field) without a full re-render of the props panel.
       wrap.querySelectorAll(`[data-prop="${prop}"]`).forEach(other => {
@@ -2514,6 +2926,8 @@ function renderProps() {
       });
       render();
     });
+    // Record one history step per committed field edit (coalesces live drags).
+    el.addEventListener('change', () => { if (typeof histPush === 'function') histPush(); });
   });
 
   // Reset-rotation button
@@ -2602,8 +3016,11 @@ document.getElementById('savePresetBtn').addEventListener('click', async () => {
       // Mirror the current design into the asset library as an editable snapshot
       // so it shows in /admin/assets with an "Edit" badge + latest-state thumb.
       uploadPresetSnapshot(currentPresetId);
+      SlabFlash.success('Preset saved.');
+    } else {
+      SlabFlash.error(data.error || 'Could not save preset.');
     }
-  } catch(err) { alert('Error saving preset: '+err.message); }
+  } catch(err) { SlabFlash.error('Error saving preset: '+err.message); }
 });
 
 // Render the current canvas and push it to the preset's library snapshot asset.
@@ -2690,13 +3107,14 @@ function loadPreset(p) {
 // "Transparent background" box is ticked — force an alpha background regardless
 // of the current bg colour. Returns a restore() that puts everything back.
 function beginExportRender() {
-  const prevSel = selId, prevMulti = multiSel, prevTrans = bgTransparent, prevCrop = cropMode;
+  const prevSel = selId, prevMulti = multiSel, prevTrans = bgTransparent, prevCrop = cropMode, prevGuides = panoGuides;
   // Strip ALL edit chrome so it never bakes into the flattened PNG: the gold
-  // dashed selection outline + resize handle (selId/multiSel) and the crop overlay.
-  selId = null; multiSel = new Set(); cropMode = null;
+  // dashed selection outline + resize handle (selId/multiSel), the crop overlay,
+  // and the panorama tile-boundary guides.
+  selId = null; multiSel = new Set(); cropMode = null; panoGuides = false;
   if (document.getElementById('exportAlpha')?.checked) bgTransparent = true;
   render();
-  return () => { selId = prevSel; multiSel = prevMulti; bgTransparent = prevTrans; cropMode = prevCrop; render(); };
+  return () => { selId = prevSel; multiSel = prevMulti; bgTransparent = prevTrans; cropMode = prevCrop; panoGuides = prevGuides; render(); };
 }
 // Exposed on window because the suggestion "Save to post & return" handler runs in
 // a separate <script> scope — without this its `typeof beginExportRender` check was
@@ -2742,6 +3160,91 @@ document.getElementById('saveLibBtn').addEventListener('click', async (ev) => {
 });
 
 // ═══════════════════════════════════════════
+//  9-GRID MURAL
+// ═══════════════════════════════════════════
+const MURAL_CELL_LABELS = ['top-left','top-center','top-right','middle-left','middle-center','middle-right','bottom-left','bottom-center','bottom-right'];
+// Render 9 per-tile caption inputs laid out to match the visual grid. Tile 1
+// (top-left) is the cover — it uses the Cover caption above, so its input is
+// locked and just points there.
+function buildMuralCells() {
+  const wrap = document.getElementById('muralCells');
+  if (!wrap || wrap.childElementCount) return;   // build once
+  for (let i = 0; i < 9; i++) {
+    const ta = document.createElement('textarea');
+    ta.id = 'muralCell' + i;
+    ta.dataset.idx = i;
+    ta.rows = 2;
+    ta.style.cssText = 'width:100%;font-size:0.62rem;padding:4px;border:1px solid var(--border,#ccc);border-radius:5px;resize:vertical;';
+    if (i === 0) {
+      ta.placeholder = '↑ cover';
+      ta.disabled = true;
+      ta.title = 'Top-left tile uses the Cover caption above (it posts last).';
+      ta.style.opacity = '0.5';
+    } else {
+      ta.placeholder = MURAL_CELL_LABELS[i];
+      ta.title = MURAL_CELL_LABELS[i] + ' tile caption';
+    }
+    wrap.appendChild(ta);
+  }
+}
+function muralCellValues() {
+  const cells = [];
+  for (let i = 0; i < 9; i++) cells.push((document.getElementById('muralCell' + i)?.value || '').trim());
+  return cells;
+}
+
+// ✨ AI copy — draft a cover caption + one line per tile.
+document.getElementById('muralAiCopyBtn')?.addEventListener('click', async (ev) => {
+  const btn = ev.currentTarget;
+  const st = document.getElementById('muralStatus');
+  st.textContent = 'Drafting captions…';
+  if (window.SlabLoader) SlabLoader.button(btn, true, '…');
+  try {
+    const direction = (document.getElementById('exportTitle')?.value || '').trim();
+    const r = await fetch('/admin/assets/grid-mural/copy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ direction }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Failed');
+    if (d.cover) document.getElementById('muralCover').value = d.cover;
+    (d.cells || []).forEach((c, i) => { const el = document.getElementById('muralCell' + i); if (el && i !== 0) el.value = c || ''; });
+    st.textContent = '✓ Captions drafted — edit before scheduling.';
+    setTimeout(() => { st.textContent = ''; }, 3500);
+  } catch (e) { st.textContent = 'Error: ' + e.message; }
+  finally { if (window.SlabLoader) SlabLoader.button(btn, false); }
+});
+
+// 📅 Schedule Mural — flatten the 3240² canvas, slice into 9, schedule reverse burst.
+document.getElementById('scheduleMuralBtn')?.addEventListener('click', async (ev) => {
+  const btn = ev.currentTarget;
+  const st = document.getElementById('muralStatus');
+  if (!gridMode) { st.textContent = 'Switch to 9-Grid mode first (⊞ 9-Grid).'; return; }
+  const cover = (document.getElementById('muralCover')?.value || '').trim();
+  if (!cover) { st.textContent = 'Add a cover caption first — it carries your hashtags.'; return; }
+  if (!confirm('Schedule this as 9 Instagram posts (bottom-right first → top-left last)? They post one at a time and cannot be reordered once live.')) return;
+  st.textContent = 'Slicing & scheduling…';
+  if (window.SlabLoader) SlabLoader.button(btn, true, 'Scheduling…');
+  const restore = (typeof beginExportRender === 'function') ? beginExportRender() : (() => {});
+  try {
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    restore();
+    const fd = new FormData();
+    fd.append('image', blob, 'mural.png');
+    fd.append('cover', cover);
+    fd.append('cells', JSON.stringify(muralCellValues()));
+    fd.append('spacingSec', String(parseInt(document.getElementById('muralSpacing')?.value, 10) || 90));
+    const r = await fetch('/admin/assets/grid-mural/schedule', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Failed');
+    const first = d.firstAt ? new Date(d.firstAt).toLocaleString() : '—';
+    const last = d.lastAt ? new Date(d.lastAt).toLocaleString() : '—';
+    st.innerHTML = `✓ Scheduled ${d.count} tiles.<br>First (bottom-right): ${esc(first)}<br>Last (top-left cover): ${esc(last)}`;
+  } catch (e) { restore(); st.textContent = 'Error: ' + e.message; }
+  finally { if (window.SlabLoader) SlabLoader.button(btn, false); }
+});
+
+// ═══════════════════════════════════════════
 //  HELPERS
 // ═══════════════════════════════════════════
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -2760,7 +3263,8 @@ window.loadAgentDesign = function(design, opts) {
     'yt-thumb':[1280,720],'linkedin':[1200,627],'ig-portrait':[1080,1350],
   };
   const sz = design.size || 'ig-post';
-  const [w, h] = DIMS[sz] || DIMS['ig-post'];
+  const _pm = /^pano-(\d+)$/.exec(sz);
+  const [w, h] = DIMS[sz] || (_pm ? [1080 * Math.max(2, Math.min(10, +_pm[1])), 1350] : DIMS['ig-post']);
   setCanvasSize(w, h, sz);
   // Activate matching size button
   document.querySelectorAll('.sz-btn').forEach(b => b.classList.toggle('active', b.dataset.name === sz));
@@ -2799,6 +3303,7 @@ window.loadAgentDesign = function(design, opts) {
 
   renderLayerList();
   if (!totalImages) render();
+  if (typeof histReset === 'function') histReset();   // fresh history baseline for the loaded design
 
   // Close agent panel (skipped on auto-load-for-review so the user can still
   // switch variations / retry while inspecting the canvas).
@@ -2809,6 +3314,8 @@ window.loadAgentDesign = function(design, opts) {
 scaleCanvas();
 render();
 renderLayerList();
+if (typeof histReset === 'function') histReset();
+if (typeof enhanceColorInputs === 'function') enhanceColorInputs();   // static color inputs (bg, palette, gradient…)
 
 })();
 </script>
@@ -3124,6 +3631,9 @@ renderLayerList();
           if (restore) { restore(); restore = null; }
           const fd = new FormData();
           fd.append("image", blob, "edit.png");
+          // Also send the EDITABLE design (serialized layers) so the text/layer edits
+          // persist — without this, re-opening Edit reloaded the stale pre-edit copy.
+          try { fd.append("design", JSON.stringify({ size: sizeName, bgColor: bgColor, sdBgUrl: null, layers: serializeLayers() })); } catch (e) {}
           const r = await fetch("/admin/social/suggestions/"+sid+"/image", { method: "POST", body: fd });
           const j = await r.json();
           if (!j.ok) throw new Error(j.error || "Save failed");

@@ -1,0 +1,73 @@
+<%#
+  Client Notes context panel — shows a client's unified engine notes on any
+  client-scoped page (engagement editor, meeting detail) and lets you author a
+  new one straight into the notes engine, bound to that client.
+  Locals: cnCid (client id), cnName (client label), cnNotes (buildClientNotes list).
+  Safe to include more than once per page (e.g. one per tagged client).
+%>
+<div class="card cnp" style="margin-top:24px;" data-cid="<%= cnCid %>">
+  <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+    <span>Client Notes<% if (cnName) { %> — <%= cnName %><% } %></span>
+    <a href="/admin/notes?client=<%= cnCid %>" style="font-size:0.7rem;font-weight:600;letter-spacing:.06em;color:var(--navy);text-decoration:none;">Open in Notes →</a>
+  </div>
+  <p class="text-slate" style="font-size:0.76rem;margin:-4px 0 12px;">
+    Shared with the client's record — auto-classified and distributable to blog · email · campaign · web · ticket.
+  </p>
+
+  <!-- Quick add -->
+  <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+    <input type="text" class="cnp-title" placeholder="Title (optional)" style="padding:7px 10px;border:1px solid var(--border);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.85rem;">
+    <textarea class="cnp-body" rows="2" placeholder="Add a note about this client…" style="padding:7px 10px;border:1px solid var(--border);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.85rem;resize:vertical;"></textarea>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <input type="text" class="cnp-tags" placeholder="tags (comma-sep, optional)" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:2px;font-family:'Jost',sans-serif;font-size:0.82rem;">
+      <button type="button" class="btn btn-navy btn-sm cnp-add">Add Note</button>
+    </div>
+  </div>
+
+  <!-- Recent notes (compact) -->
+  <% if (!cnNotes || !cnNotes.length) { %>
+    <p class="text-slate" style="font-size:0.82rem;">No notes on this client yet.</p>
+  <% } else { %>
+    <% for (const n of cnNotes.slice(0, 6)) { %>
+    <div style="border-top:1px solid var(--border);padding:10px 0;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:10px;<%= n.source === 'authored' ? 'color:var(--navy);background:rgba(28,43,74,0.08);' : (n.source === 'pushed' ? 'color:#0369a1;background:rgba(14,165,233,0.10);' : 'color:var(--slate);background:rgba(120,120,120,0.10);') %>"><%= n.source === 'authored' ? 'Note' : (n.source === 'pushed' ? 'Pushed' : 'Legacy') %></span>
+        <% if (n.title) { %><strong style="font-size:0.85rem;"><%= n.title %></strong><% } %>
+        <span class="text-slate" style="font-size:0.7rem;margin-left:auto;white-space:nowrap;"><%= n.createdAt ? new Date(n.createdAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) : '' %></span>
+      </div>
+      <% if (n.content) { %><p style="font-size:0.85rem;font-weight:300;color:var(--on-surface);line-height:1.6;margin:6px 0 0;white-space:pre-wrap;"><%= n.content.length > 240 ? n.content.slice(0,240) + '…' : n.content %></p><% } %>
+    </div>
+    <% } %>
+    <% if (cnNotes.length > 6) { %>
+      <div style="border-top:1px solid var(--border);padding-top:10px;"><a href="/admin/notes?client=<%= cnCid %>" style="font-size:0.78rem;color:var(--navy);">+ <%= cnNotes.length - 6 %> more in the Notes tool →</a></div>
+    <% } %>
+  <% } %>
+</div>
+
+<script>
+  // Wire exactly once per page even if this partial is emitted several times
+  // (a meeting can include one panel per tagged client). Delegated on document
+  // so it covers every .cnp panel.
+  if (!window.__cnpWired) {
+    window.__cnpWired = true;
+    document.addEventListener('click', function (ev) {
+      var btn = ev.target.closest('.cnp-add');
+      if (!btn) return;
+      var panel = btn.closest('.cnp');
+      if (!panel) return;
+      var body = panel.querySelector('.cnp-body').value.trim();
+      if (!body) { SlabFlash.error('Write a note first.'); return; }
+      SlabLoader.post(btn, '/admin/notes', {
+        loadingLabel: 'Saving',
+        body: {
+          title:    panel.querySelector('.cnp-title').value.trim(),
+          body:     body,
+          tags:     panel.querySelector('.cnp-tags').value.trim(),
+          clientId: panel.dataset.cid,
+        },
+        successMessage: 'Note added to client.',
+        onSuccess: function () { setTimeout(function () { location.reload(); }, 400); },
+      });
+    });
+  }
+</script>

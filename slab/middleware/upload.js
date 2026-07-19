@@ -91,6 +91,7 @@ function s3Storage(subdir, filter = anyFileFilter) {
 }
 
 export const portfolioUpload = s3Storage('portfolio', imageFilter);
+export const marketplaceUpload = s3Storage('marketplace', imageFilter);
 export const clientFileUpload = s3Storage('clients');
 export const sectionUpload = s3Storage('sections', imageFilter);
 export const meetingAssetUpload = s3Storage('meetings');

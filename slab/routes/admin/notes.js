@@ -386,16 +386,28 @@ async function distributeNote(db, note, target, req) {
       const slug = blogTitle.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
                  + '-' + Date.now().toString(36);
 
-      await db.collection('blog').insertOne({
-        title: blogTitle, slug,
-        excerpt:  (parsed.excerpt || tldr || '').trim(),
-        content:  (parsed.content || parsed.body || '').trim(),
-        category: target.category || '',
-        tags:     note.tags || [],
-        featuredImageUrl: '', status: 'draft', publishedAt: null,
-        sourceNoteId: note._id, createdAt: now, updatedAt: now,
-      });
-      return `Blog draft "${blogTitle}" created — edit at /admin/blog`;
+      // De-dupe on re-push: one blog draft per source note. Re-distributing
+      // refreshes the same draft rather than spawning a second. Slug/status are
+      // pinned on first insert so a re-push never re-slugs or un-publishes.
+      const r = await db.collection('blog').updateOne(
+        { sourceNoteId: note._id },
+        {
+          $set: {
+            title: blogTitle,
+            excerpt:  (parsed.excerpt || tldr || '').trim(),
+            content:  (parsed.content || parsed.body || '').trim(),
+            category: target.category || '',
+            tags:     note.tags || [],
+            updatedAt: now,
+          },
+          $setOnInsert: {
+            slug, featuredImageUrl: '', status: 'draft', publishedAt: null,
+            sourceNoteId: note._id, createdAt: now,
+          },
+        },
+        { upsert: true },
+      );
+      return `Blog draft "${blogTitle}" ${r.upsertedCount ? 'created' : 'updated'} — edit at /admin/blog`;
     }
 
     case 'email': {
@@ -413,15 +425,27 @@ async function distributeNote(db, note, target, req) {
         parsed = JSON.parse(m ? m[0] : clean);
       } catch { parsed = { subject: title, preheader: '', body: raw.trim() }; }
 
-      await db.collection('campaigns').insertOne({
-        subject:     (parsed.subject || title).trim(),
-        preheader:   (parsed.preheader || '').trim(),
-        body:        (parsed.body || '').trim(),
-        targetFunnel: target.targetFunnel || 'all',
-        targetTags:  [], status: 'draft', sentCount: 0, sentAt: null,
-        sourceNoteId: note._id, createdAt: now, updatedAt: now,
-      });
-      return `Email draft "${(parsed.subject || title).trim()}" created — edit at /admin/email-marketing`;
+      // De-dupe on re-push: one email draft per source note. Status/sent-state
+      // are pinned on insert so refreshing the copy never resets a sent campaign.
+      const emailSubject = (parsed.subject || title).trim();
+      const r = await db.collection('campaigns').updateOne(
+        { sourceNoteId: note._id },
+        {
+          $set: {
+            subject:      emailSubject,
+            preheader:    (parsed.preheader || '').trim(),
+            body:         (parsed.body || '').trim(),
+            targetFunnel: target.targetFunnel || 'all',
+            updatedAt:    now,
+          },
+          $setOnInsert: {
+            targetTags: [], status: 'draft', sentCount: 0, sentAt: null,
+            sourceNoteId: note._id, createdAt: now,
+          },
+        },
+        { upsert: true },
+      );
+      return `Email draft "${emailSubject}" ${r.upsertedCount ? 'created' : 'updated'} — edit at /admin/email-marketing`;
     }
 
     case 'campaign': {
@@ -438,16 +462,24 @@ async function distributeNote(db, note, target, req) {
         parsed = JSON.parse(m ? m[0] : clean);
       } catch { parsed = { instagram: raw.trim(), facebook: raw.trim(), linkedin: raw.trim() }; }
 
-      await db.collection('social_presets').insertOne({
-        name: `Note: ${title}`, description: tldr,
-        captions: {
-          instagram: (parsed.instagram || '').trim(),
-          facebook:  (parsed.facebook  || '').trim(),
-          linkedin:  (parsed.linkedin  || '').trim(),
+      // De-dupe on re-push: one social preset per source note.
+      const r = await db.collection('social_presets').updateOne(
+        { sourceNoteId: note._id },
+        {
+          $set: {
+            name: `Note: ${title}`, description: tldr,
+            captions: {
+              instagram: (parsed.instagram || '').trim(),
+              facebook:  (parsed.facebook  || '').trim(),
+              linkedin:  (parsed.linkedin  || '').trim(),
+            },
+            tags: note.tags || [], updatedAt: now,
+          },
+          $setOnInsert: { sourceNoteId: note._id, createdAt: now },
         },
-        tags: note.tags || [], sourceNoteId: note._id, createdAt: now, updatedAt: now,
-      });
-      return 'Social campaign (IG + FB + LinkedIn) saved to Social Generator presets';
+        { upsert: true },
+      );
+      return `Social campaign (IG + FB + LinkedIn) ${r.upsertedCount ? 'saved to' : 'updated in'} Social Generator presets`;
     }
 
     case 'web': {
@@ -457,9 +489,11 @@ async function distributeNote(db, note, target, req) {
         `Rewrite this note as polished website copy for the "${copyKey}" section of ${brandName}.\n`+
         `Keep it concise, professional, and persuasive. Return only the copy text — no labels, no quotes:\n\n${body}` }],
         'You are a website copywriter. Return only the copy text, nothing else.');
+      // Already idempotent (keyed by copyKey); record the source note for the
+      // backlink so /admin/copy can show where the value came from.
       await db.collection('copy').updateOne(
         { key: copyKey },
-        { $set: { key: copyKey, value: tailored.trim(), updatedAt: now } },
+        { $set: { key: copyKey, value: tailored.trim(), sourceNoteId: note._id, updatedAt: now } },
         { upsert: true },
       );
       return `Copy key "${copyKey}" updated — visible at /admin/copy`;
@@ -492,13 +526,20 @@ async function distributeNote(db, note, target, req) {
     }
 
     case 'ticket': {
-      await db.collection('tickets').insertOne({
-        subject: title, body: tldr, status: 'open',
-        priority: target.priority || 'medium', source: 'note',
-        sourceNoteId: note._id, createdBy: req.adminUser.email,
-        createdAt: now, updatedAt: now,
-      });
-      return 'Ticket created — view at /admin/tickets';
+      // De-dupe on re-push: one ticket per source note. Status is pinned on
+      // insert so refreshing a note never reopens a resolved ticket.
+      const r = await db.collection('tickets').updateOne(
+        { sourceNoteId: note._id },
+        {
+          $set: { subject: title, body: tldr, priority: target.priority || 'medium', updatedAt: now },
+          $setOnInsert: {
+            status: 'open', source: 'note', sourceNoteId: note._id,
+            createdBy: req.adminUser.email, createdAt: now,
+          },
+        },
+        { upsert: true },
+      );
+      return `Ticket ${r.upsertedCount ? 'created' : 'updated'} — view at /admin/tickets`;
     }
 
     default:
