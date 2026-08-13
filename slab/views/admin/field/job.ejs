@@ -1,0 +1,396 @@
+<%- include('../partials/head', { title: title }) %>
+<%- include('../partials/sidebar', { page: 'field', user: user }) %>
+
+<style>
+  .fj-wrap   { padding:16px 20px 80px; max-width:1000px; margin:0 auto; }
+  .fj-back   { font-size:0.8rem; color:var(--slate); text-decoration:none; }
+  .fj-back:hover { color:var(--gold); }
+  .fj-head   { display:flex; align-items:center; gap:12px; margin:10px 0 4px; flex-wrap:wrap; }
+  .fj-title  { font-size:1.35rem; font-weight:700; color:var(--on-surface); }
+  .fj-meta   { font-size:0.78rem; color:var(--slate); margin-bottom:18px; display:flex; flex-wrap:wrap; gap:14px; }
+
+  .fj-flash  { padding:10px 14px; border-radius:4px; font-size:0.85rem; margin-bottom:16px; }
+  .fj-flash.ok  { background:rgba(20,83,45,0.12); color:#14532D; }
+  .fj-flash.err { background:rgba(220,38,38,0.1); color:#b91c1c; }
+
+  .fj-grid   { display:grid; grid-template-columns:300px 1fr; gap:20px; align-items:start; }
+  @media (max-width:820px){ .fj-grid { grid-template-columns:1fr; } }
+
+  .fj-card   { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:16px; }
+  .fj-card h2 { font-size:0.9rem; font-weight:700; color:var(--on-surface); margin:0 0 12px; }
+
+  .badge     { font-size:0.62rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; padding:3px 8px; border-radius:10px; }
+  .badge.scheduled { background:rgba(100,116,139,0.15); color:#475569; }
+  .badge.en_route  { background:rgba(201,168,72,0.18); color:#9a7d2a; }
+  .badge.on_site   { background:rgba(20,83,45,0.15); color:#14532D; }
+  .badge.complete  { background:rgba(37,99,235,0.12); color:#1d4ed8; }
+  .badge.canceled  { background:rgba(220,38,38,0.1); color:#b91c1c; }
+
+  .fj-lbl    { display:block; font-size:0.7rem; font-weight:600; color:var(--slate); text-transform:uppercase; letter-spacing:0.4px; margin:12px 0 5px; }
+  .fj-lbl:first-child { margin-top:0; }
+  .fj-input, .fj-select, .fj-textarea {
+    width:100%; padding:8px 10px; background:var(--bg); border:1px solid var(--border);
+    border-radius:6px; color:var(--text); font-size:0.85rem; box-sizing:border-box; font-family:inherit;
+  }
+  .fj-textarea { min-height:70px; resize:vertical; }
+  .fj-input:focus, .fj-select:focus, .fj-textarea:focus { outline:none; border-color:var(--gold); }
+  .fj-row    { display:flex; gap:8px; align-items:flex-end; }
+  .fj-static { font-size:0.85rem; color:var(--text); }
+
+  .chk-list  { display:flex; flex-direction:column; gap:7px; }
+  .chk-list label { display:flex; align-items:center; gap:8px; font-size:0.85rem; color:var(--text); cursor:pointer; }
+
+  .item-row  { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0; border-top:1px solid var(--border); font-size:0.83rem; }
+  .item-row:first-of-type { border-top:none; }
+  .item-sub  { font-size:0.72rem; color:var(--slate); }
+  .fj-empty  { font-size:0.82rem; color:var(--slate); padding:6px 0; }
+
+  .sig-pad   { border:1px dashed var(--border); border-radius:6px; background:#fff; touch-action:none; width:100%; height:160px; display:block; }
+  .mini      { font-size:0.75rem; padding:5px 10px; }
+
+  .fj-map    { height:220px; border-radius:6px; overflow:hidden; margin-bottom:10px; background:var(--bg); border:1px solid var(--border); }
+  .live-readout { font-size:0.85rem; color:var(--text); font-variant-numeric:tabular-nums; }
+  .live-sub  { font-size:0.72rem; color:var(--slate); margin-top:2px; }
+  #fieldBroadcastBtn.live { background:#b91c1c; border-color:#b91c1c; color:#fff; }
+  #fieldBcStatus { font-size:0.75rem; color:var(--slate); margin-left:10px; }
+</style>
+
+<div class="fj-wrap">
+  <a class="fj-back" href="/admin/field"><%= t('field.back_to_board') %></a>
+
+  <div class="fj-head">
+    <span class="fj-title"><%= job.title %></span>
+    <span class="badge <%= job.status %>"><%= t('field.status.' + job.status) %></span>
+  </div>
+  <div class="fj-meta">
+    <% if (client) { %><span>&#9673; <%= client.name || client.company || client.email %></span><% } %>
+    <% if (job.address) { %><span>&#128205; <%= job.address %></span><% } %>
+    <% if (job.estimatedMinutes) { %><span>~<%= job.estimatedMinutes %> min</span><% } %>
+    <span><%= t('field.created') %>: <%= new Date(job.createdAt).toLocaleString() %></span>
+  </div>
+
+  <%
+    const flashMap = {
+      job_created: t('field.flash_job_created'), status_updated: t('field.flash_status_updated'),
+      assigned: t('field.flash_assigned'), note_added: t('field.flash_note_added'),
+      file_uploaded: t('field.flash_file_uploaded'), waiver_saved: t('field.flash_waiver_saved'),
+      geo_set: t('field.flash_geo_set'), eta_saved: t('field.flash_eta_saved'), eta_sent: t('field.flash_eta_sent'),
+      link_sent: t('field.flash_link_sent'),
+    };
+    const jobHasPin = !!(job.geo || (job.location && typeof job.location.lat === 'number'));
+    const linkActive = job.accessToken && !job.linkRevoked && job.linkValidUntil && new Date(job.linkValidUntil) > new Date();
+    const portalUrl = linkActive ? (domain + '/field/' + job.accessToken) : '';
+  %>
+  <% if (success) { %><div class="fj-flash ok"><%= flashMap[success] || success %></div><% } %>
+  <% if (error) { %><div class="fj-flash err"><%= error %></div><% } %>
+
+  <div class="fj-grid">
+    <!-- ── Left: overview / status / staff ─────────────────────────────────── -->
+    <div>
+      <div class="fj-card">
+        <h2><%= t('field.overview') %></h2>
+        <form method="POST" action="/admin/field/jobs/<%= job._id %>/status">
+          <label class="fj-lbl"><%= t('field.change_status') %></label>
+          <div class="fj-row">
+            <select class="fj-select" name="status">
+              <% statuses.forEach(function(s){ %>
+                <option value="<%= s %>" <%= job.status === s ? 'selected' : '' %>><%= t('field.status.' + s) %></option>
+              <% }); %>
+            </select>
+            <button class="btn mini" type="submit"><%= t('field.save') %></button>
+          </div>
+        </form>
+      </div>
+
+      <div class="fj-card">
+        <h2><%= t('field.assign_staff') %></h2>
+        <% if (!techs.length) { %>
+          <div class="fj-empty"><%= t('field.no_staff_available') %></div>
+        <% } else { %>
+          <form method="POST" action="/admin/field/jobs/<%= job._id %>/assign">
+            <div class="chk-list">
+              <% techs.forEach(function(u){ %>
+                <% const on = (job.assignedTo || []).some(function(id){ return id.toString() === u._id.toString(); }); %>
+                <label>
+                  <input type="checkbox" name="assignedTo" value="<%= u._id %>" <%= on ? 'checked' : '' %>>
+                  <%= u.displayName || u.email %>
+                </label>
+              <% }); %>
+            </div>
+            <button class="btn mini" type="submit" style="margin-top:12px;"><%= t('field.save') %></button>
+          </form>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- ── Right: on-site actions ──────────────────────────────────────────── -->
+    <div>
+      <div class="fj-card">
+        <h2><%= t('field.live_heading') %></h2>
+        <div class="fj-map" id="fieldMap"></div>
+        <div class="live-readout" id="fieldReadout"><%= t('field.no_location_yet') %></div>
+        <div class="live-sub">
+          <span><%= t('field.last_update') %>: <span id="fieldUpdated">—</span></span>
+          &nbsp;·&nbsp;
+          <a id="fieldMapLink" href="#" target="_blank" rel="noopener" style="display:none;"><%= t('field.open_in_maps') %></a>
+        </div>
+        <div class="fj-row" style="margin-top:12px;">
+          <button class="btn mini" type="button" id="fieldBroadcastBtn"><%= t('field.share_location') %></button>
+          <span id="fieldBcStatus"></span>
+        </div>
+      </div>
+
+      <div class="fj-card">
+        <h2><%= t('field.site_location') %></h2>
+        <form method="POST" action="/admin/field/jobs/<%= job._id %>/geo" id="geoForm">
+          <div class="fj-row">
+            <div style="flex:1;">
+              <label class="fj-lbl"><%= t('field.lat') %></label>
+              <input class="fj-input" type="text" name="lat" id="geoLat" value="<%= job.geo ? job.geo.lat : '' %>">
+            </div>
+            <div style="flex:1;">
+              <label class="fj-lbl"><%= t('field.lng') %></label>
+              <input class="fj-input" type="text" name="lng" id="geoLng" value="<%= job.geo ? job.geo.lng : '' %>">
+            </div>
+          </div>
+          <div class="fj-row" style="margin-top:10px;">
+            <button class="btn btn-secondary mini" type="button" id="geoUseLive"><%= t('field.pin_current') %></button>
+            <button class="btn mini" type="submit"><%= t('field.save_pin') %></button>
+          </div>
+          <% if (job.geo) { %><div class="live-sub" style="margin-top:8px;"><%= t('field.pinned') %>: <%= job.geo.lat.toFixed(5) %>, <%= job.geo.lng.toFixed(5) %></div><% } %>
+        </form>
+      </div>
+
+      <div class="fj-card">
+        <h2><%= t('field.eta_heading') %></h2>
+        <% if (!jobHasPin) { %>
+          <div class="fj-empty"><%= t('field.eta_needs_pin') %></div>
+        <% } else { %>
+          <form method="POST" action="/admin/field/jobs/<%= job._id %>/eta" id="etaForm">
+            <input type="hidden" name="lat" id="etaLat">
+            <input type="hidden" name="lng" id="etaLng">
+            <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text);">
+              <input type="checkbox" name="notify" value="true" <%= job.clientId ? '' : 'disabled' %>>
+              <%= t('field.eta_notify') %>
+            </label>
+            <div class="live-sub" style="margin:6px 0 10px;"><%= t('field.eta_current_hint') %></div>
+            <button class="btn mini" type="submit"><%= t('field.report_eta') %></button>
+          </form>
+          <% if (job.eta) { %>
+            <div class="item-row">
+              <div>
+                <div><%= t('field.eta_last') %>: <strong><%= job.eta.minutes %></strong> <%= t('field.min_away') %></div>
+                <div class="item-sub"><%= new Date(job.eta.reportedAt).toLocaleString() %><%= job.eta.notified ? ' · ✓' : '' %></div>
+              </div>
+            </div>
+          <% } %>
+        <% } %>
+      </div>
+
+      <div class="fj-card">
+        <h2><%= t('field.quote_heading') %></h2>
+        <% if (engagement) { %>
+          <div class="item-row">
+            <div>
+              <div><%= t('field.quote_linked') %>: <%= engagement.engagementNumber %></div>
+              <div class="item-sub"><%= engagement.status %></div>
+            </div>
+            <a class="btn mini" href="/admin/clients/<%= job.clientId %>/engagements/<%= engagement._id %>"><%= t('field.view_quote') %></a>
+          </div>
+        <% } else if (!job.clientId) { %>
+          <div class="fj-empty"><%= t('field.quote_needs_client') %></div>
+        <% } else { %>
+          <form method="POST" action="/admin/field/jobs/<%= job._id %>/quote">
+            <button class="btn" type="submit"><%= t('field.create_quote') %></button>
+          </form>
+        <% } %>
+      </div>
+
+      <div class="fj-card">
+        <h2><%= t('field.client_link_heading') %></h2>
+        <% if (!job.clientId) { %>
+          <div class="fj-empty"><%= t('field.client_link_needs_client') %></div>
+        <% } else { %>
+          <% if (linkActive) { %>
+            <div class="fj-row" style="margin-bottom:8px;">
+              <input class="fj-input" type="text" id="portalUrl" value="<%= portalUrl %>" readonly onclick="this.select()">
+              <button class="btn btn-secondary mini" type="button" id="copyLink"><%= t('field.copy_link') %></button>
+            </div>
+            <div class="live-sub" style="margin-bottom:10px;"><%= t('field.client_link_active', { date: new Date(job.linkValidUntil).toLocaleDateString() }) %></div>
+          <% } %>
+          <form method="POST" action="/admin/field/jobs/<%= job._id %>/client-link">
+            <button class="btn mini" type="submit"><%= linkActive ? t('field.resend_client_link') : t('field.send_client_link') %></button>
+          </form>
+        <% } %>
+      </div>
+
+      <div class="fj-card">
+        <h2><%= t('field.notes_heading') %></h2>
+        <form method="POST" action="/admin/field/jobs/<%= job._id %>/notes">
+          <textarea class="fj-textarea" name="body" placeholder="<%= t('field.note_placeholder') %>" required></textarea>
+          <button class="btn mini" type="submit" style="margin-top:8px;"><%= t('field.add_note') %></button>
+        </form>
+        <div style="margin-top:12px;">
+          <% (job.notes || []).slice().reverse().forEach(function(n){ %>
+            <div class="item-row">
+              <div>
+                <div><%= n.body %></div>
+                <div class="item-sub"><%= n.by %> · <%= new Date(n.at).toLocaleString() %></div>
+              </div>
+            </div>
+          <% }); %>
+          <% if (!(job.notes || []).length) { %><div class="fj-empty"><%= t('field.no_notes') %></div><% } %>
+        </div>
+      </div>
+
+      <div class="fj-card">
+        <h2><%= t('field.uploads_heading') %></h2>
+        <form method="POST" action="/admin/field/jobs/<%= job._id %>/uploads" enctype="multipart/form-data">
+          <div class="fj-row">
+            <input class="fj-input" type="file" name="file" required>
+            <button class="btn mini" type="submit"><%= t('field.upload_file') %></button>
+          </div>
+        </form>
+        <div style="margin-top:12px;">
+          <% (job.uploads || []).slice().reverse().forEach(function(f){ %>
+            <div class="item-row">
+              <div>
+                <div><%= f.name %></div>
+                <div class="item-sub"><%= f.by %> · <%= new Date(f.at).toLocaleString() %></div>
+              </div>
+              <a class="btn mini" href="/admin/field/jobs/<%= job._id %>/files/<%= f.id %>" target="_blank" rel="noopener"><%= t('field.download') %></a>
+            </div>
+          <% }); %>
+          <% if (!(job.uploads || []).length) { %><div class="fj-empty"><%= t('field.no_uploads') %></div><% } %>
+        </div>
+      </div>
+
+      <div class="fj-card">
+        <h2><%= t('field.waivers_heading') %></h2>
+        <form method="POST" action="/admin/field/jobs/<%= job._id %>/waivers" id="waiverForm">
+          <label class="fj-lbl"><%= t('field.waiver_label') %></label>
+          <input class="fj-input" type="text" name="label" value="Liability Waiver">
+          <label class="fj-lbl"><%= t('field.signer_name') %></label>
+          <input class="fj-input" type="text" name="signedBy" required autocomplete="off">
+          <label class="fj-lbl"><%= t('field.sign_waiver') %></label>
+          <canvas class="sig-pad" id="sigPad"></canvas>
+          <input type="hidden" name="signature" id="sigData">
+          <div class="fj-row" style="margin-top:8px;">
+            <button class="btn btn-secondary mini" type="button" id="sigClear"><%= t('field.clear') %></button>
+            <button class="btn mini" type="submit"><%= t('field.save_waiver') %></button>
+          </div>
+        </form>
+        <div style="margin-top:12px;">
+          <% (job.waivers || []).slice().reverse().forEach(function(w){ %>
+            <div class="item-row">
+              <div>
+                <div><%= w.name %></div>
+                <div class="item-sub"><%= t('field.signed_by') %> <%= w.signedBy %> <%= t('field.signed_on') %> <%= new Date(w.signedAt).toLocaleDateString() %></div>
+              </div>
+              <a class="btn mini" href="/admin/field/jobs/<%= job._id %>/files/<%= w.id %>" target="_blank" rel="noopener"><%= t('field.download') %></a>
+            </div>
+          <% }); %>
+          <% if (!(job.waivers || []).length) { %><div class="fj-empty"><%= t('field.no_waivers') %></div><% } %>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ── Signature pad ──────────────────────────────────────────────────────────
+  var canvas = document.getElementById('sigPad');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var drawing = false, dirty = false;
+
+  function resize(){
+    // Preserve nothing on resize — a fresh pad. Match backing store to CSS size.
+    var rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width; canvas.height = rect.height;
+    ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function pos(e){
+    var rect = canvas.getBoundingClientRect();
+    var p = e.touches ? e.touches[0] : e;
+    return { x: p.clientX - rect.left, y: p.clientY - rect.top };
+  }
+  function start(e){ drawing = true; dirty = true; var p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); }
+  function move(e){ if(!drawing) return; var p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); e.preventDefault(); }
+  function end(){ drawing = false; }
+
+  canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, {passive:false});
+  canvas.addEventListener('touchmove', move, {passive:false});
+  canvas.addEventListener('touchend', end);
+
+  document.getElementById('sigClear').addEventListener('click', function(){
+    ctx.clearRect(0,0,canvas.width,canvas.height); dirty = false;
+  });
+
+  document.getElementById('waiverForm').addEventListener('submit', function(e){
+    if (!dirty){ e.preventDefault(); alert('Please capture a signature first.'); return; }
+    document.getElementById('sigData').value = canvas.toDataURL('image/png');
+  });
+})();
+</script>
+
+<!-- ── Live location (Phase 3): GPS ping → Socket.IO ─────────────────────────── -->
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  window.FIELD_LIVE = {
+    jobId: '<%= job._id %>',
+    canBroadcast: true,
+    labels: {
+      share: '<%= t('field.share_location') %>',
+      stop: '<%= t('field.stop_sharing') %>',
+      live: '<%= t('field.sharing_live') %>',
+      geoErr: '<%= t('field.location_error') %>',
+      noGeo: '<%= t('field.no_geo') %>'
+    }
+  };
+</script>
+<script src="/js/fieldLive.js"></script>
+<script>
+(function(){
+  // "Use current live location" → fill the geo-pin form.
+  var useLive = document.getElementById('geoUseLive');
+  if (useLive) useLive.addEventListener('click', function(){
+    (window.fieldGetCurrentPos || function(cb){cb(null);})(function(pos){
+      if (!pos) { alert('<%= t('field.no_geo') %>'); return; }
+      document.getElementById('geoLat').value = pos.lat.toFixed(6);
+      document.getElementById('geoLng').value = pos.lng.toFixed(6);
+    });
+  });
+
+  // Copy the client portal link.
+  var copyBtn = document.getElementById('copyLink');
+  if (copyBtn) copyBtn.addEventListener('click', function(){
+    var inp = document.getElementById('portalUrl');
+    inp.select();
+    navigator.clipboard && navigator.clipboard.writeText(inp.value);
+    copyBtn.textContent = '<%= t('field.link_copied') %>';
+    setTimeout(function(){ copyBtn.textContent = '<%= t('field.copy_link') %>'; }, 1500);
+  });
+
+  // ETA form → attach current live position on submit.
+  var etaForm = document.getElementById('etaForm');
+  if (etaForm) etaForm.addEventListener('submit', function(e){
+    var lat = document.getElementById('etaLat'), lng = document.getElementById('etaLng');
+    if (lat.value && lng.value) return; // already filled (resubmit)
+    e.preventDefault();
+    (window.fieldGetCurrentPos || function(cb){cb(null);})(function(pos){
+      if (!pos) { alert('<%= t('field.no_geo') %>'); return; }
+      lat.value = pos.lat; lng.value = pos.lng;
+      etaForm.submit();
+    });
+  });
+})();
+</script>
+
+</div></div></body></html>

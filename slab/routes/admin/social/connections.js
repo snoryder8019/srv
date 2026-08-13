@@ -184,6 +184,176 @@ router.post('/connections/meta/link-instagram', async (req, res) => {
   } catch (e) { res.json({ ok: false, error: e.message }); }
 });
 
+// ── Meta: inspect the saved token (scopes / type / expiry) ────────────────────
+// Meta's own errors lie about WHY a call failed ("publish_actions deprecated" =
+// read-only token). debug_token gives the truth: what the token actually is, when
+// it dies, and which scopes it carries. Read-only, publishes nothing.
+// Body: { platform? } — 'facebook' (default), 'instagram' or 'threads'.
+const FB_GRAPH = 'https://graph.facebook.com/v21.0';
+const META_TOKEN_FIELD = { facebook: 'pageAccessToken', instagram: 'accessToken', threads: 'accessToken' };
+const META_WANT_SCOPES = [
+  'pages_show_list', 'pages_manage_posts', 'pages_read_engagement', 'pages_manage_metadata',
+  'publish_video', 'instagram_basic', 'instagram_content_publish', 'instagram_manage_insights',
+];
+router.post('/connections/meta/debug-token', express.json(), async (req, res) => {
+  try {
+    const platform = ['facebook', 'instagram', 'threads'].includes(req.body?.platform) ? req.body.platform : 'facebook';
+    // App ID/Secret always live on the Facebook connection — one Meta app for all three.
+    const fb = await req.db.collection('social_accounts').findOne({ platform: 'facebook' });
+    const fbCreds = fb ? unpackCredentials(fb) : {};
+    if (!fbCreds.appId || !fbCreds.appSecret) {
+      return res.json({ ok: false, error: 'Add your App ID and App Secret on the Facebook Page card and Save — both are required to inspect a token.' });
+    }
+    const acct = platform === 'facebook' ? fb : await req.db.collection('social_accounts').findOne({ platform });
+    const creds = acct ? unpackCredentials(acct) : {};
+    const token = creds[META_TOKEN_FIELD[platform]] || '';
+    if (!token) return res.json({ ok: false, error: `No ${platform} token saved yet — connect first, then inspect.` });
+
+    const appToken = `${fbCreds.appId}|${fbCreds.appSecret}`;
+    const r = await fetch(`${FB_GRAPH}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(appToken)}`,
+      { signal: AbortSignal.timeout(15000) });
+    const j = await r.json().catch(() => ({}));
+    if (!j.data) return res.json({ ok: false, error: j.error?.message || `debug_token HTTP ${r.status}` });
+
+    const d = j.data;
+    const scopes = Array.isArray(d.scopes) ? d.scopes : [];
+    res.json({
+      ok: true,
+      platform,
+      valid: d.is_valid === true,
+      type: d.type || null,                       // USER | PAGE | APP
+      appMatches: String(d.app_id || '') === String(fbCreds.appId),
+      appName: d.application || null,
+      // expires_at 0 means "never" — that's the permanent Page token we want.
+      neverExpires: d.expires_at === 0,
+      expiresAt: d.expires_at ? new Date(d.expires_at * 1000).toISOString() : null,
+      dataAccessExpiresAt: d.data_access_expires_at ? new Date(d.data_access_expires_at * 1000).toISOString() : null,
+      scopes,
+      missing: META_WANT_SCOPES.filter(s => !scopes.includes(s)),
+      tokenError: d.error?.message || null,
+    });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ── Instagram: end-to-end connectivity diagnosis ──────────────────────────────
+// IG fails in a chain, and Meta reports every link in it with the same useless
+// OAuthException. This walks the chain in order and names the ONE gate that's
+// actually broken: Page↔IG link → id match → account read → publish quota →
+// insights. Read-only; publishes nothing. Each check carries its own fix text.
+router.post('/connections/instagram/diagnose', express.json(), async (req, res) => {
+  const checks = [];
+  const add = (key, label, status, detail, fix) => checks.push({ key, label, status, detail, fix: fix || null });
+  try {
+    const [fb, ig] = await Promise.all([
+      req.db.collection('social_accounts').findOne({ platform: 'facebook' }),
+      req.db.collection('social_accounts').findOne({ platform: 'instagram' }),
+    ]);
+    const fbCreds = fb ? unpackCredentials(fb) : {};
+    const igCreds = ig ? unpackCredentials(ig) : {};
+
+    // 1 ─ The Facebook Page is the doorway; IG Graph has no standalone login.
+    let linked = null;
+    if (!fbCreds.pageId || !fbCreds.pageAccessToken) {
+      add('page', 'Facebook Page connected', 'fail',
+        'No Facebook Page ID + Page token saved.',
+        'Instagram publishing runs THROUGH your Facebook Page — connect Facebook first (the Connect with Facebook button), then come back.');
+    } else {
+      try {
+        linked = await discoverInstagramFromPage(fbCreds);
+        if (linked) {
+          add('page', 'Page ↔ Instagram link', 'ok', `Page ${fbCreds.pageId} is linked to @${linked.username || linked.igUserId} (${linked.igUserId}).`);
+        } else {
+          add('page', 'Page ↔ Instagram link', 'fail',
+            'This Facebook Page has no Instagram Business/Creator account attached.',
+            'Two separate things to check: (1) the IG account is a Business or Creator account, not Personal — switch it in the Instagram app under Settings → Account type; (2) it is linked to THIS Page in Meta Business Suite → Settings → Linked accounts. Then hit "Link from Facebook".');
+        }
+      } catch (e) {
+        add('page', 'Page ↔ Instagram link', 'fail', `Page lookup failed: ${e.message}`,
+          'Usually the Page token is dead or read-only — reconnect Facebook.');
+      }
+    }
+
+    // 2 ─ A stale saved id silently publishes to the wrong (or a deleted) account.
+    if (!igCreds.igUserId) {
+      add('id', 'IG User ID saved', 'fail', 'No IG User ID saved.',
+        'Click "↺ Link from Facebook" above — it fills this in from your Page. No manual ID hunting needed.');
+    } else if (linked && String(linked.igUserId) !== String(igCreds.igUserId)) {
+      add('id', 'IG User ID matches the Page', 'warn',
+        `Saved ${igCreds.igUserId}, but the Page is linked to ${linked.igUserId}.`,
+        'The saved ID points at a different Instagram account than your Page. Click "↺ Link from Facebook" to re-sync, unless you deliberately post to a second account.');
+    } else if (igCreds.igUserId) {
+      add('id', 'IG User ID saved', 'ok', igCreds.igUserId);
+    }
+
+    const tok = igCreds.accessToken || '';
+    if (!tok) {
+      add('token', 'Access token', 'fail', 'No Instagram token saved.',
+        'Click "↺ Link from Facebook" — it seeds the Page token, which is what IG Graph expects.');
+    }
+
+    // 3 ─ Can we actually read the account with the saved token?
+    if (tok && igCreds.igUserId) {
+      try {
+        const r = await fetch(`${FB_GRAPH}/${igCreds.igUserId}?fields=username,followers_count,media_count&access_token=${encodeURIComponent(tok)}`,
+          { signal: AbortSignal.timeout(15000) });
+        const j = await r.json().catch(() => ({}));
+        if (r.ok && j.username) {
+          add('read', 'Account readable', 'ok', `@${j.username} · ${j.followers_count ?? '?'} followers · ${j.media_count ?? '?'} posts`);
+        } else {
+          add('read', 'Account readable', 'fail', j.error?.message || `HTTP ${r.status}`,
+            'The token can\'t see this IG account. Re-run "Link from Facebook", then reconnect Facebook if it persists — a Page token minted before the IG link was made won\'t carry it.');
+        }
+      } catch (e) { add('read', 'Account readable', 'fail', e.message); }
+    }
+
+    // 4 ─ Publishing readiness — also exposes IG's 25-posts/24h bucket.
+    if (tok && igCreds.igUserId) {
+      try {
+        const r = await fetch(`${FB_GRAPH}/${igCreds.igUserId}/content_publishing_limit?fields=quota_usage,config&access_token=${encodeURIComponent(tok)}`,
+          { signal: AbortSignal.timeout(15000) });
+        const j = await r.json().catch(() => ({}));
+        const row = (j.data || [])[0];
+        if (r.ok && row) {
+          const used = row.quota_usage ?? 0;
+          const cap = row.config?.quota_total ?? 25;
+          add('publish', 'Publishing allowed', used >= cap ? 'warn' : 'ok',
+            `${used}/${cap} posts used in the last 24h.`,
+            used >= cap ? 'Instagram\'s 24h publishing quota is spent — scheduled posts will fail until it rolls off. Note every story frame counts as one.' : null);
+        } else {
+          add('publish', 'Publishing allowed', 'fail', j.error?.message || `HTTP ${r.status}`,
+            'The token is missing instagram_content_publish. Attach it to the app under Use cases, then reconnect Facebook to re-mint the token — an existing token never gains a scope.');
+        }
+      } catch (e) { add('publish', 'Publishing allowed', 'fail', e.message); }
+    }
+
+    // 5 ─ Insights — IG is the ONLY reach source, so this gate alone can zero
+    // out the whole Analytics tab's reach figure.
+    if (tok && igCreds.igUserId) {
+      const until = Math.floor(Date.now() / 1000);
+      const since = until - 2 * 86400;
+      try {
+        const r = await fetch(`${FB_GRAPH}/${igCreds.igUserId}/insights?metric=reach&period=day&metric_type=time_series&since=${since}&until=${until}&access_token=${encodeURIComponent(tok)}`,
+          { signal: AbortSignal.timeout(15000) });
+        const j = await r.json().catch(() => ({}));
+        if (r.ok && Array.isArray(j.data)) {
+          add('insights', 'Analytics / reach', 'ok', 'Insights readable — reach will report on the Analytics tab.');
+        } else {
+          add('insights', 'Analytics / reach', 'warn', j.error?.message || `HTTP ${r.status}`,
+            'Publishing still works; only analytics is blocked. Instagram is the only source of the reach metric, so this is why reach reads 0. Attach instagram_manage_insights to the app (NOT instagram_business_manage_insights — that one is for the separate IG-login API and will not work here), then reconnect Facebook.');
+        }
+      } catch (e) { add('insights', 'Analytics / reach', 'warn', e.message); }
+    }
+
+    const worst = checks.some(c => c.status === 'fail') ? 'fail'
+      : checks.some(c => c.status === 'warn') ? 'warn' : 'ok';
+    res.json({ ok: true, overall: worst, checks });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
 // ── LinkedIn Author URN resolver ──────────────────────────────────────────────
 // Fetch the member's person URN from LinkedIn's userinfo endpoint using the
 // pasted (or already-saved) access token. Single read-only call — no posting,

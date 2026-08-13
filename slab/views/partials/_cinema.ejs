@@ -1,0 +1,86 @@
+<%
+  /**
+   * _cinema.ejs — the "expensive feel" layer. Pure enhancement.
+   * ────────────────────────────────────────────────────────────
+   *   lenis        momentum smooth-scroll (gsap ticker driven)
+   *   SplitText    hero headline rises line-by-line behind a mask
+   *   ScrollTrigger scrubbed hero-mesh parallax + scrollcue fade
+   *
+   * Everything bails cleanly: prefers-reduced-motion, a 404'd vendor file, or
+   * a skin without a .hero all degrade to the _motion.ejs / CSS behavior.
+   * Loads AFTER _motion.ejs; touches nothing _motion owns (.reveal, count-up).
+   */
+%>
+<style>
+  /* lenis housekeeping (its own recommended reset) */
+  html.lenis, html.lenis body { height: auto; }
+  .lenis.lenis-smooth { scroll-behavior: auto !important; }
+  .lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
+  /* SplitText masking containers */
+  .cine-split .split-line { overflow: clip; }
+</style>
+<script src="/vendor/lenis/lenis.min.js" defer></script>
+<script src="/vendor/gsap/gsap.min.js" defer></script>
+<script src="/vendor/gsap/ScrollTrigger.min.js" defer></script>
+<script src="/vendor/gsap/SplitText.min.js" defer></script>
+<script>
+(function () {
+  function boot() {
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !window.gsap || !window.ScrollTrigger) return;
+    gsap.registerPlugin(ScrollTrigger);
+    if (window.SplitText) gsap.registerPlugin(SplitText);
+
+    /* ── lenis momentum scroll, driven by gsap's ticker ── */
+    if (window.Lenis) {
+      try {
+        var lenis = new Lenis({ duration: 1.05, autoRaf: false });
+        lenis.on('scroll', ScrollTrigger.update);
+        gsap.ticker.add(function (t) { lenis.raf(t * 1000); });
+        gsap.ticker.lagSmoothing(0);
+        document.addEventListener('click', function (e) {
+          var a = e.target.closest ? e.target.closest('a[href^="#"]') : null;
+          if (!a) return;
+          var target = document.querySelector(a.getAttribute('href'));
+          if (!target) return;
+          e.preventDefault();
+          lenis.scrollTo(target, { offset: -80 });
+        });
+      } catch (err) { /* momentum is optional */ }
+    }
+
+    /* ── hero headline: line-masked rise (SplitText) ── */
+    var h1 = document.querySelector('.hero h1');
+    if (h1 && window.SplitText) {
+      try {
+        h1.style.animation = 'none';   /* CSS .anim stagger stands down */
+        h1.style.opacity = '1';
+        h1.classList.add('cine-split');
+        var split = new SplitText(h1, { type: 'lines', linesClass: 'split-line' });
+        var inner = new SplitText(split.lines, { type: 'lines' });
+        gsap.from(inner.lines, {
+          yPercent: 112, duration: 1.15, ease: 'power4.out',
+          stagger: 0.09, delay: 0.15,
+        });
+      } catch (err) { h1.style.opacity = '1'; }
+    }
+
+    /* ── hero mesh parallax + copy drift, scrubbed to scroll ── */
+    var hero = document.querySelector('.hero');
+    if (hero) {
+      var mesh = hero.querySelector('.mesh');
+      var wrap = hero.querySelector('.wrap');
+      if (mesh) gsap.to(mesh, { yPercent: 14, scale: 1.04, ease: 'none',
+        scrollTrigger: { trigger: hero, start: 'top top', end: 'bottom top', scrub: true } });
+      if (wrap) gsap.to(wrap, { yPercent: -7, opacity: 0.35, ease: 'none',
+        scrollTrigger: { trigger: hero, start: 'top top', end: 'bottom top', scrub: true } });
+      var cue = hero.querySelector('.scrollcue');
+      if (cue) gsap.to(cue, { opacity: 0, ease: 'none',
+        scrollTrigger: { start: 1, end: 140, scrub: true } });
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { setTimeout(boot, 0); });
+  } else { setTimeout(boot, 0); }
+})();
+</script>

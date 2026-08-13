@@ -1,13 +1,14 @@
 <!DOCTYPE html>
+<% const _t = (typeof t === 'function') ? t : (k => k); %>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <%- include('../partials/seo-head', { seo: { title: (settings.title || 'Book a Service') + ' — ' + (brand?.name || '') } }) %>
+  <%- include('../partials/seo-head', { seo: { title: (settings.title || _t('booking.book_a_service')) + ' — ' + (brand?.name || '') } }) %>
   <%- include('../partials/font-vars') %>
   <%- include('../partials/landing-styles') %>
   <style>
-    body.booking-page { background: var(--bg, var(--ivory)); color: var(--on-ivory, var(--dark)); padding-top: 96px; line-height: 1.5; }
+    body.booking-page { background: var(--bg, var(--ivory)); color: var(--on-ivory, var(--dark)); padding-top: max(24px, var(--nav-clear)); line-height: 1.5; }
 
     .booking-hero { padding: 24px 24px 0; text-align: center; max-width: 720px; margin: 0 auto; }
     .booking-hero h1 { font-family: var(--font-heading), serif; font-size: clamp(1.8rem, 3.4vw, 2.6rem); font-weight: 400; color: var(--on-ivory, var(--dark)); margin-bottom: 10px; line-height: 1.15; }
@@ -64,25 +65,25 @@
 <% } %>
 
 <section class="booking-hero">
-  <h1><%= settings.title || 'Book a Service' %></h1>
+  <h1><%= settings.title || _t('booking.book_a_service') %></h1>
   <% if (settings.subtitle) { %><p><%= settings.subtitle %></p><% } %>
 </section>
 
 <% if (success) { %>
-  <div class="alert alert-success">✓ Your booking request was received. We'll be in touch shortly.</div>
+  <div class="alert alert-success">✓ <%= _t('booking.success_received') %></div>
 <% } %>
 <% if (error) { %>
   <div class="alert alert-error">
-    <% if (error === 'taken') { %>That slot was just claimed. Please pick another.
-    <% } else if (error === 'missing') { %>Please fill in all required fields.
-    <% } else if (error === 'captcha') { %>Verification failed — please try submitting again.
-    <% } else { %>Something went wrong. Please try again.<% } %>
+    <% if (error === 'taken') { %><%= _t('booking.error_taken_slot') %>
+    <% } else if (error === 'missing') { %><%= _t('booking.error_missing') %>
+    <% } else if (error === 'captcha') { %><%= _t('booking.error_captcha') %>
+    <% } else { %><%= _t('booking.error_generic') %><% } %>
   </div>
 <% } %>
 
 <% if (serviceTypes && serviceTypes.length > 1) { %>
 <nav class="service-pills">
-  <a href="/book" class="pill <%= !requestedService ? 'active' : '' %>">All Services</a>
+  <a href="/book" class="pill <%= !requestedService ? 'active' : '' %>"><%= _t('booking.all_services') %></a>
   <% serviceTypes.forEach(st => { %>
   <a href="/book?service=<%= st.slug %>" class="pill <%= requestedService === st.slug ? 'active' : '' %>"><%= st.label %></a>
   <% }) %>
@@ -92,8 +93,8 @@
 <div class="layout">
   <% if (!days.length) { %>
     <div class="empty-state">
-      <h3>No availability right now</h3>
-      <p>Please check back soon — new slots are added regularly.</p>
+      <h3><%= _t('booking.no_availability_now') %></h3>
+      <p><%= _t('booking.check_back_soon') %></p>
     </div>
   <% } else { %>
     <% days.forEach(day => { %>
@@ -109,7 +110,7 @@
             <div class="slot-loc">📍 <%= s.location.label || s.location.address %></div>
             <% } %>
           </div>
-          <div class="slot-cap"><%= (s.maxBookings || 1) - (s.currentBookings || 0) %> open</div>
+          <div class="slot-cap"><%= (s.maxBookings || 1) - (s.currentBookings || 0) %> <%= _t('booking.open_label') %></div>
         </div>
         <% }) %>
       </div>
@@ -118,58 +119,58 @@
   <% } %>
 
   <form id="bookingForm" method="POST" action="/book" class="form-panel" data-captcha data-guard data-guard-label="Requesting…">
-    <h3>Confirm your booking</h3>
+    <h3><%= _t('booking.confirm_booking') %></h3>
     <div class="form-summary" id="formSummary"></div>
     <input type="hidden" name="slotId" id="slotIdInput">
     <div aria-hidden="true" style="position:absolute;left:-5000px;width:1px;height:1px;overflow:hidden;"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
 
     <div class="form-grid-2">
       <div class="form-row">
-        <label>Name *</label>
+        <label><%= _t('booking.name') %> *</label>
         <input type="text" name="name" required>
       </div>
       <div class="form-row">
-        <label>Email *</label>
+        <label><%= _t('booking.email') %> *</label>
         <input type="email" name="email" required>
       </div>
     </div>
     <div class="form-row">
-      <label>Phone</label>
-      <input type="tel" name="phone" placeholder="Optional but recommended">
+      <label><%= _t('booking.phone') %></label>
+      <input type="tel" name="phone" placeholder="<%= _t('booking.phone_placeholder') %>">
     </div>
 
     <div class="vehicle-block" id="vehicleBlock">
-      <h4>Vehicle Info</h4>
+      <h4><%= _t('booking.vehicle_info') %></h4>
       <div class="form-grid-2">
         <div class="form-row">
-          <label>Year</label>
+          <label><%= _t('booking.year') %></label>
           <input type="text" name="vehicleYear" placeholder="2018">
         </div>
         <div class="form-row">
-          <label>Make</label>
+          <label><%= _t('booking.make') %></label>
           <input type="text" name="vehicleMake" placeholder="Forest River">
         </div>
         <div class="form-row">
-          <label>Model</label>
+          <label><%= _t('booking.model') %></label>
           <input type="text" name="vehicleModel" placeholder="Cherokee 274RK">
         </div>
         <div class="form-row">
-          <label>Length (ft)</label>
+          <label><%= _t('booking.length_ft') %></label>
           <input type="text" name="vehicleLength" placeholder="32">
         </div>
       </div>
       <div class="form-row" style="margin-bottom:0">
-        <label>Issue / What needs service?</label>
-        <textarea name="issueDescription" placeholder="Briefly describe the issue or service needed."></textarea>
+        <label><%= _t('booking.issue_label') %></label>
+        <textarea name="issueDescription" placeholder="<%= _t('booking.issue_placeholder') %>"></textarea>
       </div>
     </div>
 
     <div class="form-row">
-      <label>Notes (optional)</label>
-      <textarea name="message" placeholder="Anything else we should know?"></textarea>
+      <label><%= _t('booking.notes_optional') %></label>
+      <textarea name="message" placeholder="<%= _t('booking.notes_placeholder') %>"></textarea>
     </div>
 
-    <button type="submit" class="submit-btn">Request Booking</button>
+    <button type="submit" class="submit-btn"><%= _t('booking.request_booking') %></button>
   </form>
 </div>
 

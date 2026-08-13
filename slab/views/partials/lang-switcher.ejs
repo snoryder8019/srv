@@ -1,0 +1,35 @@
+<%
+/* Language switcher — conspicuous EN | ES pill toggle.
+   Renders only when the tenant has opted in (multilangOn) AND more than one
+   locale is supported. Works with no JS: each choice is a GET link that swaps
+   ?lang= on the current URL; the server persists it to the slab_lang cookie.
+   Vars from locale middleware: locales, locale, multilangOn, localeBaseUrl, t. */
+const _lsSize = (typeof size !== 'undefined') ? size : 'md';
+if (typeof multilangOn !== 'undefined' && multilangOn && Array.isArray(locales) && locales.length > 1) {
+  const _base = (typeof localeBaseUrl !== 'undefined' && localeBaseUrl) ? localeBaseUrl : '/';
+  const _sep = _base.indexOf('?') === -1 ? '?' : '&';
+%>
+<nav class="slab-lang-switch slab-lang-<%= _lsSize %>" aria-label="<%= t('lang.switch_aria') %>">
+  <% locales.forEach(function(l){ var _active = l.code === locale; %>
+    <a class="slab-lang-opt<%= _active ? ' is-active' : '' %>"
+       href="<%= _base %><%= _sep %>lang=<%= l.code %>"
+       hreflang="<%= l.code %>"
+       lang="<%= l.code %>"
+       <%= _active ? 'aria-current="true"' : '' %>
+       title="<%= l.label %>"><%= l.short %></a>
+  <% }); %>
+</nav>
+<style>
+  .slab-lang-switch{display:inline-flex;align-items:center;gap:2px;padding:2px;
+    border:1px solid var(--border,rgba(0,0,0,.14));border-radius:999px;
+    background:var(--surface,rgba(255,255,255,.06));line-height:1;vertical-align:middle}
+  .slab-lang-opt{display:inline-flex;align-items:center;justify-content:center;
+    min-width:34px;padding:5px 10px;border-radius:999px;font-size:.72rem;
+    font-weight:700;letter-spacing:.04em;text-decoration:none;
+    color:var(--muted,#667);transition:background .15s,color .15s;white-space:nowrap}
+  .slab-lang-opt:hover{color:var(--primary,var(--navy,#1C2B4A))}
+  .slab-lang-opt.is-active{background:var(--primary,var(--navy,#1C2B4A));
+    color:var(--on-navy,#fff)}
+  .slab-lang-sm .slab-lang-opt{min-width:28px;padding:3px 8px;font-size:.66rem}
+</style>
+<% } %>

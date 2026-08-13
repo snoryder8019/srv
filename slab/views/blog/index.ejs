@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <%- include('../partials/seo-head') %>
   <%
+    const _t = (typeof t === 'function') ? t : (k => k);
     const _sp = parseInt(design.nav_logo_split) || 0;
     const _brandPre = _sp > 0 ? (brand?.name||'').slice(0,_sp) : '';
     const _brandPost = _sp > 0 ? (brand?.name||'').slice(_sp) : (brand?.name||'');
@@ -41,7 +42,7 @@
     .reveal { opacity:0; transform:translateY(20px); transition:opacity 0.5s ease, transform 0.5s ease; }
     .reveal.visible { opacity:1; transform:translateY(0); }
     /* nav styles provided by partials/header.ejs */
-    .blog-hero { padding:140px 52px 80px; background:var(--bg); }
+    .blog-hero { padding:max(140px, var(--nav-clear)) 52px 80px; background:var(--bg); }
     .blog-hero-inner { max-width:800px; margin:0 auto; }
     .eyebrow { font-size:0.72rem; font-weight:600; letter-spacing:0.22em; text-transform:uppercase; color:var(--primary); margin-bottom:16px; }
     .blog-hero h1 { font-family:var(--font-heading); font-size:clamp(2.4rem,5vw,4rem); font-weight:300; line-height:1.1; color:var(--on-surface); margin-bottom:16px; }
@@ -96,36 +97,36 @@
     <h1><%- _ct.title %></h1>
     <p><%= _ct.subtitle %></p>
     <div class="hero-feeds">
-      <a href="<%= _ct.base %>/feed.rss" title="RSS feed">RSS</a>
+      <a href="<%= _ct.base %>/feed.rss" title="<%= _t('blog.rss_feed') %>">RSS</a>
       <span aria-hidden="true">·</span>
-      <a href="<%= _ct.base %>/feed.atom" title="Atom feed">Atom</a>
+      <a href="<%= _ct.base %>/feed.atom" title="<%= _t('blog.atom_feed') %>">Atom</a>
     </div>
   </div>
 </div>
 
 <% if (typeof subscribed !== 'undefined' && subscribed) { %>
-  <div class="sub-flash sub-ok">✓ Almost there — check your inbox to confirm your subscription.</div>
+  <div class="sub-flash sub-ok">✓ <%= _t('blog.almost_there') %></div>
 <% } else if (typeof suberror !== 'undefined' && suberror) { %>
-  <div class="sub-flash sub-err">Sorry, something went wrong. Please check your email and try again.</div>
+  <div class="sub-flash sub-err"><%= _t('blog.sub_error') %></div>
 <% } %>
 
 <section class="sub-box">
   <div class="sub-box-inner">
-    <h2>Subscribe to <%= _ct.label %></h2>
-    <p>Get new <%= _ct.label.toLowerCase() %> updates by email. No spam — unsubscribe anytime.</p>
+    <h2><%= _t('blog.subscribe_to', { label: _ct.label }) %></h2>
+    <p><%= _t('blog.sub_pitch', { label: _ct.label.toLowerCase() }) %></p>
     <form class="sub-form" method="POST" action="<%= _ct.base %>/subscribe">
       <input type="text" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;" aria-hidden="true">
-      <input type="email" name="email" required placeholder="you@example.com" aria-label="Email address">
-      <button type="submit">Subscribe</button>
+      <input type="email" name="email" required placeholder="you@example.com" aria-label="<%= _t('blog.email_address') %>">
+      <button type="submit"><%= _t('blog.subscribe') %></button>
     </form>
-    <p class="sub-feed-note">Prefer a reader? Subscribe via <a href="<%= _ct.base %>/feed.rss">RSS</a> or <a href="<%= _ct.base %>/feed.atom">Atom</a>.</p>
+    <p class="sub-feed-note"><%= _t('blog.prefer_reader') %> <a href="<%= _ct.base %>/feed.rss">RSS</a> <%= _t('blog.or') %> <a href="<%= _ct.base %>/feed.atom">Atom</a>.</p>
   </div>
 </section>
 
 <% if (!posts || posts.length === 0) { %>
   <div class="no-posts">
-    <p>No posts published yet. Check back soon!</p>
-    <div style="margin-top:24px;"><a href="/" style="font-size:0.82rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--primary);text-decoration:none;">← Back to Home</a></div>
+    <p><%= _t('blog.no_posts') %></p>
+    <div style="margin-top:24px;"><a href="/" style="font-size:0.82rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--primary);text-decoration:none;">← <%= _t('blog.back_home') %></a></div>
   </div>
 <% } else { %>
   <div class="posts-grid">
@@ -145,7 +146,7 @@
           <% if (post.excerpt) { %>
             <p class="post-excerpt"><%= post.excerpt %></p>
           <% } %>
-          <a href="<%= _ct.base %>/<%= post.slug %>" class="read-more">Read More →</a>
+          <a href="<%= _ct.base %>/<%= post.slug %>" class="read-more"><%= _t('blog.read_more') %> →</a>
         </div>
       </div>
     <% }) %>
@@ -155,13 +156,13 @@
 <footer>
   <div class="footer-brand"><% if (_brandPre) { %><span style="color:var(--accent-light)"><%= _brandPre %></span><% } %><%- _brandPost %></div>
   <ul class="footer-links">
-    <li><a href="/">Home</a></li>
-    <li><a href="/#services">Services</a></li>
-    <li><a href="/blog">Blog</a></li>
-    <li><a href="/#contact">Contact</a></li>
+    <li><a href="/"><%= _t('blog.nav_home') %></a></li>
+    <li><a href="/#services"><%= _t('blog.nav_services') %></a></li>
+    <li><a href="/blog"><%= _t('blog.nav_blog') %></a></li>
+    <li><a href="/#contact"><%= _t('blog.nav_contact') %></a></li>
   </ul>
   <% if (typeof visibility === 'undefined' || !visibility || visibility.admin_link !== false) { %>
-  <div style="margin-top:16px;text-align:center;"><a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>" style="color:rgba(253,252,250,0.12);text-decoration:none;font-size:0.6rem;letter-spacing:0.04em;transition:color 0.2s;" onmouseover="this.style.color='rgba(253,252,250,0.3)'" onmouseout="this.style.color='rgba(253,252,250,0.12)'">Admin</a></div>
+  <div style="margin-top:16px;text-align:center;"><a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>" style="color:rgba(253,252,250,0.12);text-decoration:none;font-size:0.6rem;letter-spacing:0.04em;transition:color 0.2s;" onmouseover="this.style.color='rgba(253,252,250,0.3)'" onmouseout="this.style.color='rgba(253,252,250,0.12)'"><%= _t('blog.admin') %></a></div>
   <% } %>
 </footer>
 <script>

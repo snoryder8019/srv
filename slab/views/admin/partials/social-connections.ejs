@@ -18,6 +18,23 @@
   .sm-setup { font-size:0.72rem; color:var(--slate); line-height:1.55; background:var(--ivory); border-radius:4px; padding:10px 12px; margin:10px 0; }
   .sm-soon { font-size:0.6rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:var(--badge-accent,var(--gold)); background:rgba(201,168,72,0.15); padding:2px 7px; border-radius:3px; }
   @media (max-width:640px) { .sm-conn-head { flex-wrap:wrap; gap:6px; } .sm-conn-name { font-size:0.92rem; } }
+  /* Token health — what the connection actually IS, not just "green dot saved" */
+  .sm-tok { border:1px solid var(--border); border-radius:5px; padding:8px 10px; margin-bottom:10px; background:var(--ivory); font-size:0.63rem; line-height:1.6; color:var(--slate); }
+  .sm-tok b { color:var(--on-surface); font-weight:600; margin-right:5px; }
+  .sm-tok-row { display:block; }
+  .sm-tok .ok { color:var(--success,#15803D); font-weight:600; }
+  .sm-tok .warn { color:#b45309; font-weight:600; }
+  .sm-tok .bad { color:var(--danger,#dc2626); font-weight:600; }
+  .sm-tok-acts { display:flex; gap:6px; flex-wrap:wrap; margin-top:7px; }
+  .sm-tok-acts .btn { font-size:0.6rem; }
+  .sm-tok-out { margin-top:6px; line-height:1.6; }
+  .sm-tok-out code { font-size:0.58rem; word-break:break-all; }
+  /* Copyable command / URL rows (token toolkit) */
+  .sm-cp { display:flex; align-items:flex-start; gap:6px; margin:5px 0 2px; }
+  .sm-cp code { flex:1; min-width:0; font-size:0.58rem; background:var(--ivory); padding:6px 8px; border-radius:3px; word-break:break-all; line-height:1.5; }
+  .sm-cp .btn { font-size:0.58rem; flex-shrink:0; }
+  .sm-tk-step { margin-top:10px; }
+  .sm-tk-step > b { display:block; color:var(--navy,#1e293b); font-size:0.65rem; margin-bottom:2px; }
 </style>
 
 <div class="sm-setup" style="margin-bottom:18px;">
@@ -78,12 +95,91 @@
         <% if (p.key !== 'facebook') { %>
           <div style="font-size:0.62rem;color:var(--slate);margin-bottom:8px;">Shares your Meta app — App ID/Secret are entered under <strong>Facebook Page</strong>.</div>
         <% } %>
+        <%
+          // Token health — "Connected" only means credentials exist. This says what
+          // the token IS (type), when it dies, and whether it last actually worked.
+          if (configured) {
+            const _exp   = acc.tokenExpiresAt ? new Date(acc.tokenExpiresAt) : null;
+            const _days  = _exp ? Math.round((_exp - Date.now()) / 86400000) : null;
+            const _perm  = acc.tokenType === 'PAGE' && !_exp;
+        %>
+        <div class="sm-tok">
+          <span class="sm-tok-row"><b>Token</b><%= acc.tokenType || 'type unknown' %> ·
+            <% if (_perm) { %><span class="ok">never expires</span>
+            <% } else if (_days !== null && _days < 0) { %><span class="bad">EXPIRED <%= _exp.toLocaleDateString() %> — reconnect</span>
+            <% } else if (_days !== null) { %><span class="<%= _days < 7 ? 'bad' : 'warn' %>">expires in <%= _days %> day<%= _days === 1 ? '' : 's' %> (<%= _exp.toLocaleDateString() %>)</span>
+            <% } else { %><span class="warn">expiry unknown — run Inspect</span><% } %>
+            <% if (acc.tokenManaged) { %> · <span class="ok">auto-renewing</span><% } %>
+          </span>
+          <span class="sm-tok-row"><b>Last test</b>
+            <% if (acc.lastTestAt) { %><span class="<%= acc.lastTestOk ? 'ok' : 'bad' %>"><%= acc.lastTestOk ? '✓ passed' : '✕ failed' %></span> · <%= new Date(acc.lastTestAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) %>
+            <% } else { %>never run — click <b>Test</b> below<% } %>
+          </span>
+          <div class="sm-tok-acts">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="smDebugToken('<%= p.key %>', this)" title="Ask Meta what this token really is — type, expiry and granted scopes">🔍 Inspect token</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="smUpgradeToken('<%= p.key %>', this)" title="Exchange for a long-lived / permanent token now">♻ Make permanent</button>
+          </div>
+          <div class="sm-tok-out" id="smtok-<%= p.key %>"></div>
+        </div>
+        <% } %>
         <% if (p.key === 'instagram') { %>
           <div style="margin-bottom:10px;">
             <button type="button" class="btn btn-gold btn-sm" style="font-size:0.64rem;" onclick="smLinkInstagram(this)">↺ Link from Facebook</button>
             <span class="sm-iglink-msg" style="font-size:0.62rem;color:var(--slate);margin-left:6px;"><%= configured ? '' : 'Save Facebook first, then link.' %></span>
             <div style="font-size:0.6rem;color:var(--slate);margin-top:5px;">Auto-fills your IG User ID from the linked Page. The fields below are optional overrides.</div>
           </div>
+          <%
+            // Instagram fails as a CHAIN (Page link → id → token → publish → insights)
+            // and Meta reports every link in it identically. The diagnose run names
+            // the one gate that's actually broken; the manual path is the fallback.
+            const _igAppId = ((accountMap.facebook || {}).credentials || {}).appId || '';
+            const _igExplorer = _igAppId
+              ? `https://developers.facebook.com/tools/explorer/${_igAppId}/?method=GET&path=me%2Faccounts%3Ffields%3Dinstagram_business_account%7Bid%2Cusername%7D&version=v21.0`
+              : 'https://developers.facebook.com/tools/explorer/?method=GET&path=me%2Faccounts%3Ffields%3Dinstagram_business_account%7Bid%2Cusername%7D&version=v21.0';
+            const _igIdUrl = 'https://graph.facebook.com/v21.0/me/accounts?fields=name,instagram_business_account{id,username}&access_token=YOUR_PAGE_OR_LONG_LIVED_USER_TOKEN';
+            const _igCheckUrl = 'https://graph.facebook.com/v21.0/IG_USER_ID?fields=username,followers_count,media_count&access_token=YOUR_TOKEN';
+          %>
+          <div style="margin-bottom:10px;">
+            <button type="button" class="btn btn-ghost btn-sm" style="font-size:0.62rem;" onclick="smDiagnoseIg(this)" title="Walk the whole Instagram chain and name the gate that's actually failing">🩺 Diagnose Instagram</button>
+            <div class="sm-tok-out" id="smigdx" style="font-size:0.62rem;"></div>
+          </div>
+          <details style="font-size:0.62rem;color:var(--slate);line-height:1.6;margin-bottom:10px;">
+            <summary style="cursor:pointer;font-weight:600;color:var(--navy,#1e293b);">⚑ Instagram won't connect — read this first</summary>
+            <div style="margin-top:6px;">
+              Instagram has <strong>no login of its own here</strong> — it rides entirely on your Facebook Page token. Every IG failure is one of these five gates, in order. <strong>🩺 Diagnose</strong> tells you which:
+              <ol style="margin:6px 0 0;padding-left:18px;">
+                <li><strong>The IG account is Business or Creator</strong> — not Personal. Instagram app → Settings → Account type. <span style="color:#b45309;">A Personal account is invisible to the API; nothing else can be fixed until this is.</span></li>
+                <li><strong>It's linked to THIS Facebook Page</strong> — Meta Business Suite → Settings → Linked accounts. The Page in the card above must be the one the IG account is attached to.</li>
+                <li><strong>IG User ID is filled</strong> — use <strong>↺ Link from Facebook</strong>; never type it by hand. A stale ID posts to the wrong account and still reports "Connected".</li>
+                <li><strong>Token carries <code>instagram_content_publish</code></strong> — this is a <em>publishing</em> scope; without it saves succeed and posts fail. Scopes can't be added to an existing token: attach it to the app, then <strong>reconnect Facebook</strong> to re-mint.</li>
+                <li><strong>Token carries <code>instagram_manage_insights</code></strong> — analytics only. Instagram is the <em>only</em> reach source, so missing this makes reach read 0 everywhere while posting still works. <span style="color:#b45309;">Do not use <code>instagram_business_manage_insights</code> — that's the separate IG-login API and will silently never work here.</span></li>
+              </ol>
+              <div style="margin-top:8px;">Also worth knowing: Instagram <strong>requires media</strong> on every post (no text-only), and allows <strong>25 publishes per 24h</strong> — each story frame spends one. Diagnose shows your live quota.</div>
+            </div>
+          </details>
+          <details style="font-size:0.62rem;color:var(--slate);line-height:1.6;margin-bottom:10px;">
+            <summary style="cursor:pointer;font-weight:600;color:var(--navy,#1e293b);">🔑 Manual path — find your IG User ID by hand</summary>
+            <div style="margin-top:6px;">
+              <div style="color:#b45309;"><strong>↺ Link from Facebook</strong> above does this in one click. Use this only when the link button can't resolve your account and you need to see what Meta actually returns.</div>
+              <div class="sm-tk-step">
+                <b>1 · Ask your Page for its linked IG account</b>
+                In the Graph API Explorer<%= _igAppId ? ' (opens on app ' + _igAppId + ')' : '' %> with a Page or long-lived user token. An empty <code>instagram_business_account</code> in the reply <em>is</em> the answer: gate 1 or 2 above is failing.
+                <div class="sm-cp"><code><%= _igExplorer %></code>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="smCopy(this)">Copy</button>
+                  <a href="<%= _igExplorer %>" target="_blank" rel="noopener" class="btn btn-gold btn-sm" style="font-size:0.58rem;">Open ↗</a></div>
+                Or straight against Graph — swap in your token:
+                <div class="sm-cp"><code><%= _igIdUrl %></code>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="smCopy(this)">Copy</button></div>
+              </div>
+              <div class="sm-tk-step">
+                <b>2 · Confirm the ID resolves</b>
+                Replace <code>IG_USER_ID</code> and <code>YOUR_TOKEN</code>. A username coming back means the pair is good — paste both into the fields below and <strong>Save</strong>.
+                <div class="sm-cp"><code><%= _igCheckUrl %></code>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="smCopy(this)">Copy</button></div>
+                <span style="color:#b45309;">The token here is your <strong>Page</strong> token — Instagram has no token of its own. Use the Facebook card's manual token path to mint a permanent one.</span>
+              </div>
+            </div>
+          </details>
         <% } %>
         <form data-guard method="POST" action="/admin/social/connections/<%= p.key %>">
           <% p.fields.forEach(f => { const isSet = acc.secretsSet && acc.secretsSet[f.key]; const val = (!f.secret && acc.credentials) ? (acc.credentials[f.key]||'') : ''; %>
@@ -110,6 +206,83 @@
             <% if (acc.liveEnabled) { %><br><span style="color:var(--success,#15803D);">✓ Live-streaming permission granted</span>
             <% } else if (configured) { %><br><span style="color:#b45309;">⚠ Live permission (publish_video) not yet granted — reconnect to enable Facebook Live.</span><% } %>
           </div>
+          <%
+            // Manual token path — for when the Connect button can't run (app not
+            // yet provisioned, redirect URI blocked, debugging a scope gap).
+            const _appId = (acc.credentials && acc.credentials.appId) || '';
+            const _gv = 'v21.0';
+            const _explorerUrl = _appId
+              ? `https://developers.facebook.com/tools/explorer/${_appId}/?method=GET&path=me%2Faccounts&version=${_gv}`
+              : `https://developers.facebook.com/tools/explorer/?method=GET&path=me%2Faccounts&version=${_gv}`;
+            const _scopes = (typeof metaScopes !== 'undefined' && metaScopes)
+              ? metaScopes
+              : 'pages_show_list,pages_manage_posts,pages_read_engagement,pages_manage_metadata,pages_manage_engagement,publish_video,business_management,read_insights,instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_insights';
+            const _exchangeUrl = `https://graph.facebook.com/${_gv}/oauth/access_token?grant_type=fb_exchange_token&client_id=${_appId || 'YOUR_APP_ID'}&client_secret=YOUR_APP_SECRET&fb_exchange_token=SHORT_LIVED_TOKEN`;
+            const _pageTokenUrl = `https://graph.facebook.com/${_gv}/me/accounts?fields=id,name,access_token&access_token=LONG_LIVED_USER_TOKEN`;
+            const _debugUrl = `https://developers.facebook.com/tools/debug/accesstoken/`;
+          %>
+          <details style="margin-top:8px;font-size:0.62rem;color:var(--slate);line-height:1.6;">
+            <summary style="cursor:pointer;font-weight:600;color:var(--navy,#1e293b);">🔑 Manual token path — short-lived (Graph Explorer) → long-lived → permanent</summary>
+            <div style="margin-top:6px;">
+              <div style="color:#b45309;">The <strong>Connect with Facebook</strong> button above already does all three steps and stores a permanent Page token. Use this path only when Connect can't run — app not provisioned yet, redirect URI blocked, or you're debugging a scope gap.</div>
+
+              <div class="sm-tk-step">
+                <b>1 · Mint a SHORT-LIVED user token (Graph API Explorer)</b>
+                Open the Explorer<%= _appId ? ' (opens on your app ' + _appId + ')' : ' and pick your app at the top right' %>, set <em>User or Page → User Token</em>, click <em>Add a Permission</em> for each scope below, then <strong>Generate Access Token</strong>. It lasts ~1–2 hours — that's expected, step 2 fixes it.
+                <div class="sm-cp"><code><%= _explorerUrl %></code>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="smCopy(this)">Copy</button>
+                  <a href="<%= _explorerUrl %>" target="_blank" rel="noopener" class="btn btn-gold btn-sm" style="font-size:0.58rem;">Open ↗</a></div>
+                Scopes to request — the exact set the Connect button asks for:
+                <div class="sm-cp"><code><%= _scopes %></code>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="smCopy(this)">Copy</button></div>
+                <span style="color:#b45309;">If a scope refuses to attach here, it isn't provisioned on the app — fix that in the setup checklist below first. Nothing downstream will work until it does.</span>
+              </div>
+
+              <div class="sm-tk-step">
+                <b>2 · Exchange it for a LONG-LIVED user token (~60 days)</b>
+                Replace <code>YOUR_APP_SECRET</code><%= _appId ? '' : ' and YOUR_APP_ID' %> and <code>SHORT_LIVED_TOKEN</code>, then open the URL in a browser tab. The reply's <code>access_token</code> is your long-lived user token.
+                <div class="sm-cp"><code><%= _exchangeUrl %></code>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="smCopy(this)">Copy</button></div>
+              </div>
+
+              <div class="sm-tk-step">
+                <b>3 · Turn it into a PERMANENT Page token</b>
+                A Page token minted from a <em>long-lived</em> user token never expires — this is the one to save. Paste the step-2 token in below and open it; copy the <code>access_token</code> of your Page from the response.
+                <div class="sm-cp"><code><%= _pageTokenUrl %></code>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="smCopy(this)">Copy</button></div>
+                <span style="color:#b45309;">Order matters: a Page token minted from a <em>short-lived</em> user token expires with it. If step 2 is skipped you'll be back here in an hour.</span>
+              </div>
+
+              <div class="sm-tk-step">
+                <b>4 · Save &amp; verify</b>
+                Paste that Page token into <strong>Page Access Token</strong> above (plus your <strong>Page ID</strong>), click <strong>Save</strong>, then <strong>🔍 Inspect token</strong> — it must read <code>type PAGE</code>, <em>never expires</em>, with no missing scopes. <strong>Test</strong> confirms Meta actually accepts it.
+                <div class="sm-cp"><code><%= _debugUrl %></code>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="smCopy(this)">Copy</button>
+                  <a href="<%= _debugUrl %>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="font-size:0.58rem;">Meta's debugger ↗</a></div>
+              </div>
+            </div>
+          </details>
+          <details style="margin-top:8px;font-size:0.62rem;color:var(--slate);line-height:1.6;">
+            <summary style="cursor:pointer;font-weight:600;color:var(--navy,#1e293b);">⚑ Facebook setup checklist — read this before "Invalid Scopes" or "publish_actions" errors</summary>
+            <div style="margin-top:6px;padding-left:2px;">
+              Work top to bottom — each line is a gate. If Connect stops here, the gate that fails is your problem:
+              <ol style="margin:6px 0 0;padding-left:18px;">
+                <li><strong>Pages permissions are attached to the app</strong> — app → <strong>Use cases</strong> → add/<em>Customize</em> a Page use case, then confirm <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>pages_manage_posts</code>, <code>pages_manage_metadata</code> (+ <code>publish_video</code> for Live) each show at least <strong>Standard Access</strong>. <span style="color:#b45309;">This is the most common blocker.</span> New Meta apps are use-case-driven — if a permission isn't attached here, Facebook <em>cannot</em> grant it and you'll see <em>"Invalid Scopes"</em> or <em>"(#100) requires the 'pages_read_engagement' permission"</em>.
+                  <br><strong>Fastest test:</strong> in <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener">Graph API Explorer</a>, pick your app and try to add <code>pages_read_engagement</code>. If it won't grant <em>there</em>, it's not provisioned — fix this gate before touching anything else.</li>
+                <li><strong>You admin the Meta app</strong> — developers.facebook.com → your app → <em>App Roles / Roles</em> → your Facebook account is an <strong>Administrator</strong>, and you've <em>accepted</em> the invite from that account. Standard Access only works for roled users.</li>
+                <li><strong>You admin the Facebook Page</strong> — same account has a <strong>Full control / Admin</strong> role on the Page (Page → Settings → Page access).</li>
+                <li><strong>App is in "In development" mode</strong> — top bar of the App Dashboard (<em>"unpublished" means the same thing</em>). Dev mode + Standard Access is all you need; no App Review.</li>
+                <li><strong>Facebook Login product added</strong>, and this exact <strong>Valid OAuth Redirect URI</strong> is saved under Facebook Login → Settings:<br><code><%= fbCallbackUrl %></code></li>
+                <li><strong>App ID &amp; App Secret saved above</strong>, then click <strong>Connect with Facebook →</strong>.</li>
+                <li>On Facebook's consent screen, <strong>toggle your Page ON</strong> (granular consent — skipping it gives "No Facebook Pages found").</li>
+              </ol>
+              <div style="margin-top:8px;">
+                <strong>Always use the Connect button — never paste a token by hand.</strong> A manually-pasted token often has read-only scope: it saves green but posting fails with
+                <em>"(#200) publish_actions … deprecated"</em>. That message is Facebook's misleading way of saying <strong>this token can't publish</strong> — reconnect via the button to mint one with <code>pages_manage_posts</code>.
+              </div>
+              <div style="margin-top:6px;">Only if the app must stay <strong>Live</strong> for non-roled users: submit <strong>App Review</strong> for Advanced Access on the Page scopes + complete <strong>Business Verification</strong>. Not needed when you own both the app and the Page.</div>
+            </div>
+          </details>
         <% } %>
         <% if (p.key === 'threads') { const thCb = (typeof publicWebhookUrl !== 'undefined' ? publicWebhookUrl.replace('/webhooks/meta', '/admin/social/threads/callback') : '/admin/social/threads/callback'); %>
           <a href="/admin/social/threads/connect" class="btn btn-gold btn-sm" style="margin-top:8px;display:inline-block;">Connect with Threads →</a>
@@ -371,6 +544,71 @@ async function smTest(key, btn) {
   btn.disabled = false; btn.textContent = 'Test';
 }
 
+// ── Copy the <code> sitting next to the button ───────────────────────────────
+function smCopy(btn) {
+  const el = btn.parentElement && btn.parentElement.querySelector('code');
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent.trim()).then(() => {
+    const label = btn.textContent; btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = label; }, 1200);
+  }).catch(() => { btn.textContent = 'Copy failed'; });
+}
+
+// ── Meta: what IS this token? (debug_token — type, expiry, real scopes) ───────
+// Meta's publish errors are misleading; this reads the token's actual grant so a
+// scope gap doesn't masquerade as "publish_actions is deprecated".
+async function smDebugToken(key, btn) {
+  const out = document.getElementById('smtok-' + key);
+  const esc = (s)=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  btn.disabled = true; const label = btn.textContent; btn.textContent = 'Inspecting…';
+  if (out) { out.style.color = 'var(--slate)'; out.textContent = 'Asking Meta about this token…'; }
+  try {
+    const r = await fetch('/admin/social/connections/meta/debug-token', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ platform: key }),
+    });
+    const d = await r.json();
+    if (!d.ok) { if (out) { out.innerHTML = '✕ ' + esc(d.error || 'Inspect failed'); out.style.color = 'var(--danger)'; } }
+    else {
+      const life = d.neverExpires ? '<span class="ok">never expires</span>'
+        : d.expiresAt ? '<span class="warn">expires ' + esc(new Date(d.expiresAt).toLocaleString()) + '</span>'
+        : '<span class="warn">no expiry reported</span>';
+      let html = (d.valid ? '<span class="ok">✓ valid</span>' : '<span class="bad">✕ invalid</span>')
+        + ' · type <b>' + esc(d.type || '?') + '</b> · ' + life;
+      if (d.appName) html += ' · app ' + esc(d.appName);
+      if (!d.appMatches) html += '<br><span class="bad">⚠ This token belongs to a DIFFERENT app than the App ID saved above — that mismatch alone breaks publishing.</span>';
+      if (d.type === 'USER') html += '<br><span class="warn">⚠ This is a USER token, not a PAGE token. It can read but not publish as your Page — finish step 3 of the manual token path, or just hit Connect.</span>';
+      if (d.tokenError) html += '<br><span class="bad">Meta says: ' + esc(d.tokenError) + '</span>';
+      if (d.dataAccessExpiresAt) html += '<br>Data access expires ' + esc(new Date(d.dataAccessExpiresAt).toLocaleDateString()) + ' (re-consent needed after that, even on a permanent token).';
+      if ((d.missing || []).length) {
+        html += '<br><span class="bad">Missing scopes:</span> <code>' + esc(d.missing.join(', ')) + '</code>'
+          + '<br><span style="color:#b45309;">Attach these to the app (Use cases), then reconnect — the token has to be re-minted to carry them.</span>';
+      } else { html += '<br><span class="ok">✓ All publishing + insights scopes present.</span>'; }
+      html += '<br>Granted: <code>' + esc((d.scopes || []).join(', ') || '(none)') + '</code>';
+      if (out) { out.innerHTML = html; out.style.color = 'var(--slate)'; }
+    }
+  } catch (e) { if (out) { out.textContent = '✕ Request failed'; out.style.color = 'var(--danger)'; } }
+  btn.disabled = false; btn.textContent = label;
+}
+
+// ── Meta: force the short-lived → long-lived/permanent exchange now ───────────
+async function smUpgradeToken(key, btn) {
+  const out = document.getElementById('smtok-' + key);
+  const esc = (s)=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  btn.disabled = true; const label = btn.textContent; btn.textContent = 'Upgrading…';
+  try {
+    const r = await fetch('/admin/social/connections/' + key + '/upgrade', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    const d = await r.json();
+    if (out) {
+      out.innerHTML = d.ok
+        ? '<span class="ok">✓ ' + esc(d.note || 'Token upgraded.') + '</span>'
+        : '<span class="bad">✕ ' + esc(d.error || 'Upgrade failed') + '</span>';
+      out.style.color = 'var(--slate)';
+    }
+    if (d.ok) setTimeout(() => location.reload(), 1400);
+  } catch (e) { if (out) { out.textContent = '✕ Request failed'; out.style.color = 'var(--danger)'; } }
+  btn.disabled = false; btn.textContent = label;
+}
+
 // ── Meta: link Instagram from the connected Facebook Page ─────────────────────
 async function smLinkInstagram(btn) {
   const msg = btn.parentElement.querySelector('.sm-iglink-msg');
@@ -384,6 +622,34 @@ async function smLinkInstagram(btn) {
       setTimeout(() => location.reload(), 900);
     } else { setMsg('✕ ' + (d.error || 'Failed'), false); }
   } catch (e) { setMsg('✕ Request failed', false); }
+  btn.disabled = false; btn.textContent = label;
+}
+
+// ── Instagram: walk the whole chain and show which gate fails ─────────────────
+async function smDiagnoseIg(btn) {
+  const out = document.getElementById('smigdx');
+  const esc = (s)=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const ICON = { ok:'✓', warn:'⚠', fail:'✕' }, CLS = { ok:'ok', warn:'warn', fail:'bad' };
+  btn.disabled = true; const label = btn.textContent; btn.textContent = 'Diagnosing…';
+  if (out) { out.style.color = 'var(--slate)'; out.textContent = 'Walking the Instagram chain…'; }
+  try {
+    const r = await fetch('/admin/social/connections/instagram/diagnose', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    const d = await r.json();
+    if (!d.ok) { if (out) { out.innerHTML = '✕ ' + esc(d.error || 'Diagnose failed'); out.style.color = 'var(--danger)'; } }
+    else {
+      const head = d.overall === 'ok' ? '<span class="ok">✓ Instagram is fully wired — publishing and analytics.</span>'
+        : d.overall === 'warn' ? '<span class="warn">⚠ Instagram can post, but something below is degraded.</span>'
+        : '<span class="bad">✕ Instagram is not working. Fix the first ✕ below — later checks depend on it.</span>';
+      let html = '<div style="margin-bottom:5px;">' + head + '</div>';
+      (d.checks || []).forEach(c => {
+        html += '<div style="margin-bottom:4px;"><span class="' + CLS[c.status] + '">' + ICON[c.status] + ' ' + esc(c.label) + '</span>'
+          + ' — ' + esc(c.detail || '')
+          + (c.fix ? '<br><span style="color:#b45309;display:block;padding-left:12px;">→ ' + esc(c.fix) + '</span>' : '')
+          + '</div>';
+      });
+      if (out) { out.innerHTML = html; out.style.color = 'var(--slate)'; }
+    }
+  } catch (e) { if (out) { out.textContent = '✕ Request failed'; out.style.color = 'var(--danger)'; } }
   btn.disabled = false; btn.textContent = label;
 }
 

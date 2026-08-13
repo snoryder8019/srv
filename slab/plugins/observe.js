@@ -30,6 +30,9 @@ export async function ensureObserveIndexes() {
       db.collection('client_errors').createIndex({ at: -1 }),
       db.collection('cron_runs').createIndex({ at: 1 }, ttl),
       db.collection('cron_runs').createIndex({ name: 1, at: -1 }),
+      // agent_feedback is intentionally TTL-free (see recordAgentFeedback).
+      db.collection('agent_feedback').createIndex({ at: -1 }),
+      db.collection('agent_feedback').createIndex({ agent: 1, rating: 1, at: -1 }),
     ]);
   } catch (e) {
     indexesReady = false; // let a later call retry once the DB is up
@@ -71,6 +74,37 @@ export async function recordClientError(body = {}, req = null) {
       tenantDomain: req?.tenant?.domain || req?.hostname || null,
       ua: clip(req?.get?.('user-agent'), 300),
       ip: req?.ip || null,
+    });
+  } catch { /* best-effort */ }
+}
+
+/**
+ * Record a tenant's thumbs up/down on one agent reply.
+ *
+ * This is product signal for the developers (which prompts/throttle levels
+ * produce good design passes), not an error feed — so unlike the sinks above it
+ * is deliberately NOT TTL-pruned. Volume is bounded by human clicks.
+ */
+export async function recordAgentFeedback({ agent = 'design', rating, prompt = '', reply = '', fill = null, throttle = null, focusField = null, scope = null, note = '', req = null } = {}) {
+  try {
+    await getSlabDb().collection('agent_feedback').insertOne({
+      at: new Date(),
+      agent: clip(agent, 40),
+      rating: rating === 'up' ? 'up' : 'down',
+      prompt: clip(prompt, 2000),
+      reply: clip(reply, 4000),
+      // Store the actual field changes so a thumbs-down is reproducible.
+      fill: fill && typeof fill === 'object'
+        ? Object.fromEntries(Object.entries(fill).slice(0, 80).map(([k, v]) => [clip(k, 80), clip(v, 500)]))
+        : null,
+      fillCount: fill && typeof fill === 'object' ? Object.keys(fill).length : 0,
+      throttle: clip(throttle, 20) || null,
+      focusField: clip(focusField, 80) || null,
+      scope: clip(scope, 20) || null,
+      note: clip(note, 1000) || null,
+      tenantDomain: req?.tenant?.domain || null,
+      tenantDb: req?.tenant?.db || null,
+      user: clip(req?.adminUser?.email, 200) || null,
     });
   } catch { /* best-effort */ }
 }

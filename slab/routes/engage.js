@@ -64,7 +64,7 @@ router.get('/:token', async (req, res) => {
   try {
     const { engagement, clientDoc, error } = await findEngagement(req, req.params.token);
     if (error === 'not_found' || engagement.status === 'draft') {
-      return res.status(404).render('engage-error', { message: 'Engagement letter not found.' });
+      return res.status(404).render('engage-error', { message: res.locals.t('engage.err_not_found') });
     }
     const expired = isExpired(engagement);
     const terminal = TERMINAL_STATUSES.includes(engagement.status);
@@ -90,7 +90,7 @@ router.get('/:token', async (req, res) => {
     });
   } catch (err) {
     console.error('Engage page error:', err);
-    res.status(500).render('engage-error', { message: 'Something went wrong. Please try again.' });
+    res.status(500).render('engage-error', { message: res.locals.t('booking.error_generic') });
   }
 });
 
@@ -99,7 +99,7 @@ router.post('/:token/select', express.json(), async (req, res) => {
   try {
     const { engagement, error } = await findEngagement(req, req.params.token);
     if (error || isExpired(engagement) || !SIGNABLE_STATUSES.includes(engagement.status)) {
-      return res.status(409).json({ error: 'Selections are closed on this letter.' });
+      return res.status(409).json({ error: res.locals.t('engage.err_selections_closed') });
     }
     const raw = req.body.selections || {};
     // Sanitize against the frozen packages — only known keys survive
@@ -126,10 +126,10 @@ router.post('/:token/note', express.json(), async (req, res) => {
   try {
     const { engagement, error } = await findEngagement(req, req.params.token);
     if (error || TERMINAL_STATUSES.includes(engagement.status)) {
-      return res.status(409).json({ error: 'Notes are closed on this letter.' });
+      return res.status(409).json({ error: res.locals.t('engage.err_notes_closed') });
     }
     const body = (req.body.body || '').trim().slice(0, 4000);
-    if (!body) return res.status(400).json({ error: 'Note is empty.' });
+    if (!body) return res.status(400).json({ error: res.locals.t('engage.err_note_empty') });
     const note = {
       _id: new ObjectId(), body,
       author: 'client', authorName: req.body.name || 'Client',
@@ -150,10 +150,10 @@ router.post('/:token/revise', express.json(), async (req, res) => {
   try {
     const { engagement, error } = await findEngagement(req, req.params.token);
     if (error || isExpired(engagement) || !SIGNABLE_STATUSES.includes(engagement.status)) {
-      return res.status(409).json({ error: 'This letter is no longer open for revision requests.' });
+      return res.status(409).json({ error: res.locals.t('engage.err_revision_closed') });
     }
     const body = (req.body.body || '').trim().slice(0, 4000);
-    if (!body) return res.status(400).json({ error: 'Please describe the change you\'d like.' });
+    if (!body) return res.status(400).json({ error: res.locals.t('engage.err_revision_empty') });
     const note = {
       _id: new ObjectId(), body,
       author: 'client', authorName: req.body.name || 'Client',
@@ -177,7 +177,7 @@ router.post('/:token/decline', express.json(), async (req, res) => {
   try {
     const { engagement, error } = await findEngagement(req, req.params.token);
     if (error || TERMINAL_STATUSES.includes(engagement.status) || isExpired(engagement)) {
-      return res.status(409).json({ error: 'This letter is already closed.' });
+      return res.status(409).json({ error: res.locals.t('engage.err_already_closed') });
     }
     await req.db.collection('engagements').updateOne(
       { _id: engagement._id },
@@ -198,18 +198,18 @@ router.post('/:token/decline', express.json(), async (req, res) => {
 router.post('/:token/sign', signLimiter, express.json(), async (req, res) => {
   try {
     const { engagement, clientDoc, error } = await findEngagement(req, req.params.token);
-    if (error) return res.status(404).json({ error: 'Letter not found.' });
+    if (error) return res.status(404).json({ error: res.locals.t('engage.err_letter_not_found') });
     // validUntil checked directly — the gate, not the cron
-    if (isExpired(engagement)) return res.status(409).json({ error: 'These terms have expired. Use "Request a Renewed Letter" below.' });
-    if (!SIGNABLE_STATUSES.includes(engagement.status)) return res.status(409).json({ error: 'This letter is not open for signing.' });
+    if (isExpired(engagement)) return res.status(409).json({ error: res.locals.t('engage.err_expired_sign') });
+    if (!SIGNABLE_STATUSES.includes(engagement.status)) return res.status(409).json({ error: res.locals.t('engage.err_not_signable') });
 
     const { typedName, title, consent } = req.body;
-    if (!consent) return res.status(400).json({ error: 'Please confirm consent to do business electronically.' });
-    if (!typedName || typedName.trim().length < 2) return res.status(400).json({ error: 'Please type your full name to sign.' });
+    if (!consent) return res.status(400).json({ error: res.locals.t('engage.err_consent_required') });
+    if (!typedName || typedName.trim().length < 2) return res.status(400).json({ error: res.locals.t('engage.err_name_required') });
 
     // Never sign an incomplete selection into a binding document
     const missing = validateSelections(engagement);
-    if (missing.length) return res.status(400).json({ error: `Please make a selection for: ${missing.join(', ')}` });
+    if (missing.length) return res.status(400).json({ error: res.locals.t('engage.err_missing_selection', { fields: missing.join(', ') }) });
 
     const now = new Date();
     const documentHash = hashDocument(engagement);
@@ -247,7 +247,7 @@ router.post('/:token/sign', signLimiter, express.json(), async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('Engage sign error:', err);
-    res.status(500).json({ error: 'Signing failed. Please try again.' });
+    res.status(500).json({ error: res.locals.t('engage.err_sign_failed') });
   }
 });
 
@@ -255,8 +255,8 @@ router.post('/:token/sign', signLimiter, express.json(), async (req, res) => {
 router.post('/:token/renew', express.json(), async (req, res) => {
   try {
     const { engagement, error } = await findEngagement(req, req.params.token);
-    if (error) return res.status(404).json({ error: 'Letter not found.' });
-    if (!isExpired(engagement)) return res.status(409).json({ error: 'This letter has not expired.' });
+    if (error) return res.status(404).json({ error: res.locals.t('engage.err_letter_not_found') });
+    if (!isExpired(engagement)) return res.status(409).json({ error: res.locals.t('engage.err_not_expired') });
     const note = {
       _id: new ObjectId(),
       body: (req.body.body || 'Client requested a renewed letter of engagement.').trim().slice(0, 2000),
@@ -277,9 +277,9 @@ router.post('/:token/renew', express.json(), async (req, res) => {
 router.post('/:token/request-w9', express.json(), async (req, res) => {
   try {
     const { engagement, error } = await findEngagement(req, req.params.token);
-    if (error) return res.status(404).json({ error: 'Letter not found.' });
+    if (error) return res.status(404).json({ error: res.locals.t('engage.err_letter_not_found') });
     if (!['signed', 'acknowledged'].includes(engagement.status)) {
-      return res.status(409).json({ error: 'W-9 requests are available after signing.' });
+      return res.status(409).json({ error: res.locals.t('engage.err_w9_after_sign') });
     }
     if (engagement.w9?.requestedAt) return res.json({ ok: true, already: true });
     await req.db.collection('engagements').updateOne(
@@ -302,7 +302,7 @@ router.get('/:token/copy', async (req, res) => {
   try {
     const { engagement, clientDoc, error } = await findEngagement(req, req.params.token);
     if (error || !['signed', 'acknowledged'].includes(engagement.status)) {
-      return res.status(404).render('engage-error', { message: 'No signed copy available for this letter.' });
+      return res.status(404).render('engage-error', { message: res.locals.t('engage.err_no_copy') });
     }
     res.render('engage', {
       e: engagement, cl: clientDoc,
@@ -312,7 +312,7 @@ router.get('/:token/copy', async (req, res) => {
       domain: req.tenant?.domain ? 'https://' + req.tenant.domain : config.DOMAIN,
     });
   } catch (err) {
-    res.status(500).render('engage-error', { message: 'Something went wrong.' });
+    res.status(500).render('engage-error', { message: res.locals.t('booking.error_generic') });
   }
 });
 

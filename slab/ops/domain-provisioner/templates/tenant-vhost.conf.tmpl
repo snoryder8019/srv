@@ -1,0 +1,42 @@
+# Managed by domain-provisioner — do not hand-edit. tenant custom domain: {{APEX}}
+# HTTP: serve ACME challenges from the shared webroot, redirect everything else.
+<VirtualHost *:80>
+    ServerName {{APEX}}
+    {{ALIAS_DIRECTIVE}}
+
+    Alias /.well-known/acme-challenge/ {{ACME_WEBROOT}}/.well-known/acme-challenge/
+    <Directory {{ACME_WEBROOT}}/.well-known/acme-challenge>
+        Require all granted
+    </Directory>
+
+    RewriteEngine On
+    RewriteCond %{REQUEST_URI} !^/\.well-known/acme-challenge/
+    RewriteRule ^/?(.*) https://%{HTTP_HOST}/$1 [R=301,L]
+</VirtualHost>
+
+# HTTPS: terminate TLS, proxy (incl. websockets) down the tunnel to Slab.
+# ProxyPreserveHost keeps the original Host so Slab's tenant middleware resolves
+# the tenant by custom domain.
+<VirtualHost *:443>
+    ServerName {{APEX}}
+    {{ALIAS_DIRECTIVE}}
+
+    SSLEngine on
+    SSLCertificateFile /etc/letsencrypt/live/{{APEX}}/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/{{APEX}}/privkey.pem
+
+    ProxyPreserveHost On
+    ProxyTimeout 300
+    RequestHeader set X-Forwarded-Proto "https"
+
+    RewriteEngine On
+    RewriteCond %{HTTP:Upgrade} websocket [NC]
+    RewriteCond %{HTTP:Connection} upgrade [NC]
+    RewriteRule ^/?(.*) ws://{{TUNNEL}}/$1 [P,L]
+
+    ProxyPass        / http://{{TUNNEL}}/
+    ProxyPassReverse / http://{{TUNNEL}}/
+
+    ErrorLog ${APACHE_LOG_DIR}/tenant-{{APEX}}-error.log
+    CustomLog ${APACHE_LOG_DIR}/tenant-{{APEX}}-access.log combined
+</VirtualHost>

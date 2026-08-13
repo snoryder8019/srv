@@ -1,0 +1,135 @@
+<%
+  /**
+   * _tokens.ejs — slab's shared design-token layer. Single source of truth.
+   * ───────────────────────────────────────────────────────────────────────
+   * Every skin used to re-declare its own :root block; the design-switcher
+   * kept a hand-synced copy of the var names. Now:
+   *
+   *   include('../_tokens', { design: _design, tokenDefaults: { ...skin defaults } })
+   *
+   * emits, in order:
+   *   1. open-props easings / shadows / gradients (self-hosted, /vendor/open-props)
+   *   2. cross-document View Transitions (server-rendered EJS that feels SPA)
+   *   3. the :root brand token block (skin defaults ⇦ design-panel overrides)
+   *   4. derived neutrals (color-mix — adapt to light OR dark surfaces)
+   *   5. window.SLAB_TOKEN_VARS — canonical var list (design-switcher syncs to it)
+   *
+   * bare:true → only (1) + (2), for pages that keep their own token block.
+   *
+   * NOTE open-props owns --shadow-color as an HSL *triple*; the brand shadow
+   * color (a real color) is therefore --brand-shadow. Never redefine
+   * --shadow-color as a color or open-props elevation breaks.
+   */
+  const _d   = (typeof design !== 'undefined' && design) ? design : {};
+  const _def = (typeof tokenDefaults !== 'undefined' && tokenDefaults) ? tokenDefaults : {};
+  const _bare = (typeof bare !== 'undefined' && bare === true);
+
+  // skin default ⇦ design-panel value, with classic's palette as final floor
+  const dv = (k, fb) => _d[k] || _def[k] || fb;
+
+  // hex → "H S% L%" triple for open-props' tinted shadow system
+  function _hexToHslTriple(hex) {
+    const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex || '').trim());
+    if (!m) return null;
+    let h = m[1]; if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    const r = parseInt(h.slice(0,2),16)/255, g = parseInt(h.slice(2,4),16)/255, b = parseInt(h.slice(4,6),16)/255;
+    const max = Math.max(r,g,b), min = Math.min(r,g,b), l = (max+min)/2;
+    let hh = 0, s = 0;
+    if (max !== min) {
+      const dl = max - min;
+      s = l > .5 ? dl/(2-max-min) : dl/(max+min);
+      switch (max) {
+        case r: hh = (g-b)/dl + (g < b ? 6 : 0); break;
+        case g: hh = (b-r)/dl + 2; break;
+        default: hh = (r-g)/dl + 4;
+      }
+      hh *= 60;
+    }
+    return Math.round(hh) + ' ' + Math.round(s*100) + '% ' + Math.round(l*100) + '%';
+  }
+
+  // Parametric engine (plugins/designEngine.js via app.locals): OKLCH ramps,
+  // APCA on-colors, Utopia fluid type/space. {} when absent — every consumer
+  // below carries a hardcoded fallback, so tokens degrade gracefully.
+  const _eng = (typeof designEngine === 'function') ? (designEngine(_d) || {}) : {};
+
+  const _primary   = dv('color_primary', '#12233F');
+  const _shadowHsl = _hexToHslTriple(_primary) || '220 3% 15%';
+
+  // Canonical token list — the design-switcher reads this at runtime, so adding
+  // a var HERE automatically keeps client-side theming in sync.
+  const SLAB_TOKEN_VARS = [
+    '--navy','--navy-deep','--navy-mid','--gold','--gold-light','--accent-2',
+    '--ivory','--surface','--on-surface','--on-surface-muted','--border',
+    '--on-navy','--on-navy-deep','--on-gold',
+    '--font-heading','--font-body','--card-radius','--wrap',
+    '--brand-shadow','--shadow-color','--shadow-strength',
+    '--ticker-bg','--ticker-text','--ticker-dot','--ticker-speed'
+  ];
+%>
+<link rel="stylesheet" href="/vendor/open-props/easings.min.css">
+<link rel="stylesheet" href="/vendor/open-props/shadows.min.css">
+<link rel="stylesheet" href="/vendor/open-props/gradients.min.css">
+<style>
+  /* cross-document view transitions — page-to-page fades like an SPA, 0 JS */
+  @view-transition { navigation: auto; }
+  ::view-transition-old(root) { animation-duration: .18s; }
+  ::view-transition-new(root) { animation-duration: .26s; animation-timing-function: var(--ease-3, ease); }
+  @media (prefers-reduced-motion: reduce) {
+    ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+  }
+<% if (!_bare) { %>
+  :root {
+    /* ── brand tokens — skin defaults, overridden by the design panel ── */
+    --navy:        <%= _primary %>;
+    --navy-deep:   <%= dv('color_primary_deep', _eng['--primary-800'] || dv('color_primary', '#0F1B30')) %>;
+    --navy-mid:    <%= dv('color_primary_mid',  _eng['--primary-600'] || dv('color_primary', '#1B3358')) %>;
+    --gold:        <%= dv('color_accent', '#c9a848') %>;
+    --gold-light:  <%= dv('color_accent_light', _eng['--accent-300'] || dv('color_accent', '#e6cd85')) %>;
+    --accent-2:    <%= dv('color_accent_2',     dv('color_accent', '#c9a848')) %>;
+    --ivory:       <%= dv('color_bg', '#FDFCFA') %>;
+    --surface:     <%= _d._surface || dv('color_bg', '#FDFCFA') %>;
+    --on-surface:  <%= _d._on_surface || dv('color_dark', '#141821') %>;
+    --on-surface-muted: <%= _d._on_surface_muted || dv('color_muted', '#6B7380') %>;
+    --border:      <%= _d._border || dv('color_border', '#E6E1D6') %>;
+    --on-navy:     <%= _d._on_primary || _def.on_primary || _eng['--on-primary-apca'] || '#FDFCFA' %>;
+    --on-navy-deep:<%= _d._on_primary_deep || _def.on_primary_deep || '#FDFCFA' %>;
+    --on-gold:     <%= _d._on_accent || _def.on_accent || _eng['--on-accent-apca'] || '#12233F' %>;
+    --font-heading:'<%= dv('font_heading', 'Cormorant Garamond') %>', Georgia, 'Times New Roman', serif;
+    --font-body:   '<%= dv('font_body', 'Jost') %>', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --card-radius: <%= dv('card_border_radius', '10') %>px;
+    --wrap:        <%= _def.wrap || '1160px' %>;
+
+    /* ── parametric layer: OKLCH ramps · APCA on-colors · Utopia scales ── */
+<% Object.keys(_eng).forEach(function (k) { %>    <%= k %>: <%= _eng[k] %>;
+<% }); %>
+    /* ── derived neutrals (adapt whether surface is light or dark) ── */
+    --surface-1: color-mix(in srgb, var(--surface) 96%, var(--on-surface));
+    --surface-2: color-mix(in srgb, var(--surface) 92%, var(--on-surface));
+    --tint-navy: color-mix(in srgb, var(--surface) 95%, var(--navy));
+    --card-bg:   color-mix(in srgb, var(--surface) 97%, var(--on-surface));
+    --hairline:  color-mix(in srgb, var(--on-surface) 12%, transparent);
+    --hairline-strong: color-mix(in srgb, var(--on-surface) 20%, transparent);
+    --brand-shadow: color-mix(in srgb, var(--navy) 40%, transparent);
+
+    /* ── open-props elevation, tinted to the brand primary ── */
+    --shadow-color: <%= _shadowHsl %>;
+    --shadow-strength: 2%;
+    --elev-card:  var(--shadow-3);
+    --elev-float: var(--shadow-5);
+
+    /* ── motion vocabulary (open-props easings) ── */
+    --ease-reveal: var(--ease-out-4, cubic-bezier(.2,.7,.2,1));
+    --ease-pop:    var(--ease-spring-3, cubic-bezier(.34,1.56,.64,1));
+
+    /* ── ticker (brand-driven, per-block overridable) ── */
+    --ticker-bg:    <%= dv('ticker_bg', 'var(--navy-deep)') %>;
+    --ticker-text:  <%= dv('ticker_text_color', 'var(--gold-light)') %>;
+    --ticker-dot:   <%= dv('ticker_dot_color', 'var(--gold)') %>;
+    --ticker-speed: <%= dv('ticker_speed', '26') %>s;
+  }
+<% } %>
+</style>
+<% if (!_bare) { %>
+<script>window.SLAB_TOKEN_VARS = <%- JSON.stringify(SLAB_TOKEN_VARS.concat(Object.keys(_eng))) %>;</script>
+<% } %>

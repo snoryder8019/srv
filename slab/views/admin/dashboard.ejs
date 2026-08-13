@@ -471,6 +471,9 @@
 <div class="content">
   <%- include('partials/advisory', { needs: 'ai' }) %>
 
+  <%# Marquee: the whole business's next 7 days, straight off the calendar registry %>
+  <%- include('partials/calendarMarquee') %>
+
   <% if (typeof tenant !== 'undefined' && tenant?.isPreview) { %>
   <%
     const _pvExp = tenant.previewExpiresAt ? new Date(tenant.previewExpiresAt) : null;
@@ -513,6 +516,52 @@
       <a href="#" onclick="document.getElementById('goLiveModal')?.showModal();return false;" class="btn btn-gold" style="white-space:nowrap;">Activate Now</a>
     </div>
   </div>
+  <% } %>
+
+  <!-- BILLING LAPSED — subscription didn't renew; dashboard is read-only -->
+  <% if (typeof tenant !== 'undefined' && tenant?.billingState === 'lapsed') { %>
+  <div class="card" style="margin-bottom:16px;padding:18px 22px;border-left:4px solid var(--danger);background:rgba(185,28,28,0.04);">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div style="font-size:0.85rem;font-weight:600;color:var(--danger);">Subscription lapsed — dashboard is read-only</div>
+        <div style="font-size:0.72rem;color:var(--slate);margin-top:4px;">Your public site is still online and no data was touched. Reactivate to restore full access.</div>
+      </div>
+      <a href="#" onclick="document.getElementById('goLiveModal')?.showModal();return false;" class="btn btn-gold" style="white-space:nowrap;">Reactivate</a>
+    </div>
+  </div>
+  <% } %>
+
+  <!-- SETUP CHECKLIST (post-signup; signup only collects the essentials) -->
+  <% if (typeof setup !== 'undefined' && setup) { %>
+  <div class="card" id="setupCard" style="margin-bottom:16px;padding:18px 22px;border-left:4px solid var(--gold);">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;">
+      <div>
+        <div style="font-size:0.85rem;font-weight:600;">Finish setting up</div>
+        <div style="font-size:0.72rem;color:var(--slate);margin-top:4px;"><%= setup.doneCount %> of <%= setup.tasks.length %> done — none of this is required, your site is already live.</div>
+      </div>
+      <button type="button" id="setupDismiss" style="background:none;border:none;color:var(--slate);font-size:0.7rem;cursor:pointer;text-decoration:underline;white-space:nowrap;">Dismiss</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <% setup.tasks.forEach(function(t) { %>
+        <a href="<%= t.href %>" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;padding:8px 10px;border:1px solid var(--border);border-radius:4px;<%= t.done ? 'opacity:0.5;' : '' %>">
+          <span style="flex:0 0 16px;height:16px;border-radius:50%;border:1.5px solid <%= t.done ? 'var(--gold)' : 'var(--border)' %>;background:<%= t.done ? 'var(--gold)' : 'transparent' %>;display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:#fff;"><%= t.done ? '✓' : '' %></span>
+          <span style="flex:1;">
+            <span style="font-size:0.75rem;font-weight:500;<%= t.done ? 'text-decoration:line-through;' : '' %>"><%= t.label %></span>
+            <span style="display:block;font-size:0.65rem;color:var(--slate);margin-top:2px;"><%= t.hint %></span>
+          </span>
+        </a>
+      <% }); %>
+    </div>
+  </div>
+  <script>
+    document.getElementById('setupDismiss')?.addEventListener('click', async function() {
+      this.disabled = true;
+      try {
+        await fetch('/admin/dashboard/dismiss-setup', { method: 'POST' });
+        document.getElementById('setupCard').remove();
+      } catch (e) { this.disabled = false; }
+    });
+  </script>
   <% } %>
 
   <!-- STORAGE METER -->

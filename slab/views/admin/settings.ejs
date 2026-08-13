@@ -49,6 +49,33 @@
   .guide-panel a { color: var(--gold); font-weight: 500; }
   .guide-panel .guide-tip { font-size: 0.68rem; color: var(--slate); font-style: italic; margin-top: 8px; }
 
+  /* ── Email setup wizard ─────────────────────────────────────────────── */
+  .wiz-rail { display: flex; align-items: center; gap: 8px; margin: 4px 0 16px; flex-wrap: wrap; }
+  .wiz-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--slate); font-weight: 500; }
+  .wiz-pill b { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--border); color: var(--surface); font-size: 0.66rem; font-weight: 700; }
+  .wiz-pill.active { color: var(--navy); }
+  .wiz-pill.active b { background: var(--navy); }
+  .wiz-pill.done { color: #15803d; }
+  .wiz-pill.done b { background: #16a34a; }
+  .wiz-sep { color: var(--border); font-size: 0.9rem; }
+  .wiz-step-label { font-size: 0.74rem; font-weight: 600; color: var(--navy); letter-spacing: 0.02em; margin-bottom: 10px; }
+  .btn-linkish { background: none; border: none; color: var(--gold); font-family: 'Jost', sans-serif; font-size: 0.7rem; font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline; }
+  /* Provider chooser cards */
+  .prov-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+  .prov-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 14px 15px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); cursor: pointer; transition: border-color .12s, box-shadow .12s, background .12s; font-family: 'Jost', sans-serif; }
+  .prov-card:hover { border-color: var(--gold); box-shadow: 0 1px 6px rgba(201,168,72,0.14); }
+  .prov-card.active { border-color: var(--navy); background: linear-gradient(135deg, rgba(28,43,74,0.05), rgba(201,168,72,0.03)); box-shadow: 0 0 0 1px var(--navy) inset; }
+  .prov-ic { font-size: 1.2rem; line-height: 1; color: var(--gold); }
+  .prov-name { font-size: 0.82rem; font-weight: 600; color: var(--on-surface); }
+  .prov-blurb { font-size: 0.68rem; color: var(--slate); line-height: 1.35; }
+  /* Connected summary */
+  .wiz-summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 14px 16px; border: 1px solid rgba(22,163,74,0.3); border-radius: 5px; background: rgba(22,163,74,0.06); margin-bottom: 4px; }
+  .wiz-summary-main { display: flex; align-items: center; gap: 12px; }
+  .wiz-check { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: #16a34a; color: #fff; font-size: 0.8rem; flex: none; }
+  .wiz-summary-title { font-size: 0.82rem; color: var(--on-surface); }
+  .wiz-summary-sub { font-size: 0.7rem; color: var(--slate); margin-top: 1px; }
+  .wiz-summary-actions { display: flex; align-items: center; gap: 12px; }
+
   /* Setup CTA */
   .setup-cta {
     background: linear-gradient(135deg, #0F1B30 0%, #1C2B4A 50%, #2E4270 100%);
@@ -321,6 +348,41 @@
       .fn-sec{font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--slate);}
     </style>
 
+    <!-- ═══════════ LANGUAGE ═══════════ -->
+    <div class="settings-section">
+      <h2>&#127760; Language</h2>
+      <p class="desc">Your public site and your admin dashboard have <strong>separate</strong> default languages — so you can run your workspace in one language while your clients see another (e.g. manage in Español, serve an English storefront). When the switcher is on, a language toggle appears in your public header and footer, and each visitor's choice is remembered independently of your admin.</p>
+      <input type="hidden" name="languageForm" value="1">
+      <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-end;">
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:0.78rem;color:var(--on-surface);">
+          <span style="font-weight:600;letter-spacing:0.03em;">Public site default</span>
+          <select name="language" style="padding:9px 12px;border:1px solid var(--border);border-radius:3px;background:var(--surface);color:var(--on-surface);font-family:'Jost',sans-serif;font-size:0.82rem;min-width:180px;">
+            <% (typeof supportedLocales !== 'undefined' ? supportedLocales : []).forEach(function(l){ %>
+              <option value="<%= l.code %>" <%= (typeof tenantLanguage !== 'undefined' && tenantLanguage === l.code) ? 'selected' : '' %>><%= l.flag %> <%= l.label %></option>
+            <% }) %>
+          </select>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:0.78rem;color:var(--on-surface);">
+          <span style="font-weight:600;letter-spacing:0.03em;">Admin / workspace language</span>
+          <select name="adminLanguage" style="padding:9px 12px;border:1px solid var(--border);border-radius:3px;background:var(--surface);color:var(--on-surface);font-family:'Jost',sans-serif;font-size:0.82rem;min-width:180px;">
+            <option value="" <%= (typeof tenantAdminLanguage !== 'undefined' && !tenantAdminLanguage) ? 'selected' : '' %>>Same as public site</option>
+            <% (typeof supportedLocales !== 'undefined' ? supportedLocales : []).forEach(function(l){ %>
+              <option value="<%= l.code %>" <%= (typeof tenantAdminLanguage !== 'undefined' && tenantAdminLanguage === l.code) ? 'selected' : '' %>><%= l.flag %> <%= l.label %></option>
+            <% }) %>
+          </select>
+        </label>
+        <label class="fn-toggle" style="padding-bottom:9px;">
+          <input type="checkbox" name="multilang" value="on" <%= (typeof multilangEnabled !== 'undefined' && multilangEnabled) ? 'checked' : '' %>>
+          <span class="fn-sw"></span>
+          <span class="fn-txt">Show language switcher<span class="fn-sec">Public header &amp; footer</span></span>
+        </label>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+        <button type="submit" style="padding:10px 24px;background:var(--gold);color:var(--on-surface);border:none;border-radius:3px;font-family:'Jost',sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;letter-spacing:0.04em;">Save Language</button>
+        <a href="/admin/copy/translate" style="font-size:0.8rem;color:var(--navy);text-decoration:none;font-weight:600;">Translate site copy →</a>
+      </div>
+    </div>
+
     <!-- ═══════════ BUSINESS PROFILE ═══════════ -->
     <div class="settings-section">
       <h2>&#9672; Business Profile</h2>
@@ -443,6 +505,48 @@
       <% if (!settings.customDomain && !settings.customDomainPaidRequired) { %>
       <button type="submit" style="margin-top:12px;padding:10px 24px;background:var(--gold);color:var(--on-surface);border:none;border-radius:3px;font-family:'Jost',sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;letter-spacing:0.04em;">Save Domain</button>
       <% } %>
+
+      <!-- ═══ Managed DNS (Slab → Linode) ═══ -->
+      <% if (settings.customDomain && settings.linodeManaged) { %>
+      <div id="managedDnsPanel" style="margin-top:18px;padding:14px 16px;border:1px solid var(--gold);border-radius:4px;background:var(--ivory);">
+        <div style="font-weight:600;font-size:0.82rem;letter-spacing:0.03em;margin-bottom:4px;">&#9889; Managed DNS <span style="font-size:0.66rem;color:var(--gold);font-weight:600;">RECOMMENDED</span></div>
+        <p class="desc" style="margin:0 0 10px;">Let Slab host <code><%= settings.customDomain %></code>'s DNS for you. We create the zone and write the web + email records automatically — you just switch nameservers once at your registrar.</p>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" id="btnEnsureZone" onclick="ensureDomainZone()" style="padding:9px 18px;background:<%= settings.linodeDomainId ? 'var(--surface)' : 'var(--gold)' %>;color:var(--on-surface);border:1px solid var(--gold);border-radius:3px;font-family:'Jost',sans-serif;font-size:0.76rem;font-weight:600;cursor:pointer;letter-spacing:0.03em;"><%= settings.linodeDomainId ? 'Re-create / Sync Zone' : 'Create DNS Zone' %></button>
+          <button type="button" id="btnVerifyDomain" onclick="verifyDomain()" style="padding:9px 18px;background:var(--surface);color:var(--on-surface);border:1px solid var(--outline,#ccc);border-radius:3px;font-family:'Jost',sans-serif;font-size:0.76rem;font-weight:600;cursor:pointer;letter-spacing:0.03em;">Verify &amp; Publish Mail</button>
+        </div>
+
+        <div id="nsBox" style="display:<%= settings.linodeDomainId ? 'block' : 'none' %>;margin-top:12px;">
+          <div class="field-hint" style="margin-bottom:4px;">At your registrar, set these <strong>nameservers</strong> (replace any existing ones), then click Verify:</div>
+          <div id="nsList" style="font-family:monospace;font-size:0.74rem;background:var(--surface);border:1px solid var(--outline,#ddd);border-radius:3px;padding:8px 10px;user-select:all;">ns1.linode.com · ns2.linode.com · ns3.linode.com · ns4.linode.com · ns5.linode.com</div>
+        </div>
+
+        <div id="domainStatus" style="margin-top:12px;font-size:0.76rem;"></div>
+
+        <!-- Clarifier: DNS mail records ≠ a connected sending mailbox -->
+        <div style="margin-top:12px;padding:10px 12px;border-radius:3px;font-size:0.72rem;line-height:1.5;<%= integrations && integrations.zoho ? 'background:rgba(22,163,74,0.08);border:1px solid rgba(22,163,74,0.25);color:#166534;' : 'background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.25);color:#78350f;' %>">
+          <% if (integrations && integrations.zoho) { %>
+            &#10003; <strong>Sending mailbox connected.</strong> Publishing mail records only routes email <em>to</em> the domain — sending <em>as</em> it is handled separately, and you've already set that up.
+          <% } else { %>
+            &#9888; <strong>Mail records aren't a sending mailbox.</strong> MX/SPF/DMARC route email <em>to</em> the domain; to have Slab send invoices, campaigns &amp; replies <em>as</em> it, connect a mailbox (SMTP credentials or Gmail/Outlook OAuth) in <a href="#email" style="color:inherit;text-decoration:underline;font-weight:600;">Email settings</a>.
+          <% } %>
+        </div>
+
+        <!-- Zoho domain-ownership TXT — we write it since the zone is on our Linode account -->
+        <div style="margin-top:12px;padding:11px 13px;border:1px dashed var(--border);border-radius:4px;">
+          <div style="font-size:0.74rem;font-weight:600;color:var(--navy);margin-bottom:3px;">Adding this domain to Zoho? Publish its verification TXT</div>
+          <div class="field-hint" style="margin:0 0 8px;">In Zoho Mail Admin &rarr; <em>Domains &rarr; Add Domain &rarr; TXT method</em>, copy the value it shows (looks like <code>zoho-verification=zb1234567.zmverify.zoho.com</code>). Your DNS is hosted here, so paste it below and we'll add it to the zone for you.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <input type="text" id="zohoVerifyValue" placeholder="zoho-verification=zb…zmverify.zoho.com" style="flex:1;min-width:220px;font-family:monospace;font-size:0.72rem;">
+            <button type="button" class="btn-test" onclick="addZohoVerifyTxt()">Publish TXT</button>
+          </div>
+          <div class="test-result" id="zohoVerifyResult"></div>
+        </div>
+      </div>
+      <% } else if (settings.customDomain && !settings.linodeManaged) { %>
+      <div style="margin-top:14px;" class="field-hint">Managed DNS is unavailable (Linode API not configured). Add the A records above manually at your registrar.</div>
+      <% } %>
     </div>
 
       </div><!-- /acc-body --></div><!-- /GROUP: BUSINESS -->
@@ -559,24 +663,69 @@
       <button type="button" class="acc-head" onclick="toggleAcc(this)"><span class="acc-ic">&#9672;</span> Email <span class="acc-sub">sending provider &amp; DNS</span><span class="acc-chevron">&#9656;</span></button>
       <div class="acc-body">
 
-    <!-- ═══════════ EMAIL (ZOHO) ═══════════ -->
+    <!-- ═══════════ EMAIL SENDING (guided wizard) ═══════════ -->
     <div class="settings-section">
       <% var ep = settings.emailProvider || 'zoho'; %>
       <h2>
         &#9672; Email Sending
+        <% if (settings.emailConfigured) { %><span class="field-set" style="font-size:0.68rem;">&#9679; connected</span><% } %>
       </h2>
-      <p class="desc">Send invoices, campaigns, and client emails from your own mailbox. Pick a provider, then enter the login below. Most providers need an <strong>app-specific password</strong> &mdash; not your normal login password.</p>
+      <p class="desc">Send invoices, campaigns, and client emails from your own mailbox. We'll walk you through connecting <strong>Zoho</strong>, <strong>Google Workspace</strong>, or <strong>Microsoft 365</strong> — pick whichever you already use.</p>
 
-      <div class="field-row">
-        <label>Email Provider</label>
-        <select name="emailProvider" id="emailProvider" onchange="onProviderChange()">
+      <!-- Step rail -->
+      <div class="wiz-rail" id="emailWizRail">
+        <span class="wiz-pill" data-step="1"><b>1</b> Provider</span>
+        <span class="wiz-sep">&rsaquo;</span>
+        <span class="wiz-pill" data-step="2"><b>2</b> Connect</span>
+        <span class="wiz-sep">&rsaquo;</span>
+        <span class="wiz-pill" data-step="3"><b>3</b> Verify</span>
+      </div>
+
+      <!-- Configured summary — shown first when a mailbox is already connected -->
+      <div class="wiz-summary" id="emailSummary" style="display:none;">
+        <div class="wiz-summary-main">
+          <span class="wiz-check">&#10003;</span>
+          <div>
+            <div class="wiz-summary-title">Sending from <strong id="emailSummaryFrom">your mailbox</strong></div>
+            <div class="wiz-summary-sub">via <span id="emailSummaryProv">—</span></div>
+          </div>
+        </div>
+        <div class="wiz-summary-actions">
+          <button type="button" class="btn-test" style="background:var(--navy);" onclick="testEmail()">Test</button>
+          <button type="button" class="btn-linkish" onclick="emailWizChange()">Change / reconnect</button>
+        </div>
+        <div class="test-result" id="emailResultSummary" style="width:100%;"></div>
+      </div>
+
+      <!-- ── STEP 1 · choose provider ─────────────────────────────── -->
+      <div class="wiz-step" id="emailStep1">
+        <div class="wiz-step-label">Step 1 &middot; Who hosts your email?</div>
+        <div class="prov-cards">
+          <button type="button" class="prov-card" data-prov="zoho"    onclick="chooseProvider('zoho')">
+            <span class="prov-ic">&#9673;</span><span class="prov-name">Zoho Mail</span><span class="prov-blurb">Business mailboxes on your domain</span></button>
+          <button type="button" class="prov-card" data-prov="gmail"   onclick="chooseProvider('gmail')">
+            <span class="prov-ic">&#9993;</span><span class="prov-name">Google Workspace</span><span class="prov-blurb">Gmail / Google Workspace</span></button>
+          <button type="button" class="prov-card" data-prov="outlook" onclick="chooseProvider('outlook')">
+            <span class="prov-ic">&#9635;</span><span class="prov-name">Microsoft 365</span><span class="prov-blurb">Outlook / Office 365</span></button>
+          <button type="button" class="prov-card" data-prov="custom"  onclick="chooseProvider('custom')">
+            <span class="prov-ic">&#9881;</span><span class="prov-name">Other / Custom</span><span class="prov-blurb">Any SMTP server</span></button>
+        </div>
+        <!-- Hidden source-of-truth select (drives all existing JS) -->
+        <select name="emailProvider" id="emailProvider" onchange="onProviderChange()" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px;" tabindex="-1" aria-hidden="true">
           <option value="zoho"    <%= ep==='zoho'    ? 'selected' : '' %>>Zoho Mail</option>
           <option value="gmail"   <%= ep==='gmail'   ? 'selected' : '' %>>Gmail / Google Workspace</option>
           <option value="outlook" <%= ep==='outlook' ? 'selected' : '' %>>Outlook / Microsoft 365</option>
           <option value="custom"  <%= ep==='custom'  ? 'selected' : '' %>>Custom SMTP</option>
         </select>
-        <div class="field-hint" id="providerHint"></div>
       </div>
+
+      <!-- ── STEP 2 · connect ─────────────────────────────────────── -->
+      <div class="wiz-step" id="emailStep2" style="display:none;">
+        <div class="wiz-step-label">
+          Step 2 &middot; Connect <span id="step2ProvName">your mailbox</span>
+          <button type="button" class="btn-linkish" onclick="emailWizBack()" style="margin-left:8px;">&larr; change provider</button>
+        </div>
+        <div class="field-hint" id="providerHint" style="margin-bottom:10px;"></div>
 
       <!-- Sign-in method — only Gmail/Outlook can use OAuth -->
       <% var am = settings.emailAuthMode || 'password'; %>
@@ -692,6 +841,13 @@
         </div>
       </div>
 
+      <!-- In-wizard save so credentials aren't stranded above the page-bottom Save -->
+      <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <button type="submit" class="btn-test" style="background:var(--gold);color:var(--on-surface);padding:11px 24px;font-size:0.8rem;">Save email settings</button>
+        <span class="field-hint" style="margin:0;">Save first &mdash; then hit <strong>Test</strong> above to verify the connection.</span>
+      </div>
+      </div><!-- /STEP 2 -->
+
       <div class="field-row" style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border);">
         <label>Owner / Billing Email</label>
         <input type="email" name="ownerEmail" value="<%= settings.ownerEmail %>" placeholder="owner@yourbusiness.com">
@@ -707,7 +863,7 @@
         <div class="field-hint">
           Where landing-page contact form submissions are emailed. Inquiries are always stored under
           <a href="/admin/inquiries">Inquiries</a> as well.
-          <% if (!settings.zohoPass_set) { %>
+          <% if (!settings.emailConfigured) { %>
             <br><strong>Email not configured</strong> &mdash; emails will be sent via the MadLadsLab platform mailer (from a <code>madladslab.com</code> address). Connect an email provider above to send from your own domain.
           <% } %>
           <% if (!settings.contactEmail && settings.ownerEmail) { %>
@@ -1157,14 +1313,21 @@ function netToggleModules(on) {
 // ── Email provider switching ─────────────────────────────────────────────────
 const EMAIL_PROVIDERS = {
   zoho:    { host: 'smtppro.zoho.com',      port: 465, passName: 'Zoho App Password',
+             label: 'Zoho Mail', icon: '◉', blurb: 'Business mailboxes on your domain',
              passHint: 'App password from Zoho Account → Security → App Passwords. Not your login password.' },
   gmail:   { host: 'smtp.gmail.com',        port: 465, passName: 'Gmail App Password',
+             label: 'Google Workspace', icon: '✉', blurb: 'Gmail / Google Workspace',
              passHint: 'Requires 2-Step Verification ON, then an App Password from myaccount.google.com/apppasswords.' },
   outlook: { host: 'smtp-mail.outlook.com', port: 587, passName: 'Outlook App Password',
+             label: 'Microsoft 365', icon: '▧', blurb: 'Outlook / Office 365',
              passHint: 'Personal Outlook: app password from account.microsoft.com. M365 business may need Authenticated SMTP enabled or OAuth (Advanced).' },
   custom:  { host: '',                      port: '',  passName: 'SMTP Password',
+             label: 'Other / Custom SMTP', icon: '⚙', blurb: 'Any SMTP server (SendGrid, Mailgun…)',
              passHint: 'Password or app-specific password for your SMTP mailbox.' },
 };
+// Wizard initial state injected from the server
+const EMAIL_CONFIGURED    = <%= settings.emailConfigured ? 'true' : 'false' %>;
+const EMAIL_PROVIDER_SAVED = "<%= settings.emailProvider || '' %>";
 // OAuth state injected from the server
 const OAUTH_REDIRECT_BASE = "<%= settings.emailOAuthRedirectBase || '' %>";
 const OAUTH_STATUS = {
@@ -1250,12 +1413,84 @@ async function disconnectOAuth() {
   } catch { SlabFlash.error('Network error'); }
 }
 function setEmailResult(text, cls) {
-  ['emailResult', 'emailResult2'].forEach(function(id) {
+  ['emailResult', 'emailResult2', 'emailResultSummary'].forEach(function(id) {
     const el = document.getElementById(id);
     if (el) { el.textContent = text; el.className = 'test-result ' + (cls || ''); }
   });
 }
-document.addEventListener('DOMContentLoaded', onProviderChange);
+
+/* ── Email setup wizard ──────────────────────────────────────────────────────
+ * Presentation only — the hidden <select id="emailProvider"> stays the source of
+ * truth so the save flow, OAuth flow, and onProviderChange() engine are unchanged.
+ * Steps: 1 pick provider → 2 connect (guide + creds/OAuth) → 3 verify (Test). */
+function wizSetStep(active) {
+  document.querySelectorAll('#emailWizRail .wiz-pill').forEach(function(p) {
+    const n = Number(p.getAttribute('data-step'));
+    p.classList.toggle('active', n === active);
+    p.classList.toggle('done', n < active);
+  });
+}
+function wizMarkCard(p) {
+  document.querySelectorAll('.prov-card').forEach(function(c) {
+    c.classList.toggle('active', c.getAttribute('data-prov') === p);
+  });
+}
+function chooseProvider(p) {
+  const sel = emailProviderEl();
+  if (sel) { sel.value = p; }
+  wizMarkCard(p);
+  onProviderChange();                       // drives guides + field visibility
+  const meta = EMAIL_PROVIDERS[p] || {};
+  const nm = document.getElementById('step2ProvName');
+  if (nm) nm.textContent = meta.label || 'your mailbox';
+  const s2 = document.getElementById('emailStep2');
+  if (s2) { s2.style.display = 'block'; }
+  wizSetStep(2);
+  if (s2 && s2.scrollIntoView) s2.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function emailWizBack() {                     // step 2 → step 1
+  const s2 = document.getElementById('emailStep2');
+  if (s2) s2.style.display = 'none';
+  wizSetStep(1);
+  const s1 = document.getElementById('emailStep1');
+  if (s1 && s1.scrollIntoView) s1.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function emailWizChange() {                   // summary → editable wizard
+  const sum = document.getElementById('emailSummary');
+  if (sum) sum.style.display = 'none';
+  const p = (emailProviderEl() && emailProviderEl().value) || EMAIL_PROVIDER_SAVED || 'zoho';
+  document.getElementById('emailStep1').style.display = 'block';
+  wizMarkCard(p);
+  chooseProvider(p);
+}
+function emailWizShowSummary() {
+  const p = (emailProviderEl() && emailProviderEl().value) || EMAIL_PROVIDER_SAVED || 'zoho';
+  const meta = EMAIL_PROVIDERS[p] || {};
+  const st = OAUTH_STATUS[p] || {};
+  const fromInput = document.querySelector('input[name="zohoUser"]');
+  const from = (st.connected && st.user) ? st.user : (fromInput && fromInput.value) || 'your mailbox';
+  const fromEl = document.getElementById('emailSummaryFrom');
+  const provEl = document.getElementById('emailSummaryProv');
+  if (fromEl) fromEl.textContent = from;
+  if (provEl) provEl.textContent = meta.label || p;
+  document.getElementById('emailSummary').style.display = 'flex';
+  document.getElementById('emailStep1').style.display = 'none';
+  document.getElementById('emailStep2').style.display = 'none';
+  wizSetStep(3);
+}
+function emailWizInit() {
+  // Prime the underlying engine (guides/fields) for whatever provider is saved.
+  onProviderChange();
+  if (EMAIL_CONFIGURED) {
+    emailWizShowSummary();
+  } else if (EMAIL_PROVIDER_SAVED) {
+    // Returning tenant who picked a provider but hasn't finished — resume at step 2.
+    chooseProvider(EMAIL_PROVIDER_SAVED);
+  } else {
+    wizSetStep(1);
+  }
+}
+document.addEventListener('DOMContentLoaded', emailWizInit);
 
 async function testStripe() {
   const el = document.getElementById('stripeResult');
@@ -1269,11 +1504,22 @@ async function testStripe() {
 }
 
 async function testEmail() {
+  // Test checks the SAVED mailbox, not what's typed in the form. If the tenant
+  // has unsaved credentials, guide them to Save first instead of returning the
+  // bare "credentials not configured" from the server.
+  const passEl = document.querySelector('input[name="zohoPass"]');
+  const userEl = document.querySelector('input[name="zohoUser"]');
+  const typedPass = passEl && passEl.value && passEl.value.indexOf('•') === -1;
+  const typedUser = userEl && userEl.value && userEl.value.indexOf('•') === -1;
+  if (!EMAIL_CONFIGURED && (typedPass || typedUser)) {
+    setEmailResult('Click “Save email settings” first — Test checks your saved mailbox, not what’s typed here.', 'test-fail');
+    return;
+  }
   setEmailResult('Testing...', '');
   try {
     const r = await fetch('/admin/settings/test-email', { method: 'POST' });
     const d = await r.json();
-    if (d.ok) setEmailResult('Connection verified' + (d.provider ? ' (' + d.provider + ')' : ''), 'test-ok');
+    if (d.ok) { setEmailResult('Connection verified' + (d.provider ? ' (' + d.provider + ')' : ''), 'test-ok'); if (typeof wizSetStep === 'function') wizSetStep(3); }
     else setEmailResult(d.error, 'test-fail');
   } catch { setEmailResult('Network error', 'test-fail'); }
 }
@@ -1333,6 +1579,65 @@ async function autoCreateDns() {
     el.textContent = msg;
     el.style.color = d.errors.length ? '#d97706' : '#16a34a';
   } catch { el.textContent = 'Network error'; el.style.color = '#dc2626'; }
+}
+
+// ── Managed DNS (Slab → Linode) ──────────────────────────────────────────────
+function _dnsStatus(msg, color) {
+  const el = document.getElementById('domainStatus');
+  if (el) { el.textContent = msg; el.style.color = color || 'var(--slate)'; }
+}
+
+async function ensureDomainZone() {
+  const btn = document.getElementById('btnEnsureZone');
+  if (btn) btn.disabled = true;
+  _dnsStatus('Creating zone in Linode…', 'var(--slate)');
+  try {
+    const r = await fetch('/admin/settings/domain/ensure-zone', { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) { _dnsStatus(d.error, '#dc2626'); return; }
+    const nsBox = document.getElementById('nsBox');
+    const nsList = document.getElementById('nsList');
+    if (nsList && d.nameservers) nsList.textContent = d.nameservers.join(' · ');
+    if (nsBox) nsBox.style.display = 'block';
+    _dnsStatus('✓ ' + d.message, '#16a34a');
+  } catch { _dnsStatus('Network error', '#dc2626'); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+async function addZohoVerifyTxt() {
+  const input = document.getElementById('zohoVerifyValue');
+  const out = document.getElementById('zohoVerifyResult');
+  const value = (input && input.value || '').trim();
+  if (!value) { if (out) { out.textContent = 'Paste the value from Zoho first.'; out.className = 'test-result test-fail'; } return; }
+  if (out) { out.textContent = 'Publishing…'; out.className = 'test-result'; }
+  try {
+    const r = await fetch('/admin/settings/domain/zoho-verify-txt', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value }),
+    });
+    const d = await r.json();
+    if (d.ok) { if (out) { out.textContent = '✓ ' + d.message; out.className = 'test-result test-ok'; } }
+    else { if (out) { out.textContent = d.error; out.className = 'test-result test-fail'; } }
+  } catch { if (out) { out.textContent = 'Network error'; out.className = 'test-result test-fail'; } }
+}
+
+async function verifyDomain() {
+  const btn = document.getElementById('btnVerifyDomain');
+  if (btn) btn.disabled = true;
+  _dnsStatus('Checking nameserver delegation…', 'var(--slate)');
+  try {
+    const r = await fetch('/admin/settings/domain/verify', { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) { _dnsStatus(d.error, '#dc2626'); return; }
+    const parts = [];
+    parts.push((d.delegated ? '✓' : '✗') + ' Nameservers ' + (d.delegated ? 'delegated to Linode' : 'not yet pointing at Linode'));
+    parts.push((d.pointsToVps ? '✓' : '✗') + ' Website A record ' + (d.pointsToVps ? 'live' : 'not resolving to ' + d.expectedIp + ' yet'));
+    if (d.mailPublished) parts.push('✓ Mail records (MX/SPF/DMARC) published — connect a sending mailbox in Email settings to send from this domain');
+    else if (d.mailError) parts.push('⚠ Mail publish failed: ' + d.mailError);
+    parts.push(d.message);
+    _dnsStatus(parts.join('  ·  '), d.delegated ? '#16a34a' : '#d97706');
+  } catch { _dnsStatus('Network error', '#dc2626'); }
+  finally { if (btn) btn.disabled = false; }
 }
 </script>
 <script>

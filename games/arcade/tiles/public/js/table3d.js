@@ -81,7 +81,15 @@ export function createTable3D(opts = {}) {
   // *** This block is the single source of truth for camera feel across ALL
   // *** games. Tune here once; hearts, euchre, craps, roulette all inherit it.
   const CAMERA = {
-    fov: 46,
+    fov: opts.fov ?? 46,
+    // ── phone-safe framing ──────────────────────────────────────────────
+    // On narrow/portrait screens the fixed vertical FOV makes the HORIZONTAL
+    // field collapse, cropping the wide hand fan + side seats. We widen the
+    // vertical FOV just enough to keep at least `minHFov` of horizontal view,
+    // capped at `maxFov` to avoid fisheye. Landscape/desktop stay untouched.
+    minHFov: opts.minHFov ?? 32,   // min horizontal FOV (deg) always kept in frame
+    maxFov: opts.maxFov ?? 64,     // ceiling for the widened vertical FOV
+    phoneSafe: opts.phoneSafe !== false,
     start: opts.cameraStart || { x: 0, y: 58, z: 96 }, // outside the table frame, elevated
     target: opts.cameraTarget || { x: 0, y: 1.0, z: 0 },
     minDistance: 14, maxDistance: 420,   // expanded: closer macro + much wider room pull-back
@@ -95,6 +103,20 @@ export function createTable3D(opts = {}) {
   // blue/brown speckle. minDistance is 14, so a 1-unit near never clips anything.
   const camera = new THREE.PerspectiveCamera(CAMERA.fov, window.innerWidth / window.innerHeight, 1, 2200);
   camera.position.set(CAMERA.start.x, CAMERA.start.y, CAMERA.start.z);
+
+  // Vertical FOV that keeps at least CAMERA.minHFov of HORIZONTAL view for this
+  // aspect (see CAMERA config). Wide/landscape returns the base fov unchanged; a
+  // narrow/portrait phone widens it (capped) so the hand fan + side seats stay in
+  // frame instead of being cropped off the sides.
+  const _DEG = Math.PI / 180;
+  function phoneSafeFov(aspect) {
+    const base = CAMERA.fov;
+    if (!CAMERA.phoneSafe || !isFinite(aspect) || aspect <= 0) return base;
+    const hAtBase = 2 * Math.atan(Math.tan(base * _DEG / 2) * aspect) / _DEG;
+    if (hAtBase >= CAMERA.minHFov) return base;
+    const vNeeded = 2 * Math.atan(Math.tan(CAMERA.minHFov * _DEG / 2) / aspect) / _DEG;
+    return Math.min(vNeeded, CAMERA.maxFov);
+  }
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -117,6 +139,9 @@ export function createTable3D(opts = {}) {
   // expose for live retuning + future upgrades (e.g. cinematic moves, follow-cam)
   function setCamera(partial = {}) {
     Object.assign(CAMERA, partial);
+    if (partial.fov != null || partial.minHFov != null || partial.maxFov != null || partial.phoneSafe != null) {
+      camera.fov = phoneSafeFov(camera.aspect); camera.updateProjectionMatrix();
+    }
     if (partial.minDistance != null) controls.minDistance = partial.minDistance;
     if (partial.maxDistance != null) controls.maxDistance = partial.maxDistance;
     if (partial.minPolar != null) controls.minPolarAngle = partial.minPolar;
@@ -147,7 +172,8 @@ export function createTable3D(opts = {}) {
       if (!c || !c.start || !c.target) return;
       camera.position.set(c.start.x, c.start.y, c.start.z);
       controls.target.set(c.target.x, c.target.y, c.target.z);
-      if (c.fov) { camera.fov = c.fov; camera.updateProjectionMatrix(); }
+      // treat a saved fov as the BASE, then re-derive the phone-safe fov for this screen
+      if (c.fov) { CAMERA.fov = c.fov; camera.fov = phoneSafeFov(camera.aspect); camera.updateProjectionMatrix(); }
       controls.update();
       HOME.pos.copy(camera.position);
       HOME.target.copy(controls.target);
@@ -696,7 +722,11 @@ export function createTable3D(opts = {}) {
 
 
   // ---- resize + loop ----
-  function resize() { const w = window.innerWidth, h = window.innerHeight; camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h, false); fitBackground(); }
+  // On resize/orientation we re-derive the phone-safe FOV (see phoneSafeFov): this
+  // only changes the projection, never the camera position/target, so it never
+  // fights the player's own orbit/zoom — it just stops the sides being cropped on
+  // narrow/portrait screens.
+  function resize() { const w = window.innerWidth, h = window.innerHeight; camera.aspect = w / h; camera.fov = phoneSafeFov(camera.aspect); camera.updateProjectionMatrix(); renderer.setSize(w, h, false); fitBackground(); }
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 200));
   resize();

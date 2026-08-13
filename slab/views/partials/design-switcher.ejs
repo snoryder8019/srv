@@ -1,3 +1,4 @@
+<% const _t = (typeof t === 'function') ? t : (k => k); %>
 <%
   /**
    * Public "on-the-fly" design switcher.
@@ -20,24 +21,24 @@
    */
 %>
 <div id="mll-ds" class="mll-ds" aria-live="polite">
-  <button type="button" id="mll-ds-toggle" class="mll-ds__btn" aria-haspopup="true" aria-expanded="false" title="Change the site design">
+  <button type="button" id="mll-ds-toggle" class="mll-ds__btn" aria-haspopup="true" aria-expanded="false" title="<%= _t('designsw.change_title') %>">
     <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 2a10 10 0 1 0 0 20c1.1 0 2-.9 2-2 0-.55-.2-1-.5-1.4-.3-.4-.5-.85-.5-1.35 0-1.1.9-2 2-2h2.5A4 4 0 0 0 22 11c0-4.97-4.48-9-10-9Z"/>
       <circle cx="7.5" cy="10.5" r="1.2" fill="currentColor" stroke="none"/>
       <circle cx="12" cy="7.5" r="1.2" fill="currentColor" stroke="none"/>
       <circle cx="16.5" cy="10.5" r="1.2" fill="currentColor" stroke="none"/>
     </svg>
-    <span class="mll-ds__btn-label">Design</span>
+    <span class="mll-ds__btn-label"><%= _t('designsw.design') %></span>
   </button>
 
   <div id="mll-ds-menu" class="mll-ds__menu" role="menu" hidden>
-    <div class="mll-ds__menu-head">Choose a design</div>
+    <div class="mll-ds__menu-head"><%= _t('designsw.choose') %></div>
     <button type="button" class="mll-ds__opt" role="menuitem" data-ds="__default">
       <span class="mll-ds__swatch"><i style="background:var(--gold)"></i><i style="background:var(--navy)"></i><i style="background:var(--ivory)"></i></span>
-      <span class="mll-ds__opt-text"><strong>Site Default</strong><em>As published</em></span>
+      <span class="mll-ds__opt-text"><strong><%= _t('designsw.site_default') %></strong><em><%= _t('designsw.as_published') %></em></span>
     </button>
     <div id="mll-ds-opts"></div>
-    <div class="mll-ds__foot">Preview only &middot; saved to this device</div>
+    <div class="mll-ds__foot"><%= _t('designsw.foot') %></div>
   </div>
 </div>
 
@@ -220,6 +221,8 @@
 
 <script>
 (function () {
+  // Localized group labels for menu section headers.
+  var GROUP_LABELS = <%- JSON.stringify({ Scenic: _t('designsw.group_scenic'), Urban: _t('designsw.group_urban'), Finance: _t('designsw.group_finance') }) %>;
   // Five pitch designs → palette + fonts + structural "look" (mirrors proposal.css).
   var P = [
     { id:'summit',      label:'Summit Granite',      tag:'Cinematic · centered serif',
@@ -297,6 +300,10 @@
     '--accent-2','--accent-3','--hero-overlay','--contact-bg','--mll-hero-img',
     '--font-heading','--font-body','--hero-text-align','--hero-btns-justify',
     '--section-pad','--card-radius','--hero-min-height','--hero-overlay-alpha'];
+  // Canonical token list published by partials/_tokens.ejs — union it in so a
+  // var added to the token layer is automatically cleared by "Site Default"
+  // (this array is now only the fallback for pages without the token layer).
+  if (Array.isArray(window.SLAB_TOKEN_VARS)) VARS = Array.from(new Set(VARS.concat(window.SLAB_TOKEN_VARS)));
 
   // Load the designs' fonts once (Source Serif Pro / Inter / Fraunces).
   (function loadFonts(){
@@ -361,7 +368,7 @@
     var g = p.group || 'Scenic';
     if (g !== lastGroup) {
       var hdr = document.createElement('div');
-      hdr.className = 'mll-ds__menu-head'; hdr.style.marginTop = '6px'; hdr.textContent = g;
+      hdr.className = 'mll-ds__menu-head'; hdr.style.marginTop = '6px'; hdr.textContent = GROUP_LABELS[g] || g;
       host.appendChild(hdr);
       lastGroup = g;
     }

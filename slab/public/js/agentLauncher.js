@@ -35,7 +35,7 @@
     ['/admin/assets',    { kind: 'agent',  module: 'assets',   title: 'Asset Agent' }],
     ['/admin/print-studio', { kind: 'agent', module: 'print-studio', title: 'Print Agent' }],
     ['/admin/onboarding', { kind: 'agent', module: 'onboarding', title: 'Onboarding Agent' }],
-    ['/admin/careers',   { kind: 'agent',  module: null,       title: 'Careers' }],
+    ['/admin/careers',   { kind: 'agent',  module: 'careers',  title: 'Careers' }],
   ];
   function pathContext() {
     var p = window.location.pathname;
@@ -97,12 +97,32 @@
     '.saForm{display:flex;flex-direction:column;gap:6px;margin-top:8px;min-width:210px;}' +
     '.saForm input{padding:8px 10px;border:1px solid var(--border,#CBD5E1);border-radius:3px;font-family:inherit;font-size:.85rem;}' +
     '.saDone{margin-top:8px;font-size:.76rem;color:var(--success,#15803D);font-weight:600;}' +
+    '.saRow.system .saBub{border-left:3px solid var(--danger,#B91C1C);}' +
+    '.saFailNote{margin-top:6px;font-size:.72rem;color:var(--slate,#6B7380);font-style:italic;}' +
     '#saSugg{display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 2px;align-items:center;max-width:100%;box-sizing:border-box;}' +
     '.saChip{flex:0 1 auto;max-width:100%;overflow:hidden;text-overflow:ellipsis;background:#fff;border:1px solid var(--border,#CBD5E1);color:var(--navy,#1C2B4A);' +
     'font-size:.7rem;font-weight:500;padding:6px 11px;border-radius:14px;cursor:pointer;white-space:nowrap;font-family:var(--font-body,sans-serif);}' +
     '.saChip:hover{border-color:var(--gold,#C9A848);}' +
     '#saCycle{flex:0 0 auto;background:none;border:none;color:var(--gold,#C9A848);font-size:.95rem;cursor:pointer;padding:2px 6px;}' +
     '#saStatus{font-size:.7rem;color:var(--slate,#6B7380);font-style:italic;padding:2px 16px;min-height:16px;}' +
+    // Scope bar — which agent(s) this ✦ can reach and what each runs on.
+    '#saScope{border-bottom:1px solid var(--border,#CBD5E1);background:var(--ivory,#F5F3EF);font-family:var(--font-body,sans-serif);}' +
+    '#saScope[hidden]{display:none;}' +
+    '#saScopeBar{display:flex;align-items:center;gap:6px;width:100%;background:none;border:none;cursor:pointer;' +
+    'padding:7px 16px;font-size:.68rem;color:var(--slate,#6B7380);text-align:left;font-family:inherit;}' +
+    '#saScopeBar:hover{color:var(--navy,#1C2B4A);}' +
+    '#saScopeBar .sEng{font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--navy,#1C2B4A);}' +
+    '#saScopeBar .sMod{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.66rem;}' +
+    '#saScopeBar .sCar{margin-left:auto;transition:transform .15s;}' +
+    '#saScope.open #saScopeBar .sCar{transform:rotate(180deg);}' +
+    '#saScopeList{display:none;padding:2px 16px 10px;}' +
+    '#saScope.open #saScopeList{display:block;}' +
+    '.sAg{display:flex;align-items:baseline;gap:6px;padding:4px 0;font-size:.7rem;border-top:1px dashed var(--border,#CBD5E1);}' +
+    '.sAg .n{font-weight:600;color:var(--navy,#1C2B4A);}' +
+    '.sAg .t{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.63rem;color:var(--slate,#6B7380);}' +
+    '.sAg .m{margin-left:auto;font-size:.63rem;color:var(--slate,#6B7380);white-space:nowrap;}' +
+    '.sAg.off .n{text-decoration:line-through;opacity:.6;}' +
+    '#saScopeList .sFoot{display:block;margin-top:8px;font-size:.66rem;color:var(--navy,#1C2B4A);}' +
     '.saIn{display:flex;gap:8px;padding:10px 16px 14px;}' +
     '.saIn input{flex:1;padding:10px 13px;border:1px solid var(--border,#CBD5E1);border-radius:4px;font-family:var(--font-body,sans-serif);font-size:.88rem;}' +
     '.saIn input:focus{outline:none;border-color:var(--navy,#1C2B4A);}' +
@@ -135,6 +155,7 @@
       '<div id="saModal">' +
         '<div class="saHead"><span class="st" style="display:inline-flex;align-items:center;">' + saIcon(18) + '</span><span class="tt" id="saTitle">Assistant</span>' +
         '<button class="fx" id="saClose" title="Close">&times;</button></div>' +
+        '<div id="saScope" hidden><button id="saScopeBar" type="button"></button><div id="saScopeList"></div></div>' +
         '<div id="saMsgs"></div>' +
         '<div id="saSugg"></div>' +
         '<div id="saStatus"></div>' +
@@ -145,6 +166,9 @@
 
     ov.addEventListener('click', function (e) { if (e.target === ov) API.close(); });
     document.getElementById('saClose').addEventListener('click', function () { API.close(); });
+    document.getElementById('saScopeBar').addEventListener('click', function () {
+      document.getElementById('saScope').classList.toggle('open');
+    });
     document.getElementById('saSend').addEventListener('click', send);
     var inp = document.getElementById('saInput');
     inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); send(); } });
@@ -197,7 +221,7 @@
       status(can ? '' : 'This thread is ' + d.status + '.');
       if (S.seed) { document.getElementById('saInput').value = S.seed; S.seed = ''; }
       document.getElementById('saInput').focus();
-      if (S.dashboard) loadBriefing();
+      if (S.dashboard) offerBriefing();
       scroll();
     });
     S.socket.on('chat:message', function (m) {
@@ -229,7 +253,15 @@
     var role = m.authorType === 'user' ? 'user' : (m.authorType === 'system' ? 'system' : 'agent');
     var row = document.createElement('div'); row.className = 'saRow ' + role;
     var h = '<div class="saBub">';
-    if (role !== 'user') h += '<div class="saMeta">' + esc(m.authorName || 'Agent') + '</div>';
+    if (role !== 'user') {
+      // Name the agent that actually handled THIS turn and what it ran on, so a
+      // reply is never anonymous — "which agent did that, on which model?" is
+      // answerable per message instead of only in Agent Control.
+      var rt = (m.meta && m.meta.runtime) || null;
+      h += '<div class="saMeta">' + esc(m.authorName || 'Agent') +
+        (rt ? ' &middot; ' + esc(rt.agent || 'agent') + ' &middot; ' +
+              esc(rt.engineLabel || '') + ' ' + esc(rt.model || '') : '') + '</div>';
+    }
     h += esc(m.body).replace(/\n/g, '<br>');
 
     var meta = m.meta || {};
@@ -260,14 +292,48 @@
     box.appendChild(row);
   }
 
-  // Dashboard daily briefing — rendered into the bubble when the ✦ opens on
-  // /admin, replacing the retired inline dashboard agent card. Text + scannable
-  // bullets + action chips (href navigates; prompt drops into the input).
-  function loadBriefing() {
+  // Dashboard daily briefing — text + scannable bullets + action chips (href
+  // navigates; prompt drops into the input).
+  //
+  // NOT auto-fired. /admin/master-agent/briefing runs an LLM generation on every
+  // call, and opening the dashboard ✦ is a cheap, frequent gesture — auto-firing
+  // spent a model call every time someone glanced at the panel. The offer is
+  // rendered instead, and the generation happens only when it's asked for.
+  function offerBriefing() {
+    var box = document.getElementById('saMsgs'); if (!box) return;
+    var row = document.createElement('div'); row.className = 'saRow agent';
+    row.innerHTML =
+      '<div class="saBub"><div class="saMeta">Dashboard</div>' +
+      'Ask me anything, or pull today\'s briefing — what happened, what needs attention.' +
+      '<div class="saApply"><button class="saBtn ghost" id="saBrief">Today\'s briefing</button></div></div>';
+    box.appendChild(row);
+    var btn = document.getElementById('saBrief');
+    if (btn) btn.addEventListener('click', function () {
+      btn.disabled = true; btn.textContent = 'Reading the day…';
+      loadBriefing(function () {
+        if (!btn.isConnected) return;
+        btn.disabled = false; btn.textContent = 'Retry briefing';
+      });
+    });
+    scroll();
+  }
+
+  function loadBriefing(onFail) {
+    status('Building your briefing…');
     fetch('/admin/master-agent/briefing')
-      .then(function (r) { return r.json(); })
-      .then(renderBriefing)
-      .catch(function () { /* non-fatal — bubble still works as chat */ });
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) {
+        status('');
+        renderBriefing(d);
+        var btn = document.getElementById('saBrief');
+        if (btn && btn.parentNode) btn.parentNode.removeChild(btn);
+      })
+      .catch(function () {
+        status('');
+        render({ authorType: 'system', body: 'Could not build the briefing just now.' });
+        scroll();
+        if (typeof onFail === 'function') onFail();
+      });
   }
   function renderBriefing(data) {
     var box = document.getElementById('saMsgs'); if (!box || !data) return;
@@ -323,6 +389,92 @@
     setTimeout(function () { if (!btn.isConnected) return; if (btn.disabled) { btn.disabled = false; btn.textContent = 'Send contact info'; } }, 8000);
   }
 
+  // ── Failure affordance ─────────────────────────────────────────────────────
+  // A failed turn is never a dead end. Every failure bubble carries:
+  //   ↻ Retry   — re-POSTs the EXACT payload that failed (history is rewound
+  //               first, so the retry isn't poisoned by the failed turn)
+  //   ⚑ Report  — ships the failure to /api/client-error (the observability
+  //               feed behind /superadmin/reports) and says so
+  // The retry is held for a few seconds with a live countdown: the common cause
+  // is a busy/restarting model backend, and an instant re-fire just fails again.
+  var RETRY_HOLD_SECONDS = 5;
+  var failSeq = 0;
+
+  function failureBubble(detail, payload) {
+    var id = 'saFail' + (++failSeq);
+    var box = document.getElementById('saMsgs');
+    if (!box) return;
+    var row = document.createElement('div');
+    row.className = 'saRow system';
+    row.innerHTML =
+      '<div class="saBub"><div class="saMeta">Failed</div>' +
+      esc(detail || 'The agent did not respond.') +
+      '<div class="saFailNote" id="' + id + 'n">Give it a few seconds — the model may be busy.</div>' +
+      '<div class="saApply">' +
+        '<button class="saBtn gold" id="' + id + 'r" disabled>Retry in ' + RETRY_HOLD_SECONDS + 's</button>' +
+        '<button class="saBtn ghost" id="' + id + 'p">&#9873; Report</button>' +
+      '</div></div>';
+    box.appendChild(row);
+    scroll();
+
+    var btn = document.getElementById(id + 'r');
+    var left = RETRY_HOLD_SECONDS;
+    var tick = setInterval(function () {
+      left--;
+      if (!btn || !btn.isConnected) { clearInterval(tick); return; }
+      if (left <= 0) {
+        clearInterval(tick);
+        btn.disabled = false;
+        btn.textContent = '↻ Retry';
+      } else {
+        btn.textContent = 'Retry in ' + left + 's';
+      }
+    }, 1000);
+
+    if (btn) btn.addEventListener('click', function () {
+      if (btn.disabled) return;
+      btn.disabled = true; btn.textContent = 'Retrying…';
+      clearInterval(tick);
+      resend(payload);
+    });
+
+    var rep = document.getElementById(id + 'p');
+    if (rep) rep.addEventListener('click', function () {
+      rep.disabled = true;
+      reportFailure(detail, payload);
+      rep.textContent = 'Reported ✓';
+      var note = document.getElementById(id + 'n');
+      if (note) note.textContent = 'Sent to the error log. Retry when you\'re ready.';
+    });
+  }
+
+  function reportFailure(detail, payload) {
+    try {
+      var body = JSON.stringify({
+        kind: 'agent-failure',
+        message: 'Agent turn failed: ' + String(detail || 'unknown'),
+        source: 'agentLauncher',
+        line: 0, col: 0,
+        stack: JSON.stringify({
+          module: (payload && payload.module) || null,
+          title: S.title || null,
+          lastUser: lastUserText(payload),
+        }).slice(0, 4000),
+      });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/client-error', new Blob([body], { type: 'application/json' }));
+      } else {
+        fetch('/api/client-error', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true }).catch(function () {});
+      }
+    } catch (e) { /* reporting must never throw */ }
+  }
+
+  function lastUserText(payload) {
+    var msgs = (payload && payload.messages) || [];
+    for (var i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === 'user') return String(msgs[i].content || '').slice(0, 500);
+    return '';
+  }
+
   // Ephemeral agentic turn — stateless HTTP, no thread. Short memory is the
   // client-held S.history (last few turns) sent with each request.
   function send() {
@@ -333,19 +485,34 @@
     S.history.push({ role: 'user', content: body });
     render({ authorType: 'user', body: body });
     scroll();
+    post({ messages: S.history.slice(-8), module: S.module || null });
+  }
+
+  // Re-fire a payload verbatim. The failed turn left no assistant reply in
+  // S.history, so the payload is still exactly what the model should see.
+  function resend(payload) {
+    if (S.sending || !payload) return;
+    post(payload);
+  }
+
+  function post(payload) {
     S.sending = true; status('Thinking…');
     document.getElementById('saSend').disabled = true;
     fetch('/admin/agent-chat/run', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: S.history.slice(-8), module: S.module || null }),
-    }).then(function (r) { return r.json(); }).then(function (d) {
+      body: JSON.stringify(payload),
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (d) {
       status('');
-      if (!d || !d.ok) { render({ authorType: 'system', body: (d && d.error) || 'Agent error.' }); return; }
+      if (!d || !d.ok) { failureBubble((d && d.error) || 'The agent returned an error.', payload); return; }
       S.history.push({ role: 'assistant', content: d.reply || '' });
       render({
         authorType: 'agent', authorName: S.title || 'Agent', body: d.reply || 'Done.',
         meta: { department: d.department || null, fill: d.fill || null, action: d.action || null,
-          navigate: d.navigate || null, section_type: d.section_type || null, page_type: d.page_type || null },
+          navigate: d.navigate || null, section_type: d.section_type || null, page_type: d.page_type || null,
+          runtime: d.runtime || null },
       });
       // Agentic path returns one or more proposed changes — render an Apply per fill.
       if (Array.isArray(d.fills)) {
@@ -356,8 +523,16 @@
         });
       }
       scroll();
-    }).catch(function () { status(''); render({ authorType: 'system', body: 'Agent unavailable.' }); scroll(); })
-      .finally(function () { S.sending = false; document.getElementById('saSend').disabled = false; document.getElementById('saInput').focus(); });
+    }).catch(function (e) {
+      status('');
+      failureBubble('Could not reach the agent' + (e && e.message ? ' (' + e.message + ')' : '') + '.', payload);
+    }).finally(function () {
+      S.sending = false;
+      var sendBtn = document.getElementById('saSend');
+      var inputEl = document.getElementById('saInput');
+      if (sendBtn) sendBtn.disabled = false;
+      if (inputEl) inputEl.focus();
+    });
   }
 
   // ── Suggestions ─────────────────────────────────────────────────────────────
@@ -439,6 +614,7 @@
       S.title = ctx.title || 'Assistant';
       var t = document.getElementById('saTitle'); if (t) t.textContent = S.title;
       loadSuggestions(); // chips follow the new agent focus
+      loadScope();       // …and so does the disclosed agent/model scope
       status('Now scoped to ' + S.title);
       clearTimeout(S._scopeMsgT);
       S._scopeMsgT = setTimeout(function () { if (S.open && !S.sending) status(''); }, 1800);
@@ -477,6 +653,46 @@
     refreshScopeZones();
   }
 
+  // ── Scope bar ───────────────────────────────────────────────────────────────
+  // Shows which agent(s) THIS ✦ can reach and what each actually runs on. The
+  // engine/model settings live in Agent Control (/admin/chat); without this the
+  // modal gave no clue which agent handled a request or on what model, so the
+  // settings felt disconnected from the runtime. Collapsed = the headline; open =
+  // the full per-agent list with a jump to the settings screen.
+  function renderScope(d) {
+    var wrap = document.getElementById('saScope'); if (!wrap) return;
+    if (!d || !d.ok || !d.agents || !d.agents.length) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+    wrap.classList.remove('open');
+
+    // Headline = the surface's primary agent when it has one, else the default.
+    var lead = null;
+    if (d.primary) { for (var i = 0; i < d.agents.length; i++) if (d.agents[i].key === d.primary) lead = d.agents[i]; }
+    var rt = lead || d.tenantDefault || {};
+    var what = lead ? lead.label : (d.scoped ? d.agents.length + ' agents' : 'All agents');
+    document.getElementById('saScopeBar').innerHTML =
+      '<span>' + esc(what) + '</span><span>&middot;</span>' +
+      '<span class="sEng">' + esc(rt.engineLabel || 'House') + '</span>' +
+      '<span class="sMod">' + esc(rt.model || '') + '</span>' +
+      '<span class="sCar">&#9662;</span>';
+
+    var rows = d.agents.map(function (a) {
+      return '<div class="sAg' + (a.enabled ? '' : ' off') + '">' +
+        '<span class="n">' + esc(a.label) + '</span>' +
+        '<span class="t">' + esc(a.tool) + '</span>' +
+        '<span class="m">' + esc(a.engineLabel || 'House') + ' ' + esc(a.model || '') +
+        (a.source && a.source !== 'platform' ? ' <em>(' + esc(a.source) + ')</em>' : '') + '</span></div>';
+    }).join('');
+    document.getElementById('saScopeList').innerHTML = rows +
+      '<a class="sFoot" href="' + esc(d.settingsUrl || '/admin/chat') + '">Change engine &amp; model in Agent Control &rarr;</a>';
+  }
+
+  function loadScope() {
+    var wrap = document.getElementById('saScope'); if (wrap) wrap.hidden = true;
+    fetch('/admin/agent-chat/scope?module=' + encodeURIComponent(S.module || ''))
+      .then(function (r) { return r.json(); }).then(renderScope).catch(function () { /* non-fatal */ });
+  }
+
   var API = {
     open: function (opts) {
       refreshScopeZones();          // pick up any newly-rendered scope zones
@@ -494,8 +710,9 @@
       document.getElementById('saOverlay').classList.add('open');
       S.open = true;
       loadSuggestions();
+      loadScope();                  // disclose which agent(s) + model this ✦ runs
       if (opts.seed) document.getElementById('saInput').value = opts.seed;
-      if (S.dashboard) loadBriefing();  // dashboard coordinator opens with the daily briefing
+      if (S.dashboard) offerBriefing();  // offered, not auto-generated — see loadBriefing
       document.getElementById('saInput').focus();
     },
     close: function () {

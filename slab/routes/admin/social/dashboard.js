@@ -58,6 +58,37 @@ function collapseMurals(list) {
   }
   return out;
 }
+
+// Auto-slot turns ONE composed multi-network post into one scheduled doc per
+// network, each at its own slot — every sibling carrying the same body and the
+// same mediaUrls. Rendered literally that reads as N duplicate posts with N
+// identical thumbnails, which is what the calendar looked like before.
+//
+// Siblings share a `groupId` (plugins/socialSchedule.js → staggerByPlatform).
+// Same-day siblings collapse into ONE chip that carries every network's icon;
+// siblings that landed on other days stay visible (you scheduled them there on
+// purpose) but get an "n of N" badge so the run reads as one post spread over
+// time. `stagCount` records how many docs a chip stands for.
+function collapseStagger(list) {
+  const seen = new Map();
+  const out = [];
+  for (const p of list || []) {
+    if (!p.groupId || p.isMuralGroup) { out.push(p); continue; }
+    const g = seen.get(p.groupId);
+    if (g) {
+      // Merge this sibling's network into the chip already on this day.
+      g.platforms = [...new Set([...(g.platforms || []), ...(p.platforms || [])])];
+      g.stagCount += 1;
+      g.stagIds.push(p._id);
+      continue;
+    }
+    // Copy: the chip accumulates merged state and must not mutate the source doc.
+    const c = { ...p, stagCount: 1, stagIds: [p._id] };
+    seen.set(p.groupId, c);
+    out.push(c);
+  }
+  return out;
+}
 import {
   AUTO_TOKEN_PLATFORMS, tryAutoUpgrade, linkInstagramFromFacebook,
   imageUpload, mediaUpload, POST_STATUSES,
@@ -80,6 +111,17 @@ router.get('/', async (req, res) => {
   const rawTab = tabAlias[req.query.tab] || req.query.tab;
   // Activity + Listening tabs disabled for release — dropped from the valid set.
   const tab = ['compose', 'calendar', 'scheduled', 'analytics', 'agents'].includes(rawTab) ? rawTab : 'compose';
+
+  // Six top-level tabs overflowed the phone tab bar into a horizontal scroll, so
+  // they're grouped into three: Create / Schedule / Insights (Live Studio is a
+  // separate page, not a tab). `tab` stays the leaf — every existing ?tab= link
+  // and bookmark keeps working — and the group is derived from it for the nav.
+  const TAB_GROUPS = {
+    create:   { label: 'Create',   icon: '✍️', tabs: ['compose', 'agents'] },
+    schedule: { label: 'Schedule', icon: '📅', tabs: ['calendar', 'scheduled'] },
+    insights: { label: 'Insights', icon: '📊', tabs: ['analytics'] },
+  };
+  const tabGroup = Object.keys(TAB_GROUPS).find(g => TAB_GROUPS[g].tabs.includes(tab)) || 'create';
 
   // Posts & Schedule has an Active vs Archived view. Archiving is a soft-delete:
   // posts are flagged { archived: true }, hidden from the default list, and kept
@@ -154,8 +196,33 @@ router.get('/', async (req, res) => {
       .sort({ scheduledAt: 1 }).toArray();
     const byDay = {};
     for (const p of sched) { const d = new Date(p.scheduledAt).getDate(); (byDay[d] = byDay[d] || []).push(p); }
-    for (const d of Object.keys(byDay)) byDay[d] = collapseMurals(byDay[d]);   // one chip per mural per day
+    for (const d of Object.keys(byDay)) {
+      byDay[d] = collapseStagger(collapseMurals(byDay[d]));   // one chip per mural / per staggered run, per day
+    }
     const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+    // Month-wide totals for each staggered run, so a chip can say "2 of 3" even
+    // when its siblings sit on other days. Counted from the raw docs (pre-collapse).
+    const stagTotals = new Map();
+    for (const p of sched) {
+      if (p.groupId) stagTotals.set(p.groupId, (stagTotals.get(p.groupId) || 0) + 1);
+    }
+    // Walk days in order and number each chip within its run. A chip that merged
+    // the ENTIRE run onto one day needs no badge — there is nothing to cross-ref.
+    const stagRun = new Map();
+    for (let d = 1; d <= daysInMonth; d++) {
+      for (const p of byDay[d] || []) {
+        if (!p.groupId) continue;
+        const total = stagTotals.get(p.groupId) || p.stagCount;
+        const from = (stagRun.get(p.groupId) || 0) + 1;
+        const to = from + p.stagCount - 1;
+        stagRun.set(p.groupId, to);
+        if (total > p.stagCount) {
+          p.stagFrom = from; p.stagTo = to; p.stagTotal = total;
+          p.stagLater = from > 1;        // dim the repeat thumbnails, keep the first bright
+        }
+      }
+    }
     const cells = [];
     for (let i = 0; i < start.getDay(); i++) cells.push(null);
     for (let d = 1; d <= daysInMonth; d++) cells.push({ day: d, posts: byDay[d] || [] });
@@ -208,6 +275,8 @@ router.get('/', async (req, res) => {
     user: req.adminUser,
     page: 'social',
     tab,
+    tabGroup,
+    tabGroups: TAB_GROUPS,
     platforms: PLATFORM_LIST,
     livePlatforms: LIVE_PLATFORMS,
     accountMap,
@@ -254,6 +323,24 @@ router.post('/mural/:muralId/archive', async (req, res) => {
     );
     res.json({ ok: true, archived: r.modifiedCount });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Archive a whole staggered run (the same post auto-slotted across networks) as
+// a unit. A merged calendar chip stands for several docs, so archiving just the
+// one _id it was keyed on would silently leave the siblings scheduled.
+// Already-published siblings are left alone — this only cancels pending ones.
+router.post('/group/:groupId/archive', async (req, res) => {
+  try {
+    const r = await req.db.collection('social_posts').updateMany(
+      { groupId: req.params.groupId, status: { $in: ['scheduled', 'held', 'draft'] } },
+      { $set: { archived: true, archivedAt: new Date(), updatedAt: new Date() } },
+    );
+    if (wantsJson(req)) return res.json({ ok: true, archived: r.modifiedCount });
+    res.redirect(`/admin/social?tab=calendar&success=${encodeURIComponent(`Archived ${r.modifiedCount} staggered posts`)}`);
+  } catch (e) {
+    if (wantsJson(req)) return res.status(500).json({ ok: false, error: e.message });
+    res.redirect(`/admin/social?tab=calendar&error=${encodeURIComponent(e.message)}`);
+  }
 });
 
 // Toggle grid-integrity lock. Turning it OFF releases any sandbagged posts back to

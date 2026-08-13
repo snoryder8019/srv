@@ -1,5 +1,6 @@
+<% const _t = (typeof t === 'function') ? t : (k => k); %>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<%= typeof htmlLang !== 'undefined' ? htmlLang : 'en' %>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -38,7 +39,7 @@
   /* nav styles provided by partials/header.ejs */
 
   /* ── PAGE HERO ── */
-  .page-hero { padding:140px 52px 64px;background:var(--bg);border-bottom:1px solid var(--border); }
+  .page-hero { padding:max(140px, var(--nav-clear)) 52px 64px;background:var(--bg);border-bottom:1px solid var(--border); }
   .page-hero-inner { max-width:860px;margin:0 auto; }
   .back-link { font-size:0.75rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--slate);text-decoration:none;display:inline-flex;align-items:center;gap:6px;margin-bottom:32px; }
   .back-link:hover { color:var(--primary); }
@@ -154,7 +155,7 @@
   .footer-links a:hover { color:var(--accent-light); }
 
   @media (max-width:768px) {
-    .page-hero { padding:100px 20px 48px; }
+    .page-hero { padding:max(100px, var(--nav-clear)) 20px 48px; }
     .page-content-wrap { padding:40px 20px 80px; }
     .data-list-wrap { padding:40px 20px 80px; }
     .data-grid { grid-template-columns:1fr; }
@@ -177,14 +178,14 @@
 <% if (!_hasHero) { %>
 <div class="page-hero reveal">
   <div class="page-hero-inner">
-    <a href="/" class="back-link">← Home</a>
+    <a href="/" class="back-link">← <%= _t('home.nav.home') %></a>
     <h1 class="page-title"><%= pg.title %></h1>
   </div>
 </div>
 <% } %>
 
 <!-- ── UNIFIED BLOCK STACK ─────────────────────────────────────── -->
-<div style="<%= _hasHero ? 'padding-top:72px;' : '' %>"><!-- nav offset for hero-led pages -->
+<div style="<%= _hasHero ? 'padding-top:var(--nav-clear);' : '' %>"><!-- nav offset for hero-led pages -->
 
 <% const _vis = typeof visibility !== 'undefined' && visibility ? visibility : {}; %>
 <% const _visMap = { hero:'hero', text:null, split:null, cta:null, cards:'services', faq:null, pricing:'pricing', testimonials:'reviews', stats:null }; %>
@@ -350,7 +351,7 @@
   <section class="data-list-wrap">
     <% if (f.heading) { %><h2 class="lb-heading" style="color:var(--on-surface);text-align:center;margin-bottom:36px;"><%- f.heading %></h2><% } %>
     <% if (!d.items || d.items.length === 0) { %>
-      <p style="color:var(--slate);text-align:center;padding:60px 0;">No items to display yet.</p>
+      <p style="color:var(--slate);text-align:center;padding:60px 0;"><%= _t('home.page.no_items') %></p>
     <% } else { %>
       <div class="data-grid">
         <% d.items.forEach(function(card) { %>
@@ -376,7 +377,7 @@
                 <% if (card.date) { %><div class="data-card-date"><%= _fmtDate(card.date) %></div><% } %>
                 <div class="data-card-title"><%= card.title %></div>
                 <% if (card.excerpt) { %><div class="data-card-excerpt"><%= card.excerpt.slice(0,120) %><%= card.excerpt.length > 120 ? '…' : '' %></div><% } %>
-                <% if (card.href) { %><div class="data-card-cta">View →</div><% } %>
+                <% if (card.href) { %><div class="data-card-cta"><%= _t('home.page.view') %> →</div><% } %>
               </div>
             </a>
           <% } %>
@@ -384,11 +385,11 @@
       </div>
       <% if (d.paginate && d.totalPages > 1) { %>
       <nav class="data-pagination" aria-label="Pagination">
-        <a href="<%= pageHref(d.pageParam, d.p - 1) %>" class="data-page-btn <%= d.p <= 1 ? 'disabled' : '' %>">← Prev</a>
+        <a href="<%= pageHref(d.pageParam, d.p - 1) %>" class="data-page-btn <%= d.p <= 1 ? 'disabled' : '' %>">← <%= _t('home.page.prev') %></a>
         <% for (let i = 1; i <= d.totalPages; i++) { %>
           <a href="<%= pageHref(d.pageParam, i) %>" class="data-page-btn <%= i === d.p ? 'active' : '' %>"><%= i %></a>
         <% } %>
-        <a href="<%= pageHref(d.pageParam, d.p + 1) %>" class="data-page-btn <%= d.p >= d.totalPages ? 'disabled' : '' %>">Next →</a>
+        <a href="<%= pageHref(d.pageParam, d.p + 1) %>" class="data-page-btn <%= d.p >= d.totalPages ? 'disabled' : '' %>"><%= _t('home.page.next') %> →</a>
       </nav>
       <% } %>
     <% } %>
@@ -405,13 +406,13 @@
 <footer>
   <div class="footer-brand"><% if (_brandPre) { %><span style="color:var(--accent-light)"><%= _brandPre %></span><% } %><%- _brandPost %></div>
   <ul class="footer-links">
-    <li><a href="/">Home</a></li>
-    <li><a href="/#services">Services</a></li>
-    <li><a href="/blog">Blog</a></li>
-    <li><a href="/#contact">Contact</a></li>
+    <li><a href="/"><%= _t('home.nav.home') %></a></li>
+    <li><a href="/#services"><%= _t('home.nav.services') %></a></li>
+    <li><a href="/blog"><%= _t('home.nav.blog') %></a></li>
+    <li><a href="/#contact"><%= _t('home.nav.contact') %></a></li>
   </ul>
   <% if (typeof visibility === 'undefined' || !visibility || visibility.admin_link !== false) { %>
-  <div style="margin-top:16px;text-align:center;"><a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>" style="color:rgba(253,252,250,0.12);text-decoration:none;font-size:0.6rem;letter-spacing:0.04em;transition:color 0.2s;" onmouseover="this.style.color='rgba(253,252,250,0.3)'" onmouseout="this.style.color='rgba(253,252,250,0.12)'">Admin</a></div>
+  <div style="margin-top:16px;text-align:center;"><a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>" style="color:rgba(253,252,250,0.12);text-decoration:none;font-size:0.6rem;letter-spacing:0.04em;transition:color 0.2s;" onmouseover="this.style.color='rgba(253,252,250,0.3)'" onmouseout="this.style.color='rgba(253,252,250,0.12)'"><%= _t('home.footer.admin') %></a></div>
   <% } %>
 </footer>
 

@@ -126,7 +126,7 @@ router.get('/', async (req, res) => {
     const db = req.db;
     if (!db) {
       // No tenant resolved (direct IP / platform domain) — show generic unavailable
-      return res.status(404).send('Booking page not found. Visit a tenant site to book a meeting.');
+      return res.status(404).send(res.locals.t('booking.page_not_found'));
     }
     const [settings, design, logos, brandModels] = await Promise.all([
       loadSettings(db),
@@ -221,7 +221,7 @@ router.get('/', async (req, res) => {
     });
   } catch (err) {
     console.error('[booking] GET error:', err);
-    res.status(500).send('Booking page error');
+    res.status(500).send(res.locals.t('booking.page_error'));
   }
 });
 

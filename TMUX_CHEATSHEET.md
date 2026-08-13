@@ -1,178 +1,56 @@
-# Tmux Quick Reference - Stringborn Universe Server
+# ⚠️ DEPRECATED — tmux is no longer used
 
-## Quick Session Switching
-
-All commands use **Ctrl+A** as the prefix (not Ctrl+B!)
-
-### Switch to Specific Services
-- `Ctrl+A` then `1` → **ps** (Stringborn Universe - port 3399)
-- `Ctrl+A` then `2` → **game-state** (Game State Service)
-- `Ctrl+A` then `3` → **madladslab** (Main Lab)
-- `Ctrl+A` then `4` → **17** (Session 17)
-
-### Cycle Through Sessions
-- `Ctrl+A` then `n` → **Next** session
-- `Ctrl+A` then `p` → **Previous** session
-- `Ctrl+A` then `w` → **Choose** from session tree
-
-### Window Navigation (No Prefix Needed!)
-- `Alt+Left` → Previous window
-- `Alt+Right` → Next window
-
-## Common Tasks
-
-### View Logs Without Attaching
-```bash
-# View last 50 lines from ps service
-tmux capture-pane -t ps -p | tail -50
-
-# View last 100 lines from game-state
-tmux capture-pane -t game-state -p | tail -100
-
-# Follow logs in real-time (attach and detach with Ctrl+A then d)
-tmux attach -t ps
-```
-
-### Session Management
-```bash
-# List all sessions
-tmux ls
-
-# Create new session
-tmux new-session -s my-session
-
-# Kill specific session
-tmux kill-session -t session-name
-
-# Detach from current session
-Ctrl+A then d
-```
-
-### Reload Configuration
-```bash
-# After editing ~/.tmux.conf
-tmux source-file ~/.tmux.conf
-
-# Or from inside tmux:
-Ctrl+A then r
-```
-
-## Pane Management
-
-### Split Panes
-- `Ctrl+A` then `|` → Split **horizontally** (side by side)
-- `Ctrl+A` then `-` → Split **vertically** (top and bottom)
-
-### Navigate Panes
-- `Alt+Up` → Select pane above
-- `Alt+Down` → Select pane below
-
-## Service-Specific Commands
-
-### Restart PS Service (Stringborn Universe)
-```bash
-tmux kill-session -t ps
-tmux new-session -d -s ps -c /srv/ps "PORT=3399 npm start"
-```
-
-### Check If Service Is Running
-```bash
-# Check by port
-lsof -ti:3399  # PS service
-
-# Check by tmux session
-tmux ls | grep ps
-```
-
-### View Service Status
-```bash
-# Quick check - see last few logs
-tmux capture-pane -t ps -p | tail -10
-
-# Check if service responded to connection
-tmux capture-pane -t ps -p | grep "Connected"
-```
-
-## Copy Mode (Scrollback)
-
-1. `Ctrl+A` then `[` → Enter **copy mode**
-2. Use **arrow keys** or **Vi keys** (h/j/k/l) to navigate
-3. `Space` → Start selection
-4. `Enter` → Copy selection
-5. `q` → Exit copy mode
-
-## Help & Info
-
-- `Ctrl+A` then `?` → Show all key bindings
-- `Ctrl+A` then `t` → Show clock (press any key to exit)
-- `Ctrl+A` then `s` → Choose session from list
-
-## Configuration File
-
-Location: `/root/.tmux.conf`
-
-Edit and reload:
-```bash
-nano ~/.tmux.conf
-tmux source-file ~/.tmux.conf
-```
-
-## Troubleshooting
-
-### Sessions Not Responding
-```bash
-# List sessions
-tmux ls
-
-# If session shows "attached" but you're not in it
-tmux attach -t ps -d  # Force detach others and attach
-```
-
-### Config Not Loading
-```bash
-# Reload config
-tmux source-file ~/.tmux.conf
-
-# Or restart tmux server (WARNING: kills all sessions!)
-# tmux kill-server
-```
-
-### Mouse Not Working
-Check if mouse mode is enabled in `~/.tmux.conf`:
-```
-set -g mouse on
-```
-
-## Pro Tips
-
-1. **Always use session names** when creating new sessions:
-   ```bash
-   tmux new-session -s my-descriptive-name
-   ```
-
-2. **Detach before killing** to avoid losing work:
-   ```bash
-   Ctrl+A then d  # Detach first
-   tmux kill-session -t session-name  # Then kill
-   ```
-
-3. **Use capture-pane for debugging** instead of attaching:
-   ```bash
-   watch -n 1 'tmux capture-pane -t ps -p | tail -20'
-   ```
-
-4. **Create layouts** for common workflows:
-   ```bash
-   # Split horizontally, then split right pane vertically
-   tmux split-window -h
-   tmux split-window -v
-   ```
+**As of the 2026-07 migration, `/srv` runs under systemd on the WSL2 / Greeley box, not tmux.**
+There is no tmux server running. Everything below the line is kept only as a historical record —
+do not follow it. Use the systemd quick reference instead.
 
 ---
 
-**Quick Start:**
-- `Ctrl+A` then `1` → Go to PS service logs
-- `Ctrl+A` then `2` → Go to Game State service
-- `Ctrl+A` then `n` → Cycle to next service
+## systemd quick reference (use this)
 
-**Remember:** Prefix is **Ctrl+A** (not Ctrl+B)!
+Every service is a unit named `srv-<name>` (e.g. `srv-games`, `srv-slab`, `srv-cards`, `srv-mcp`).
+`graffiti-tv.service` is the one exception without the `srv-` prefix.
+
+```bash
+# list all srv services and their state
+systemctl list-units --type=service 'srv-*'
+
+# status / quick up-down of one service
+systemctl status  srv-ps
+systemctl is-active srv-ps
+
+# logs (replaces `tmux capture-pane`)
+journalctl -u srv-ps -n 100 --no-pager     # last 100 lines
+journalctl -u srv-ps -f                      # follow live
+
+# restart one service (replaces kill-session + new-session)
+systemctl restart srv-ps
+
+# check what is listening on a port
+ss -lntp | grep :3399
+```
+
+Translation from the old tmux workflow:
+
+| Old (tmux) | New (systemd) |
+|---|---|
+| `tmux ls` | `systemctl list-units --type=service 'srv-*'` |
+| `tmux capture-pane -t ps -p \| tail` | `journalctl -u srv-ps -n 100 --no-pager` |
+| `tmux attach -t ps` (follow) | `journalctl -u srv-ps -f` |
+| `tmux kill-session -t ps; tmux new-session …` | `systemctl restart srv-ps` |
+| `/srv/start-all-services.sh` | per-unit `systemctl restart srv-<name>` |
+
+> Reminder: restarting `srv-mcp` drops the live MCP/Claude connection.
+
+---
+
+<details>
+<summary>Historical: original tmux cheatsheet (obsolete — kept for reference only)</summary>
+
+The server previously ran each service in a tmux session (prefix `Ctrl+A`), controlled via
+`tmux ls` / `capture-pane` / `kill-session` / `new-session` and `~/.tmux.conf`, with a
+`service-monitor.service` restarting sessions after a grace period. All of that was replaced
+by first-class systemd units (`srv-<name>.service`) during the WSL/Greeley migration. See
+[README.md](./README.md) and [HANDOFF-wsl-bridge.md](./HANDOFF-wsl-bridge.md).
+
+</details>

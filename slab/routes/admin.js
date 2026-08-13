@@ -6,10 +6,12 @@ import { requireAdmin, issueAdminJWT } from '../middleware/jwtAuth.js';
 import { checkSuperAdmin } from '../middleware/superadmin.js';
 import { isSuperAdminEmail } from '../middleware/superadmin.js';
 import { loadUserAccess, enforceFeatureAccess } from '../middleware/permissions.js';
+import { billingEnforce } from '../middleware/billingEnforce.js';
 import { getDb, getSlabDb, getTenantDb } from '../plugins/mongo.js';
 import { config } from '../config/config.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
 import { enrichDesignContrast } from '../plugins/colorContrast.js';
+import { emailConfigured } from '../plugins/mailer.js';
 import { getUsageBytes, getQuotaBytes, formatBytes, usagePercent, getQuotaLabel } from '../plugins/storage.js';
 import portfolioRouter from './admin/portfolio.js';
 import marketplaceRouter from './admin/marketplace.js';
@@ -48,6 +50,8 @@ import templateStoreRouter from './admin/templateStore.js';
 import qrcodesRouter from './admin/qrcodes.js';
 import printStudioRouter from './admin/printStudio.js';
 import notesRouter from './admin/notes.js';
+import fieldRouter from './admin/field.js';
+import calendarRouter from './admin/calendar.js';
 import analyticsRouter, { buildMetrics } from './admin/analytics.js';
 import shareRouter from './admin/share.js';
 import pipesRouter from './admin/pipes.js';
@@ -67,6 +71,10 @@ router.use((req, res, next) => {
 // Lightweight superadmin detection — sets req.isSuperAdmin for sidebar + super routes
 router.use(checkSuperAdmin);
 
+// Lapsed-subscription enforcement — read-only dashboard when billing has lapsed.
+// After checkSuperAdmin (so superadmins pass), before any write route runs.
+router.use(billingEnforce);
+
 // Resolve the admin's permission context + global feature flags (for sidebar + guards),
 // then soft-block direct-URL access to features the viewer can't see.
 router.use(loadUserAccess);
@@ -76,7 +84,7 @@ router.use(enforceFeatureAccess);
 router.use(async (req, res, next) => {
   const t = req.tenant || {};
   res.locals.integrations = {
-    zoho:    !!(t.public?.zohoUser || t.secrets?.zohoUser) && !!t.secrets?.zohoPass,
+    zoho:    emailConfigured(t),   // password SMTP *or* Gmail/Outlook OAuth — see mailer.emailConfigured
     stripe:  !!t.secrets?.stripeSecret,
     paypal:  !!t.public?.paypalClientId && !!t.secrets?.paypalSecret,
     google:  !!t.public?.googlePlacesKey,
@@ -172,11 +180,13 @@ router.get('/login', (req, res) => {
   const error = req.query.error;
   let errorMsg = null;
   if (error === 'unauthorized') errorMsg = 'Your account does not have admin access.';
-  if (error === 'oauth') errorMsg = 'Google sign-in failed. Please try again.';
+  if (error === 'oauth') errorMsg = 'Sign-in failed. Please try again.';
+  if (error === 'oauth_expired') errorMsg = 'Sign-in took too long. Please try again.';
+  if (error === 'no_email') errorMsg = 'That account did not share an email address. Allow email access, or sign in another way.';
   if (error === 'credentials') errorMsg = 'Invalid email or password.';
   // Central auth URL — tenant login pages redirect Google auth to slab.madladslab.com
   const centralAuthUrl = config.DOMAIN + '/auth/login';
-  res.render('admin/login', { errorMsg, platformGoogleCid: config.GGLCID || '', platformMsCid: config.MSCID || '', msCentralUrl: config.DOMAIN + '/auth/microsoft/central', centralAuthUrl });
+  res.render('admin/login', { errorMsg, platformGoogleCid: config.GGLCID || '', platformMsCid: config.MSCID || '', msCentralUrl: config.DOMAIN + '/auth/microsoft/central', platformFbCid: config.FB_AUTH_APPID || '', fbCentralUrl: config.DOMAIN + '/auth/facebook/central', centralAuthUrl });
 });
 
 // ── Rate limiters ────────────────────────────────────────────────────────────
@@ -247,7 +257,7 @@ router.post('/register', authLimiter, async (req, res) => {
       await db.collection('users').updateOne({ _id: existing._id }, {
         $set: { password: hash, providers },
       });
-      res.render('admin/login', { errorMsg: null, successMsg: 'Password added to your account. You can now sign in with email or Google.', platformGoogleCid: config.GGLCID || '', platformMsCid: config.MSCID || '', msCentralUrl: config.DOMAIN + '/auth/microsoft/central', centralAuthUrl: config.DOMAIN + '/auth/login' });
+      res.render('admin/login', { errorMsg: null, successMsg: 'Password added to your account. You can now sign in with email or Google.', platformGoogleCid: config.GGLCID || '', platformMsCid: config.MSCID || '', msCentralUrl: config.DOMAIN + '/auth/microsoft/central', platformFbCid: config.FB_AUTH_APPID || '', fbCentralUrl: config.DOMAIN + '/auth/facebook/central', centralAuthUrl: config.DOMAIN + '/auth/login' });
     } else {
       await db.collection('users').insertOne({
         email: cleanEmail,
@@ -259,7 +269,7 @@ router.post('/register', authLimiter, async (req, res) => {
         createdAt: new Date(),
       });
       // New registrations are NOT auto-admin — an existing admin must grant access
-      res.render('admin/login', { errorMsg: null, successMsg: 'Account created. An administrator must grant you access before you can sign in.', platformGoogleCid: config.GGLCID || '', platformMsCid: config.MSCID || '', msCentralUrl: config.DOMAIN + '/auth/microsoft/central', centralAuthUrl: config.DOMAIN + '/auth/login' });
+      res.render('admin/login', { errorMsg: null, successMsg: 'Account created. An administrator must grant you access before you can sign in.', platformGoogleCid: config.GGLCID || '', platformMsCid: config.MSCID || '', msCentralUrl: config.DOMAIN + '/auth/microsoft/central', platformFbCid: config.FB_AUTH_APPID || '', fbCentralUrl: config.DOMAIN + '/auth/facebook/central', centralAuthUrl: config.DOMAIN + '/auth/login' });
     }
   } catch (err) {
     console.error('[admin] register error:', err);
@@ -432,6 +442,10 @@ router.get('/', async (req, res) => {
       console.warn('[dashboard] activity build failed:', e.message);
     }
 
+    // Setup checklist — signup only collects name/url/email/password, so the
+    // rest of the brand profile is gathered here instead of gating entry.
+    const setup = await buildSetupChecklist(db, req.tenant);
+
     res.render('admin/dashboard', {
       user: req.adminUser,
       stats: { portfolioCount, clientCount, invoiceCount, blogCount, pageCount, openTicketCount },
@@ -439,6 +453,7 @@ router.get('/', async (req, res) => {
       whatsNewTldr,
       pulse,
       activity,
+      setup,
       storage: {
         used: formatBytes(storageUsed),
         quota: getQuotaLabel(req.tenant),
@@ -454,8 +469,48 @@ router.get('/', async (req, res) => {
       whatsNewTldr: null,
       pulse: null,
       activity: [],
+      setup: null,
       storage: { used: '0 B', quota: '1 GB', pct: 0, plan: 'free' },
     });
+  }
+});
+
+// Post-signup setup checklist. Signup deliberately asks for the bare minimum,
+// so the deferred brand details are prompted for here. Returns null once every
+// task is done or the owner dismisses it.
+async function buildSetupChecklist(db, tenant) {
+  try {
+    const [dismissed, layout] = await Promise.all([
+      db.collection('design').findOne({ key: 'setup_dismissed' }),
+      db.collection('design').findOne({ key: 'landing_layout' }),
+    ]);
+    if (dismissed?.value) return null;
+
+    const brand = tenant?.brand || {};
+    const tasks = [
+      { label: 'Finish your brand profile', hint: 'Industry, services, and voice — powers the AI tools.', href: '/admin/brand-builder', done: !!(brand.businessType && brand.industry) },
+      { label: 'Add your location', hint: 'Shows on your site and helps local search.', href: '/admin/settings', done: !!brand.location },
+      { label: 'Write a tagline', hint: 'One line describing what you do.', href: '/admin/settings', done: !!brand.tagline },
+      { label: 'Pick a template', hint: 'Choose the look of your landing page.', href: '/admin/design', done: !!layout?.value },
+    ];
+    if (tasks.every((t) => t.done)) return null;
+    return { tasks, doneCount: tasks.filter((t) => t.done).length };
+  } catch {
+    return null;
+  }
+}
+
+// Dismiss the setup checklist for good.
+router.post('/dashboard/dismiss-setup', async (req, res) => {
+  try {
+    await req.db.collection('design').updateOne(
+      { key: 'setup_dismissed' },
+      { $set: { key: 'setup_dismissed', value: true, updatedAt: new Date() } },
+      { upsert: true },
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -627,6 +682,8 @@ router.use('/template-store', templateStoreRouter);
 router.use('/qr-codes', qrcodesRouter);
 router.use('/print-studio', printStudioRouter);
 router.use('/notes', notesRouter);
+router.use('/field', fieldRouter);
+router.use('/calendar', calendarRouter);
 router.use('/analytics', analyticsRouter);
 router.use('/share', shareRouter);
 router.use('/pipes', pipesRouter);

@@ -1,0 +1,119 @@
+<%
+  /**
+   * _motion.ejs — shared scroll-reveal + count-up, spring-grade.
+   * ────────────────────────────────────────────────────────────
+   * Progressive enhancement, three tiers:
+   *   1. Motion (window.Motion, self-hosted UMD): WAAPI spring reveals via
+   *      inView() — the baller path.
+   *   2. Motion missing/failed: plain IntersectionObserver toggles .in and the
+   *      skin's own CSS transition runs (exactly the previous behavior).
+   *   3. prefers-reduced-motion: everything appears instantly, numbers render
+   *      at final value.
+   *
+   * Contract with skins:
+   *   .reveal [--i:n]      → staggered entrance (n * 85ms)
+   *   .stat .n, [data-countup] → count-up preserving prefix/suffix/commas/decimals
+   *
+   * Skins keep their .reveal{opacity:0;...transition} CSS as the tier-2
+   * fallback; tier 1 neutralizes it with inline transition:none before WAAPI.
+   */
+%>
+<script src="/vendor/motion/motion.js" defer></script>
+<script>
+(function () {
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function revealAllInstant() {
+    document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('in'); });
+  }
+
+  /* ── count-up: parse rendered text (prefix/suffix/commas/decimals safe) ── */
+  function countUp(el) {
+    if (el.dataset.counted) return;
+    var raw = (el.textContent || '').trim();
+    var m = raw.match(/-?[\d,]*\.?\d+/);
+    if (!m) { el.dataset.counted = '1'; return; }
+    var numStr = m[0];
+    var prefix = raw.slice(0, m.index);
+    var suffix = raw.slice(m.index + numStr.length);
+    var hasComma = numStr.indexOf(',') > -1;
+    var bare = numStr.replace(/,/g, '');
+    var target = parseFloat(bare);
+    if (isNaN(target)) { el.dataset.counted = '1'; return; }
+    var decPart = bare.split('.')[1];
+    var dec = decPart ? decPart.length : 0;
+    el.dataset.counted = '1';
+    function fmt(v) {
+      var s;
+      if (dec) { s = hasComma ? v.toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec }) : v.toFixed(dec); }
+      else { s = hasComma ? Math.round(v).toLocaleString() : String(Math.round(v)); }
+      return prefix + s + suffix;
+    }
+    if (reduce) { el.textContent = fmt(target); return; }
+    var start = null, dur = 1400;
+    function tick(ts) {
+      if (!start) start = ts;
+      var p = Math.min((ts - start) / dur, 1);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = fmt(target * eased);
+      if (p < 1) requestAnimationFrame(tick); else el.textContent = fmt(target);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function boot() {
+    var counters = document.querySelectorAll('.stat .n, [data-countup]');
+
+    if (reduce) {
+      revealAllInstant();
+      counters.forEach(countUp);
+      return;
+    }
+
+    var M = window.Motion;
+    var springs = M && typeof M.inView === 'function' && typeof M.animate === 'function';
+
+    if (springs) {
+      /* tier 1 — WAAPI springs. Neutralize the CSS fallback, then let Motion own it. */
+      document.querySelectorAll('.reveal').forEach(function (el) {
+        el.style.transition = 'none';
+        el.style.opacity = '0';
+      });
+      M.inView('.reveal', function (el) {
+        var i = parseFloat(getComputedStyle(el).getPropertyValue('--i')) || 0;
+        el.classList.add('in');
+        M.animate(el,
+          { opacity: [0, 1], transform: ['translateY(30px)', 'translateY(0px)'] },
+          { type: 'spring', stiffness: 110, damping: 18, mass: 1, delay: i * 0.085 }
+        );
+        return function () {}; /* animate once, stay visible */
+      }, { amount: 0.14 });
+    } else if ('IntersectionObserver' in window) {
+      /* tier 2 — the skin's CSS transition does the work */
+      var io = new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+      }, { threshold: 0.14 });
+      document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+    } else {
+      revealAllInstant();
+    }
+
+    /* counters fire when 60% visible regardless of tier */
+    if ('IntersectionObserver' in window) {
+      var sio = new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { countUp(e.target); sio.unobserve(e.target); } });
+      }, { threshold: 0.6 });
+      counters.forEach(function (el) { sio.observe(el); });
+    } else {
+      counters.forEach(countUp);
+    }
+  }
+
+  /* motion.js is deferred; boot after it (or without it if it 404s) */
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { setTimeout(boot, 0); });
+  } else {
+    setTimeout(boot, 0);
+  }
+})();
+</script>

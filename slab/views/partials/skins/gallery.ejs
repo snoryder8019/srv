@@ -1,0 +1,736 @@
+<%
+/* ============================================================================
+   SKIN: gallery — "Aperture" fine-art / editorial photographer world.
+   Full-page EJS partial. Visual design preserved from tpl-photographer.html;
+   ALL content sourced from locals (blocks/design/brand/logos/navLinks/…).
+   Light warm-paper gallery. One restrained ink-blue accent → design.color_accent.
+   ============================================================================ */
+  const _blocks   = (typeof blocks   !== 'undefined' && Array.isArray(blocks)) ? blocks : [];
+  const _design   = (typeof design   !== 'undefined' && design)   ? design   : {};
+  const _brand    = (typeof brand    !== 'undefined' && brand)    ? brand    : {};
+  const _logos    = (typeof logos    !== 'undefined' && logos)    ? logos    : {};
+  const _navLinks = (typeof navLinks !== 'undefined' && Array.isArray(navLinks)) ? navLinks : [];
+  const _vis      = (typeof visibility !== 'undefined' && visibility) ? visibility : {};
+  const _auth     = (typeof centralAuthUrl !== 'undefined' && centralAuthUrl) ? centralAuthUrl : '/admin/login';
+
+  const _brandName = _brand.name || 'Studio';
+  const _tagline   = _brand.tagline || '';
+  const _location  = _brand.location || '';
+  const _accent    = (_design.color_accent && String(_design.color_accent).trim()) ? String(_design.color_accent).trim() : '#3b4a5a';
+
+  // Editorial "plate" scenes — cycle so no two adjacent plates look alike.
+  const _scenes = ['sc-ridge','sc-north','sc-dune','sc-alpine','sc-night','sc-forest','sc-salt','sc-portrait','sc-arch'];
+  let _si = 0;
+  function nextScene(){ const s = _scenes[_si % _scenes.length]; _si++; return s; }
+  function plateNo(n){ return 'Pl. ' + (n < 10 ? '0' + n : n); }
+  function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]); }); }
+
+  // Nav / footer link splits from the navLinks model.
+  const _headerLinks = _navLinks.filter(function(l){ return l && (l.location === 'header' || l.location === 'both' || !l.location); });
+  const _footerLinks = _navLinks.filter(function(l){ return l && (l.location === 'footer' || l.location === 'both'); });
+  function isInquire(l){ return /inquire|contact|book|commission|hire/i.test((l && (l.label || l.url)) || ''); }
+
+  // Logo decision.
+  const _logoImg     = _logos.logo_primary || _logos.logo_white || '';
+  const _navShowLogo = !!(_logoImg && _design.nav_logo_display !== 'text');
+%><!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta property="og:title" content="<%= _brandName %>">
+<meta property="og:description" content="<%= _tagline %>">
+<title><%= _brandName %><%= _location ? ' · ' + _location : '' %></title>
+<style>
+  /* ============================================================
+     APERTURE — warm gallery. One accent: ink-blue (→ tenant brand).
+     ============================================================ */
+  :root{
+    --paper:#f4f1ea;
+    --panel:#ebe6db;
+    --ink:#1a1712;
+    --ink-soft:#3a352c;
+    --stone:#8c8477;
+    --stone-2:#a9a294;
+    --line:#d9d2c4;
+    --accent:<%= _accent %>;
+    --accent-deep:color-mix(in srgb, var(--accent) 74%, #000);
+
+    --serif:"Didot","Bodoni MT","Hoefler Text",ui-serif,Georgia,"Times New Roman",serif;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+
+    --measure:65ch;
+    --pad:clamp(1.25rem,5vw,6rem);
+    --ease:cubic-bezier(.22,.61,.36,1);
+
+    --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  *,*::before,*::after{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:var(--sans);font-size:clamp(15px,1.05vw,17px);
+    line-height:1.6;font-weight:380;letter-spacing:.005em;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden;
+  }
+  img{max-width:100%;display:block}
+  ::selection{background:var(--accent);color:var(--paper)}
+  a{color:inherit;text-decoration:none}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:1px}
+  h1,h2,h3{font-family:var(--serif);font-weight:400;line-height:1.02;letter-spacing:-.01em;text-wrap:balance;margin:0}
+
+  .label{font-family:var(--sans);font-size:.72rem;font-weight:600;letter-spacing:.28em;text-transform:uppercase;color:var(--stone)}
+  .plate-no{font-family:var(--sans);font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);font-weight:600;font-variant-numeric:tabular-nums}
+  .rule{height:1px;background:var(--line);border:0;margin:0}
+
+  /* ---------- PHOTOGRAPHIC PLATES ---------- */
+  .plate{position:relative;overflow:hidden;background:#2a2f36;isolation:isolate}
+  .plate::after{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 42%,transparent 55%,rgba(20,18,14,.28) 100%),var(--grain);
+    background-size:cover,160px 160px;mix-blend-mode:multiply;opacity:.5}
+  .plate > .frame{position:absolute;inset:0;z-index:3;pointer-events:none;box-shadow:inset 0 0 0 1px rgba(244,241,234,.14)}
+  .plate .scene{position:absolute;inset:0;z-index:1;will-change:transform}
+
+  .sc-ridge{background:radial-gradient(90% 55% at 62% 18%,rgba(255,241,214,.55),transparent 60%),linear-gradient(#c8c4bd 0%,#b7bdbd 22%,#9aa6a8 40%,#7c8a8f 55%,transparent 56%),linear-gradient(115deg,transparent 0 54%,#5c6669 54.2% 62%,transparent 62%),linear-gradient(120deg,transparent 0 63%,#454f52 63.2% 74%,transparent 74%),linear-gradient(122deg,transparent 0 74%,#2f3739 74.2% 100%),linear-gradient(#8fa0a3,#3a4446)}
+  .sc-ridge::before{content:"";position:absolute;inset:0;background:linear-gradient(0deg,transparent 60%,rgba(230,232,228,.5) 78%,transparent 92%),radial-gradient(60% 30% at 30% 46%,rgba(238,236,228,.45),transparent 70%);mix-blend-mode:screen}
+  .sc-north{background:radial-gradient(80% 60% at 70% 25%,rgba(198,210,214,.5),transparent 65%),linear-gradient(#aeb9bd 0 30%,#7f9096 30% 46%,#3f5157 46% 52%,#5a6b70 52% 66%,#2c393e 66% 100%),linear-gradient(100deg,transparent 0 20%,#243036 20.2% 34%,transparent 34%)}
+  .sc-north::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(20,25,28,.35),transparent 40%);mix-blend-mode:multiply}
+  .sc-portrait{background:radial-gradient(50% 60% at 38% 40%,rgba(255,226,190,.85),rgba(190,138,96,.5) 40%,transparent 66%),radial-gradient(90% 90% at 70% 80%,#3a2c22,#1c1611 70%),linear-gradient(200deg,#4a382b,#1a1410)}
+  .sc-portrait::before{content:"";position:absolute;inset:0;background:radial-gradient(38% 46% at 36% 38%,rgba(255,240,220,.35),transparent 60%);mix-blend-mode:screen}
+  .sc-dune{background:repeating-linear-gradient(105deg,rgba(120,86,52,.0) 0 26px,rgba(84,58,34,.28) 30px,rgba(120,86,52,0) 40px),radial-gradient(80% 50% at 30% 22%,rgba(255,238,206,.6),transparent 60%),linear-gradient(160deg,#d8b483 0%,#c39a63 40%,#9c7442 70%,#6f5231 100%)}
+  .sc-alpine{background:linear-gradient(118deg,transparent 0 40%,rgba(255,246,224,.55) 46% 52%,transparent 60%),linear-gradient(118deg,#e7e9e6 0 30%,#b9c1c1 30% 48%,#7d8a8c 48% 66%,#3d4749 66% 100%),linear-gradient(300deg,rgba(20,24,26,.4),transparent 50%)}
+  .sc-alpine::before{content:"";position:absolute;inset:0;background:linear-gradient(118deg,transparent 44%,rgba(255,250,232,.4) 49%,transparent 55%);mix-blend-mode:screen}
+  .sc-forest{background:linear-gradient(0deg,rgba(224,226,220,.0) 40%,rgba(214,218,210,.7) 80%),repeating-linear-gradient(90deg,rgba(28,40,32,.0) 0 30px,rgba(24,36,28,.5) 34px,rgba(28,40,32,0) 46px),linear-gradient(#8fa093 0%,#5c6d5f 40%,#33413a 75%,#1f2a25 100%)}
+  .sc-forest::before{content:"";position:absolute;inset:0;background:radial-gradient(70% 40% at 50% 70%,rgba(226,228,220,.55),transparent 70%);mix-blend-mode:screen}
+  .sc-night{background:radial-gradient(60% 34% at 46% 34%,rgba(120,164,150,.55),transparent 62%),radial-gradient(40% 24% at 62% 30%,rgba(96,132,150,.45),transparent 60%),linear-gradient(#1d2733 0%,#141b26 46%,#0f141c 100%)}
+  .sc-night::before{content:"";position:absolute;inset:0;background:radial-gradient(1px 1px at 20% 22%,rgba(255,255,255,.8),transparent),radial-gradient(1px 1px at 68% 16%,rgba(255,255,255,.7),transparent),radial-gradient(1px 1px at 82% 40%,rgba(255,255,255,.6),transparent),radial-gradient(1px 1px at 42% 12%,rgba(255,255,255,.7),transparent),radial-gradient(1px 1px at 12% 46%,rgba(255,255,255,.5),transparent)}
+  .sc-arch{background:linear-gradient(90deg,transparent 0 46%,rgba(20,18,14,.5) 46.2% 54%,transparent 54%),repeating-linear-gradient(0deg,rgba(20,18,14,.0) 0 34px,rgba(20,18,14,.22) 35px,rgba(20,18,14,0) 44px),linear-gradient(112deg,#efe9dd 0 44%,#cfc7b7 44% 62%,#8a8272 62% 100%)}
+  .sc-arch::before{content:"";position:absolute;inset:0;background:linear-gradient(112deg,rgba(255,250,235,.45),transparent 40%);mix-blend-mode:screen}
+  .sc-salt{background:linear-gradient(0deg,rgba(210,214,212,.9) 0 24%,transparent 60%),radial-gradient(70% 40% at 44% 40%,rgba(240,238,230,.6),transparent 70%),linear-gradient(#c7ccca,#9fa9a9 55%,#6f7a7c 100%)}
+
+  /* ---------- NAV ---------- */
+  .nav{position:fixed;inset:0 0 auto 0;z-index:60;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.15rem var(--pad);background:transparent;transition:background .5s var(--ease),box-shadow .5s var(--ease),padding .4s var(--ease)}
+  .nav.stuck{background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(9px) saturate(1.1);box-shadow:0 1px 0 var(--line);padding-top:.85rem;padding-bottom:.85rem}
+  .wordmark{font-family:var(--serif);font-size:1.28rem;letter-spacing:.42em;text-indent:.42em;text-transform:uppercase;font-weight:400;color:var(--ink);display:inline-flex;flex-direction:column}
+  .wordmark img{height:clamp(28px,3vw,44px);width:auto;letter-spacing:0;text-indent:0}
+  .wordmark small{display:block;font-family:var(--sans);font-size:.54rem;letter-spacing:.34em;color:var(--stone);text-indent:.34em;margin-top:.2em;font-weight:600}
+  .nav-links{display:flex;gap:clamp(1.1rem,3vw,2.6rem);align-items:center}
+  .nav-links a{font-size:.76rem;letter-spacing:.2em;text-transform:uppercase;font-weight:500;color:var(--ink-soft);position:relative;padding:.3rem 0}
+  .nav-links a::after{content:"";position:absolute;left:0;bottom:0;height:1px;width:0;background:var(--accent);transition:width .4s var(--ease)}
+  .nav-links a:hover::after,.nav-links a:focus-visible::after{width:100%}
+  .nav-links a.inquire{color:var(--accent);font-weight:600}
+  .nav-menu{display:none;background:none;border:0;color:var(--ink);cursor:pointer;padding:.4rem}
+  @media (max-width:720px){
+    .nav-links{position:fixed;inset:0;flex-direction:column;justify-content:center;background:color-mix(in srgb,var(--paper) 97%,transparent);backdrop-filter:blur(10px);gap:1.8rem;transform:translateY(-100%);transition:transform .5s var(--ease)}
+    .nav-links a{font-size:1rem}
+    .nav[data-open="true"] .nav-links{transform:translateY(0)}
+    .nav-menu{display:block;z-index:2}
+  }
+
+  /* ---------- HERO ---------- */
+  .hero{position:relative;min-height:100svh;display:flex;align-items:flex-end}
+  .hero .plate{position:absolute;inset:0;z-index:0}
+  .hero .scene{inset:-6%}
+  .hero-scrim{position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(180deg,rgba(28,26,20,.28) 0%,transparent 26%,transparent 52%,rgba(28,26,20,.5) 100%)}
+  .hero-inner{position:relative;z-index:3;width:100%;padding:0 var(--pad) clamp(2.2rem,6vw,4.5rem);display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:2rem}
+  .hero-mast{max-width:min(72vw,20ch)}
+  .hero-eyebrow{color:var(--paper);opacity:.82;margin-bottom:1.1rem}
+  .hero h1{color:var(--paper);font-size:clamp(3rem,10.5vw,9.5rem);line-height:.9;letter-spacing:-.02em;text-shadow:0 1px 40px rgba(0,0,0,.25)}
+  .hero h1 em{font-style:italic;color:#efe6d4}
+  .hero-tag{color:var(--paper);opacity:.9;max-width:34ch;margin-top:1.4rem;font-size:clamp(.95rem,1.4vw,1.15rem);line-height:1.5}
+  .hero-cta{display:inline-flex;align-items:center;gap:.7rem;margin-top:1.8rem;color:var(--paper);font-size:.8rem;letter-spacing:.2em;text-transform:uppercase;font-weight:600;padding:.4rem 0;position:relative}
+  .hero-cta .arrow{transition:transform .4s var(--ease)}
+  .hero-cta::after{content:"";position:absolute;left:0;bottom:0;height:1px;width:100%;background:var(--paper);transform-origin:left;transform:scaleX(1);opacity:.6}
+  .hero-cta:hover .arrow{transform:translateX(6px)}
+  .hero-caption{justify-self:end;align-self:end;text-align:right;color:var(--paper);font-size:.68rem;letter-spacing:.14em;line-height:1.7;opacity:.78;font-variant-numeric:tabular-nums;border-right:1px solid rgba(244,241,234,.4);padding-right:.9rem}
+  @media (max-width:720px){
+    .hero-inner{grid-template-columns:1fr}
+    .hero-caption{justify-self:start;text-align:left;border-right:0;border-left:1px solid rgba(244,241,234,.4);padding-right:0;padding-left:.9rem;margin-top:.5rem}
+  }
+  .scroll-cue{position:absolute;left:var(--pad);bottom:1.4rem;z-index:3;color:var(--paper);opacity:.7;font-size:.6rem;letter-spacing:.3em;text-transform:uppercase;display:flex;align-items:center;gap:.6rem}
+  .scroll-cue .bar{width:1px;height:34px;background:var(--paper);opacity:.6;transform-origin:top;animation:cue 2.6s var(--ease) infinite}
+  @keyframes cue{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
+  @keyframes kenburns{0%{transform:scale(1.04) translate(0,0)}100%{transform:scale(1.12) translate(-1.5%,-1.5%)}}
+  .hero .scene{animation:kenburns 34s ease-in-out infinite alternate}
+
+  /* ---------- CREDENTIALS / STATS ---------- */
+  .creds{padding:clamp(3rem,7vw,5.5rem) var(--pad);border-bottom:1px solid var(--line)}
+  .creds-head{margin:0 0 clamp(1.6rem,3vw,2.4rem)}
+  .creds-head h2{font-size:clamp(1.6rem,3.4vw,2.6rem)}
+  .creds-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
+  .cred{background:var(--paper);padding:clamp(1.4rem,3vw,2.4rem)}
+  .cred .num{font-family:var(--serif);font-size:clamp(2.4rem,5vw,3.6rem);line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink);display:block}
+  .cred .num .suffix{font-size:.5em;color:var(--accent);vertical-align:.35em;margin-left:.08em}
+  .cred .cap{margin-top:.9rem;display:block;max-width:22ch}
+  @media (max-width:760px){.creds-grid{grid-template-columns:repeat(2,1fr)}}
+
+  /* ---------- SECTION SHELL ---------- */
+  .sec{padding:clamp(4rem,9vw,8rem) var(--pad)}
+  .sec-head{display:flex;align-items:flex-end;justify-content:space-between;gap:2rem;margin-bottom:clamp(2.4rem,5vw,4rem);flex-wrap:wrap}
+  .sec-head h2{font-size:clamp(2rem,4.6vw,3.6rem)}
+  .sec-head .label{margin-bottom:1rem;display:block}
+  .sec-lede{max-width:46ch;color:var(--ink-soft);font-size:1.02rem}
+
+  /* ---------- WORK GRID (cards) ---------- */
+  .gallery{display:grid;grid-template-columns:repeat(12,1fr);gap:clamp(1.1rem,2.4vw,2.2rem)}
+  .work{position:relative;grid-column:span 6;text-align:left}
+  .work.w-lead{grid-column:1 / span 7;grid-row:span 2}
+  .work.w-tall{grid-column:8 / span 5}
+  .work.w-wide{grid-column:1 / span 12}
+  .work.w-half-l{grid-column:1 / span 5}
+  .work.w-half-r{grid-column:6 / span 7}
+  .work .plate{aspect-ratio:4/3;cursor:pointer;transition:box-shadow .6s var(--ease);box-shadow:0 1px 2px rgba(26,23,18,.06)}
+  .work.w-lead .plate{aspect-ratio:4/5}
+  .work.w-tall .plate{aspect-ratio:3/4}
+  .work.w-wide .plate{aspect-ratio:21/9}
+  .work .scene{transition:transform 1.2s var(--ease),filter 1.2s var(--ease);transform:scale(1.01)}
+  .work:hover .scene,.work:focus-within .scene{transform:scale(1.07)}
+  .work:hover .plate{box-shadow:0 24px 60px -24px rgba(26,23,18,.4)}
+  .work .overlay{position:absolute;inset:0;z-index:4;pointer-events:none;display:flex;flex-direction:column;justify-content:flex-end;padding:clamp(1rem,2vw,1.6rem);background:linear-gradient(0deg,rgba(20,18,14,.62) 0%,rgba(20,18,14,.12) 40%,transparent 66%);opacity:0;transition:opacity .6s var(--ease)}
+  .work:hover .overlay,.work:focus-within .overlay{opacity:1}
+  .work .overlay .plate-no{color:#cdb79c;transform:translateY(8px);transition:transform .6s var(--ease) .04s}
+  .work .overlay .w-title{font-family:var(--serif);color:var(--paper);font-size:clamp(1.15rem,2vw,1.6rem);line-height:1.05;margin:.35rem 0 .5rem;transform:translateY(8px);transition:transform .6s var(--ease) .08s}
+  .work .overlay .exif{color:rgba(244,241,234,.82);font-size:.66rem;letter-spacing:.13em;text-transform:uppercase;font-variant-numeric:tabular-nums;transform:translateY(8px);transition:transform .6s var(--ease) .12s}
+  .work:hover .overlay > *,.work:focus-within .overlay > *{transform:translateY(0)}
+  .work .cap-row{display:flex;justify-content:space-between;gap:1rem;align-items:baseline;margin-top:.9rem;padding-top:.75rem;border-top:1px solid var(--line)}
+  .work .cap-row .t{font-family:var(--serif);font-size:1.02rem;color:var(--ink)}
+  .work .cap-row .loc{font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--stone)}
+  @media (max-width:820px){
+    .gallery{grid-template-columns:1fr 1fr;gap:1.1rem}
+    .work,.work.w-lead,.work.w-tall,.work.w-wide,.work.w-half-l,.work.w-half-r{grid-column:auto;grid-row:auto}
+    .work.w-lead,.work.w-wide{grid-column:1 / -1}
+    .work .plate,.work.w-lead .plate,.work.w-tall .plate{aspect-ratio:4/5}
+    .work.w-wide .plate{aspect-ratio:16/10}
+  }
+  @media (max-width:520px){
+    .gallery{grid-template-columns:1fr}
+    .work,.work.w-wide{grid-column:1 / -1}
+    .work .plate,.work.w-wide .plate{aspect-ratio:4/5}
+  }
+
+  /* ---------- STUDIO / STATEMENT SPLIT ---------- */
+  .split{background:var(--panel);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .split-grid{display:grid;grid-template-columns:1.05fr .95fr;align-items:stretch}
+  .split-media{position:relative;min-height:60vh}
+  .split-media .plate{position:absolute;inset:0}
+  .split-media img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .split-media .scene{transition:transform 1.4s var(--ease)}
+  .split-media:hover .scene{transform:scale(1.05)}
+  .split-media .plate-tag{position:absolute;left:1.4rem;bottom:1.4rem;z-index:5;color:var(--paper);font-size:.66rem;letter-spacing:.2em;text-transform:uppercase;border-left:1px solid rgba(244,241,234,.5);padding-left:.8rem;line-height:1.7;font-variant-numeric:tabular-nums}
+  .split-body{padding:clamp(2.6rem,6vw,6rem);display:flex;flex-direction:column;justify-content:center;max-width:none}
+  .split-body h2{font-size:clamp(2rem,4vw,3.2rem);margin:1rem 0 1.6rem}
+  .statement{max-width:var(--measure)}
+  .statement p{margin:0 0 1.15rem;color:var(--ink-soft);line-height:1.72}
+  .statement p:first-of-type::first-letter{font-family:var(--serif);float:left;font-size:3.4em;line-height:.72;padding:.05em .12em 0 0;color:var(--accent)}
+  .split-cta{margin-top:1.4rem;align-self:flex-start;display:inline-flex;align-items:center;gap:.6rem;font-size:.76rem;letter-spacing:.2em;text-transform:uppercase;font-weight:600;color:var(--accent);position:relative;padding-bottom:.3rem}
+  .split-cta::after{content:"";position:absolute;left:0;bottom:0;height:1px;width:100%;background:var(--accent);transform-origin:left;transition:transform .4s var(--ease)}
+  .split-cta .arrow{transition:transform .4s var(--ease)}
+  .split-cta:hover .arrow{transform:translateX(5px)}
+  @media (max-width:860px){.split-grid{grid-template-columns:1fr}.split-media{min-height:52vh}}
+
+  /* ---------- OFFERINGS (pricing) ---------- */
+  .offer-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
+  .offer{background:var(--paper);padding:clamp(1.8rem,3.5vw,2.8rem);display:flex;flex-direction:column;gap:1rem;transition:background .5s var(--ease)}
+  .offer:hover{background:var(--panel)}
+  .offer .idx{font-family:var(--serif);font-size:.9rem;color:var(--accent);font-variant-numeric:tabular-nums}
+  .offer h3{font-size:clamp(1.4rem,2.4vw,1.9rem)}
+  .offer .price{font-family:var(--serif);font-size:1.05rem;color:var(--stone);font-variant-numeric:tabular-nums}
+  .offer p{color:var(--ink-soft);font-size:.95rem;margin:0;max-width:34ch}
+  .offer ul{list-style:none;margin:.4rem 0 0;padding:0;display:flex;flex-direction:column;gap:.55rem}
+  .offer li{font-size:.82rem;color:var(--ink-soft);display:flex;gap:.6rem;align-items:baseline;padding-bottom:.55rem;border-bottom:1px solid var(--line)}
+  .offer li:last-child{border-bottom:0}
+  .offer li::before{content:"";width:5px;height:5px;background:var(--accent);border-radius:50%;flex:0 0 auto;transform:translateY(-1px)}
+  .offer .go{margin-top:auto;font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;font-weight:600;color:var(--accent);display:inline-flex;gap:.5rem;align-items:center;padding-top:.6rem}
+  .offer .go .arrow{transition:transform .4s var(--ease)}
+  .offer:hover .go .arrow{transform:translateX(5px)}
+  @media (max-width:800px){.offer-grid{grid-template-columns:1fr}}
+
+  /* ---------- TEXT (editorial fallback) ---------- */
+  .prose{max-width:var(--measure);margin:0 auto}
+  .prose .label{display:block;margin-bottom:1rem}
+  .prose h2{font-size:clamp(1.9rem,4vw,3rem);margin-bottom:1.3rem}
+  .prose .body{color:var(--ink-soft);line-height:1.72}
+  .prose .body p{margin:0 0 1.1rem}
+
+  /* ---------- TESTIMONIALS ---------- */
+  .quotes{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(1.1rem,2.4vw,2rem)}
+  .quote{border-top:1px solid var(--line);padding-top:1.4rem}
+  .quote blockquote{margin:0;font-family:var(--serif);font-size:clamp(1.05rem,1.6vw,1.3rem);line-height:1.45;color:var(--ink)}
+  .quote blockquote::before{content:"\201C";color:var(--accent);margin-right:.05em}
+  .quote .by{margin-top:1.1rem;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--stone)}
+  .quote .by b{color:var(--ink);font-weight:600;letter-spacing:.14em}
+  @media (max-width:820px){.quotes{grid-template-columns:1fr}}
+
+  /* ---------- FAQ ---------- */
+  .faq-list{max-width:var(--measure);margin:0 auto}
+  .faq-item{border-top:1px solid var(--line);padding:1.2rem 0}
+  .faq-item:last-child{border-bottom:1px solid var(--line)}
+  .faq-q{font-family:var(--serif);font-size:1.2rem;color:var(--ink);cursor:pointer;position:relative;padding-right:2rem;list-style:none}
+  .faq-q::-webkit-details-marker{display:none}
+  .faq-item summary::after{content:"+";position:absolute;right:0;top:0;color:var(--accent);font-family:var(--sans);transition:transform .3s var(--ease)}
+  .faq-item[open] summary::after{content:"\2212"}
+  .faq-a{margin-top:.9rem;color:var(--ink-soft);line-height:1.7}
+
+  /* ---------- INQUIRE CTA ---------- */
+  .inquire{position:relative;overflow:hidden;color:var(--paper);isolation:isolate}
+  .inquire .plate{position:absolute;inset:0;z-index:-1}
+  .inquire .scene{inset:-4%}
+  .inquire::before{content:"";position:absolute;inset:0;z-index:0;background:linear-gradient(180deg,rgba(18,22,28,.66),rgba(15,18,24,.78))}
+  .inquire-inner{position:relative;z-index:1;padding:clamp(4.5rem,10vw,9rem) var(--pad);display:grid;grid-template-columns:1.2fr .8fr;gap:clamp(2rem,5vw,4rem);align-items:end}
+  .inquire h2{color:var(--paper);font-size:clamp(2.4rem,6vw,5rem);line-height:.98}
+  .inquire h2 em{font-style:italic;color:#e9dcc6}
+  .inquire .sub{color:rgba(244,241,234,.85);max-width:40ch;margin-top:1.4rem}
+  .inquire-side{display:flex;flex-direction:column;gap:1.3rem}
+  .btn{align-self:flex-start;display:inline-flex;align-items:center;gap:.8rem;background:var(--paper);color:var(--ink);padding:1rem 1.7rem;font-size:.78rem;letter-spacing:.2em;text-transform:uppercase;font-weight:600;transition:background .4s var(--ease),color .4s var(--ease),transform .4s var(--ease)}
+  .btn:hover{background:var(--accent);color:var(--paper);transform:translateY(-2px)}
+  .btn .arrow{transition:transform .4s var(--ease)}
+  .btn:hover .arrow{transform:translateX(5px)}
+  .inquire-side .meta{color:rgba(244,241,234,.8);font-size:.8rem;line-height:1.8;border-top:1px solid rgba(244,241,234,.28);padding-top:1.2rem}
+  @media (max-width:760px){.inquire-inner{grid-template-columns:1fr}}
+
+  /* ---------- TICKER ---------- */
+  .ticker{border-top:1px solid var(--line);border-bottom:1px solid var(--line);overflow:hidden;white-space:nowrap;padding:1rem 0;background:var(--panel)}
+  .ticker-track{display:inline-flex;gap:0;animation:tick 30s linear infinite}
+  .ticker-item{display:inline-flex;align-items:center;gap:1.4rem;padding:0 1.4rem;font-size:.72rem;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+  .ticker-item::after{content:"";width:5px;height:5px;border-radius:50%;background:var(--accent)}
+  @keyframes tick{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+  /* ---------- FOOTER ---------- */
+  footer{padding:clamp(3rem,6vw,5rem) var(--pad) 2.4rem;background:var(--paper)}
+  .foot-top{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:2rem;padding-bottom:2.4rem;border-bottom:1px solid var(--line)}
+  .foot-top .wordmark{font-size:1.4rem}
+  .foot-blurb{color:var(--ink-soft);max-width:34ch;margin-top:1.2rem;font-size:.92rem}
+  .foot-col h4{font-family:var(--sans);font-size:.68rem;letter-spacing:.24em;text-transform:uppercase;color:var(--stone);font-weight:600;margin:0 0 1rem}
+  .foot-col a,.foot-col p{display:block;font-size:.9rem;color:var(--ink-soft);margin:0 0 .6rem}
+  .foot-col a:hover{color:var(--accent)}
+  .foot-bot{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-top:1.8rem;font-size:.72rem;letter-spacing:.1em;color:var(--stone);text-transform:uppercase;font-variant-numeric:tabular-nums}
+  .foot-admin a{color:var(--stone-2)}
+  .foot-admin a:hover{color:var(--accent)}
+  @media (max-width:760px){.foot-top{grid-template-columns:1fr 1fr}.foot-top .brand{grid-column:1 / -1}}
+
+  /* ---------- SCROLL REVEAL ---------- */
+  .reveal{opacity:0;transform:translateY(22px);transition:opacity 1s var(--ease),transform 1s var(--ease)}
+  .reveal.in{opacity:1;transform:none}
+  .reveal[data-d="1"]{transition-delay:.08s}
+  .reveal[data-d="2"]{transition-delay:.16s}
+  .reveal[data-d="3"]{transition-delay:.24s}
+  .reveal[data-d="4"]{transition-delay:.32s}
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none !important;transition:none !important}
+    .reveal{opacity:1;transform:none}
+    .hero .scene{animation:none}
+    .scroll-cue .bar{animation:none}
+    .ticker-track{animation:none}
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= NAV ================= -->
+<% if (_vis.header !== false) { %>
+<header class="nav" id="nav" data-open="false">
+  <a class="wordmark" href="#top" aria-label="<%= _brandName %> — home">
+    <% if (_navShowLogo) { %>
+      <img src="<%= _logoImg %>" alt="<%= _brandName %>">
+    <% } else { %>
+      <%= _brandName %>
+      <% if (_location || _tagline) { %><small><%= _location || _tagline %></small><% } %>
+    <% } %>
+  </a>
+  <% if (_headerLinks.length) { %>
+  <button class="nav-menu" id="navToggle" aria-expanded="false" aria-controls="navLinks" aria-label="Toggle menu">
+    <svg width="26" height="12" viewBox="0 0 26 12" fill="none" aria-hidden="true"><path d="M0 1h26M0 11h18" stroke="currentColor" stroke-width="1.4"/></svg>
+  </button>
+  <nav class="nav-links" id="navLinks" aria-label="Primary">
+    <% _headerLinks.forEach(function(l){ %>
+      <a href="<%= l.url || '#' %>"<%= isInquire(l) ? ' class="inquire"' : '' %><% if (l.target === '_blank') { %> target="_blank" rel="noopener"<% } %>><%= l.label || l.url %></a>
+    <% }); %>
+  </nav>
+  <% } %>
+</header>
+<% } %>
+
+<main id="top">
+<%
+  // Pre-scan: is there a hero block? If not, the first block still renders fine.
+  _blocks.forEach(function(block){
+    if (!block || !block.type) return;
+    const f  = block.fields || {};
+    const im = block.images || {};
+%>
+<% if (block.type === 'hero') { %>
+  <!-- ===== HERO ===== -->
+  <section class="hero" aria-label="Featured plate" data-slab-block="<%= block.id %>" data-slab-type="hero">
+    <div class="plate" aria-hidden="true"><div class="scene sc-ridge"></div><div class="frame"></div></div>
+    <div class="hero-scrim"></div>
+    <div class="hero-inner">
+      <div class="hero-mast">
+        <% if (_tagline || _location) { %><p class="label hero-eyebrow"><%= _tagline || _location %></p><% } %>
+        <% if (f.heading) { %><h1 data-slab-field="heading"><%- f.heading %></h1><% } %>
+        <% if (f.subheading) { %><p class="hero-tag" data-slab-field="subheading"><%- f.subheading %></p><% } %>
+        <% if (f.cta_text) { %>
+          <a class="hero-cta" href="<%= f.cta_link || '#inquire' %>">
+            <span data-slab-field="cta_text"><%- f.cta_text %></span>
+            <span class="arrow" aria-hidden="true">&rarr;</span>
+          </a>
+        <% } %>
+      </div>
+      <% if (_location) { %>
+      <figure class="hero-caption">
+        Pl. 01<br><%= _brandName %><% if (_location) { %><br><%= _location %><% } %>
+      </figure>
+      <% } %>
+    </div>
+    <div class="scroll-cue" aria-hidden="true"><span class="bar"></span>Scroll</div>
+  </section>
+
+<% } else if (block.type === 'stats') { %>
+  <!-- ===== CREDENTIALS / STATS ===== -->
+  <section class="creds" aria-label="In numbers" data-slab-block="<%= block.id %>" data-slab-type="stats">
+    <% if (f.heading) { %><div class="creds-head reveal"><h2 data-slab-field="heading"><%- f.heading %></h2></div><% } %>
+    <div class="creds-grid">
+      <% [1,2,3,4].forEach(function(n, i){ %>
+        <% if (f['stat'+n+'_num'] || f['stat'+n+'_label']) {
+             const raw = String(f['stat'+n+'_num'] == null ? '' : f['stat'+n+'_num']).trim();
+             const m = raw.match(/^([0-9][0-9,]*)([^0-9].*)?$/);
+             const countable = !!m;
+             const digits = countable ? m[1].replace(/,/g,'') : '';
+             const suffix = countable ? (m[2] || '') : '';
+        %>
+        <div class="cred reveal"<% if (i) { %> data-d="<%= i %>"<% } %>>
+          <% if (raw) { %>
+            <% if (countable) { %>
+              <span class="num" data-slab-field="stat<%= n %>_num" data-count="<%= digits %>"<% if (suffix) { %> data-suffix="<%= esc(suffix) %>"<% } %>><%- raw %></span>
+            <% } else { %>
+              <span class="num" data-slab-field="stat<%= n %>_num"><%- raw %></span>
+            <% } %>
+          <% } %>
+          <% if (f['stat'+n+'_label']) { %><span class="cap label" data-slab-field="stat<%= n %>_label"><%- f['stat'+n+'_label'] %></span><% } %>
+        </div>
+        <% } %>
+      <% }); %>
+    </div>
+  </section>
+
+<% } else if (block.type === 'cards') { %>
+  <!-- ===== SELECTED WORK (cards → editorial grid) ===== -->
+  <section class="sec" data-slab-block="<%= block.id %>" data-slab-type="cards">
+    <% if (f.heading || f.subtext) { %>
+    <div class="sec-head">
+      <div>
+        <span class="label reveal"><%= _location || 'Portfolio' %></span>
+        <% if (f.heading) { %><h2 class="reveal" data-d="1" data-slab-field="heading"><%- f.heading %></h2><% } %>
+      </div>
+      <% if (f.subtext) { %><p class="sec-lede reveal" data-d="2" data-slab-field="subtext"><%- f.subtext %></p><% } %>
+    </div>
+    <% } %>
+    <div class="gallery">
+      <%
+        const _spanMap = ['w-lead','w-tall','w-half-l','w-half-r'];
+        let _wi = 0;
+        [1,2,3,4].forEach(function(n){
+          const t = f['card'+n+'_title'];
+          const b = f['card'+n+'_body'];
+          if (!t && !b) return;
+          const span = _spanMap[_wi] || (_wi % 2 ? 'w-half-r' : 'w-half-l');
+          _wi++;
+      %>
+      <article class="work <%= span %> reveal"<% if (_wi>1) { %> data-d="<%= (_wi-1) %>"<% } %> tabindex="0" aria-label="<%= t ? esc(t) : 'Plate' %>">
+        <div class="plate"><div class="scene <%= nextScene() %>"></div><div class="frame"></div>
+          <div class="overlay">
+            <span class="plate-no"><%= plateNo(n) %></span>
+            <% if (t) { %><span class="w-title"><%- t %></span><% } %>
+            <% if (b) { %><span class="exif"><%- b %></span><% } %>
+          </div>
+        </div>
+        <div class="cap-row">
+          <% if (t) { %><span class="t" data-slab-field="card<%= n %>_title"><%- t %></span><% } %>
+          <% if (b) { %><span class="loc" data-slab-field="card<%= n %>_body"><%- b %></span><% } %>
+        </div>
+      </article>
+      <% }); %>
+    </div>
+  </section>
+
+<% } else if (block.type === 'split') { %>
+  <!-- ===== STUDIO / STATEMENT SPLIT ===== -->
+  <section class="split" data-slab-block="<%= block.id %>" data-slab-type="split">
+    <div class="split-grid">
+      <div class="split-media reveal">
+        <% if (im.main_image) { %>
+          <img src="<%= im.main_image %>" alt="<%= f.heading ? esc(f.heading) : _brandName %>" loading="lazy" decoding="async">
+        <% } else { %>
+          <div class="plate"><div class="scene <%= nextScene() %>"></div><div class="frame"></div></div>
+        <% } %>
+        <div class="plate-tag"><%= _brandName %><% if (_location) { %><br><%= _location %><% } %></div>
+      </div>
+      <div class="split-body reveal" data-d="1">
+        <span class="label">On the Work</span>
+        <% if (f.heading) { %><h2 data-slab-field="heading"><%- f.heading %></h2><% } %>
+        <% if (f.body) { %>
+          <div class="statement" data-slab-field="body">
+            <% String(f.body).split(/\n{2,}|\r?\n/).map(function(s){return s.trim();}).filter(Boolean).forEach(function(p){ %><p><%- p %></p><% }); %>
+          </div>
+        <% } %>
+        <% if (f.cta_text) { %>
+          <a class="split-cta" href="<%= f.cta_link || '#inquire' %>"><span data-slab-field="cta_text"><%- f.cta_text %></span><span class="arrow" aria-hidden="true">&rarr;</span></a>
+        <% } %>
+      </div>
+    </div>
+  </section>
+
+<% } else if (block.type === 'pricing') { %>
+  <!-- ===== OFFERINGS (pricing) ===== -->
+  <section class="sec" data-slab-block="<%= block.id %>" data-slab-type="pricing">
+    <% if (f.heading || f.subtext) { %>
+    <div class="sec-head">
+      <div>
+        <span class="label reveal">How to Acquire</span>
+        <% if (f.heading) { %><h2 class="reveal" data-d="1" data-slab-field="heading"><%- f.heading %></h2><% } %>
+      </div>
+      <% if (f.subtext) { %><p class="sec-lede reveal" data-d="2" data-slab-field="subtext"><%- f.subtext %></p><% } %>
+    </div>
+    <% } %>
+    <div class="offer-grid">
+      <% [1,2,3].forEach(function(n){ %>
+        <% if (f['tier'+n+'_name']) { %>
+        <div class="offer reveal"<% if (n>1) { %> data-d="<%= (n-1) %>"<% } %>>
+          <span class="idx"><%= (n<10?'0'+n:n) %></span>
+          <h3 data-slab-field="tier<%= n %>_name"><%- f['tier'+n+'_name'] %></h3>
+          <% if (f['tier'+n+'_price']) { %><span class="price" data-slab-field="tier<%= n %>_price"><%- f['tier'+n+'_price'] %></span><% } %>
+          <% if (f['tier'+n+'_features']) { %>
+          <ul>
+            <% String(f['tier'+n+'_features']).split('\n').map(function(s){return s.trim();}).filter(Boolean).forEach(function(li){ %><li><%- li %></li><% }); %>
+          </ul>
+          <% } %>
+          <% if (f['tier'+n+'_cta']) { %><a class="go" href="#inquire"><span data-slab-field="tier<%= n %>_cta"><%- f['tier'+n+'_cta'] %></span><span class="arrow" aria-hidden="true">&rarr;</span></a><% } %>
+        </div>
+        <% } %>
+      <% }); %>
+    </div>
+  </section>
+
+<% } else if (block.type === 'testimonials') { %>
+  <!-- ===== TESTIMONIALS ===== -->
+  <section class="sec" data-slab-block="<%= block.id %>" data-slab-type="testimonials">
+    <% if (f.heading || f.subtext) { %>
+    <div class="sec-head">
+      <div>
+        <span class="label reveal">In Their Words</span>
+        <% if (f.heading) { %><h2 class="reveal" data-d="1" data-slab-field="heading"><%- f.heading %></h2><% } %>
+      </div>
+      <% if (f.subtext) { %><p class="sec-lede reveal" data-d="2" data-slab-field="subtext"><%- f.subtext %></p><% } %>
+    </div>
+    <% } %>
+    <div class="quotes">
+      <% [1,2,3].forEach(function(n){ %>
+        <% if (f['t'+n+'_quote']) { %>
+        <figure class="quote reveal"<% if (n>1) { %> data-d="<%= (n-1) %>"<% } %>>
+          <blockquote data-slab-field="t<%= n %>_quote"><%- f['t'+n+'_quote'] %></blockquote>
+          <% if (f['t'+n+'_name'] || f['t'+n+'_role']) { %>
+          <figcaption class="by">
+            <% if (f['t'+n+'_name']) { %><b data-slab-field="t<%= n %>_name"><%- f['t'+n+'_name'] %></b><% } %><% if (f['t'+n+'_name'] && f['t'+n+'_role']) { %> · <% } %><% if (f['t'+n+'_role']) { %><span data-slab-field="t<%= n %>_role"><%- f['t'+n+'_role'] %></span><% } %>
+          </figcaption>
+          <% } %>
+        </figure>
+        <% } %>
+      <% }); %>
+    </div>
+  </section>
+
+<% } else if (block.type === 'faq') { %>
+  <!-- ===== FAQ ===== -->
+  <section class="sec" data-slab-block="<%= block.id %>" data-slab-type="faq">
+    <% if (f.heading) { %>
+    <div class="sec-head"><div><span class="label reveal">Questions</span><h2 class="reveal" data-d="1" data-slab-field="heading"><%- f.heading %></h2></div></div>
+    <% } %>
+    <div class="faq-list">
+      <% [1,2,3,4,5].forEach(function(n){ %>
+        <% if (f['q'+n] || f['a'+n]) { %>
+        <details class="faq-item reveal">
+          <summary class="faq-q" data-slab-field="q<%= n %>"><%- f['q'+n] || '' %></summary>
+          <% if (f['a'+n]) { %><div class="faq-a" data-slab-field="a<%= n %>"><%- f['a'+n] %></div><% } %>
+        </details>
+        <% } %>
+      <% }); %>
+    </div>
+  </section>
+
+<% } else if (block.type === 'cta') { %>
+  <!-- ===== INQUIRE CTA ===== -->
+  <section class="inquire" id="inquire" data-slab-block="<%= block.id %>" data-slab-type="cta">
+    <div class="plate" aria-hidden="true"><div class="scene sc-arch"></div></div>
+    <div class="inquire-inner">
+      <div class="reveal">
+        <span class="label" style="color:rgba(244,241,234,.7)">Inquire</span>
+        <% if (f.heading) { %><h2 data-slab-field="heading"><%- f.heading %></h2><% } %>
+        <% if (f.subtext) { %><p class="sub" data-slab-field="subtext"><%- f.subtext %></p><% } %>
+      </div>
+      <div class="inquire-side reveal" data-d="1">
+        <% if (f.btn_text) { %>
+          <a class="btn" href="<%= f.btn_link || '#' %>"><span data-slab-field="btn_text"><%- f.btn_text %></span><span class="arrow" aria-hidden="true">&rarr;</span></a>
+        <% } %>
+        <% if (_location || _tagline) { %>
+        <div class="meta"><% if (_location) { %><%= _location %><% } %><% if (_location && _tagline) { %><br><% } %><% if (_tagline) { %><%= _tagline %><% } %></div>
+        <% } %>
+      </div>
+    </div>
+  </section>
+
+<% } else if (block.type === 'text') { %>
+  <!-- ===== TEXT (editorial) ===== -->
+  <section class="sec" data-slab-block="<%= block.id %>" data-slab-type="text">
+    <div class="prose reveal">
+      <% if (f.subheading) { %><span class="label" data-slab-field="subheading"><%- f.subheading %></span><% } %>
+      <% if (f.heading) { %><h2 data-slab-field="heading"><%- f.heading %></h2><% } %>
+      <% if (f.body) { %>
+        <div class="body" data-slab-field="body">
+          <% String(f.body).split(/\n{2,}|\r?\n/).map(function(s){return s.trim();}).filter(Boolean).forEach(function(p){ %><p><%- p %></p><% }); %>
+        </div>
+      <% } %>
+    </div>
+  </section>
+
+<% } else if (block.type === 'ticker') { %>
+  <!-- ===== TICKER ===== -->
+  <%
+    let _items = String(f.items || '').split('|').map(function(s){return s.trim();}).filter(Boolean);
+    if (!_items.length && Array.isArray(_brand.services)) _items = _brand.services.slice();
+    while (_items.length && _items.length < 4) _items = _items.concat(_items);
+  %>
+  <% if (_items.length) { %>
+  <section class="ticker" data-slab-block="<%= block.id %>" data-slab-type="ticker" aria-hidden="true">
+    <div class="ticker-track">
+      <% for (var _r=0; _r<2; _r++) { %>
+        <% _items.forEach(function(it){ %><span class="ticker-item"><%- it %></span><% }); %>
+      <% } %>
+    </div>
+  </section>
+  <% } %>
+
+<% } else { %>
+  <!-- ===== FALLBACK (unknown block) ===== -->
+  <section class="sec" data-slab-block="<%= block.id %>" data-slab-type="<%= block.type %>">
+    <div class="prose reveal">
+      <% if (f.heading) { %><h2 data-slab-field="heading"><%- f.heading %></h2><% } %>
+      <% if (f.body) { %><div class="body" data-slab-field="body"><%- f.body %></div>
+      <% } else if (f.subtext) { %><div class="body" data-slab-field="subtext"><%- f.subtext %></div><% } %>
+    </div>
+  </section>
+<% } %>
+<% }); %>
+</main>
+
+<!-- ================= FOOTER ================= -->
+<% if (_vis.footer !== false) { %>
+<footer>
+  <div class="foot-top">
+    <div class="brand">
+      <span class="wordmark"><%= _navShowLogo ? '' : _brandName %><% if (_navShowLogo) { %><img src="<%= _logoImg %>" alt="<%= _brandName %>"><% } %></span>
+      <% if (_tagline) { %><p class="foot-blurb"><%= _tagline %></p><% } %>
+    </div>
+    <% if (_footerLinks.length) { %>
+    <div class="foot-col">
+      <h4>Explore</h4>
+      <% _footerLinks.forEach(function(l){ %>
+        <a href="<%= l.url || '#' %>"<% if (l.target === '_blank') { %> target="_blank" rel="noopener"<% } %>><%= l.label || l.url %></a>
+      <% }); %>
+    </div>
+    <% } %>
+    <div class="foot-col">
+      <h4>Studio</h4>
+      <% if (_location) { %><p><%= _location %></p><% } %>
+      <% if (Array.isArray(_brand.services) && _brand.services.length) { %><p><%= _brand.services.slice(0,3).join(' · ') %></p><% } %>
+    </div>
+  </div>
+  <div class="foot-bot">
+    <span>&copy; <%= (new Date()).getFullYear() %> <%= _brandName %></span>
+    <span class="foot-admin"><% if (_location) { %><%= _location %> · <% } %><a href="<%= _auth %>">Admin</a></span>
+  </div>
+</footer>
+<% } %>
+
+<script>
+(function(){
+  "use strict";
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* nav hairline on scroll */
+  var nav = document.getElementById("nav");
+  if(nav){
+    var onScroll = function(){ if(window.scrollY > 24) nav.classList.add("stuck"); else nav.classList.remove("stuck"); };
+    onScroll();
+    window.addEventListener("scroll", onScroll, {passive:true});
+    var toggle = document.getElementById("navToggle");
+    if(toggle){
+      toggle.addEventListener("click", function(){
+        var open = nav.getAttribute("data-open") === "true";
+        nav.setAttribute("data-open", String(!open));
+        toggle.setAttribute("aria-expanded", String(!open));
+      });
+    }
+    var links = document.getElementById("navLinks");
+    if(links){
+      links.addEventListener("click", function(e){
+        if(e.target.tagName === "A"){ nav.setAttribute("data-open","false"); if(toggle) toggle.setAttribute("aria-expanded","false"); }
+      });
+    }
+  }
+
+  /* scroll reveal */
+  var reveals = document.querySelectorAll(".reveal");
+  if(reduce || !("IntersectionObserver" in window)){
+    reveals.forEach(function(el){ el.classList.add("in"); });
+  } else {
+    var ro = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add("in"); ro.unobserve(en.target); } });
+    }, {threshold:.16, rootMargin:"0px 0px -8% 0px"});
+    reveals.forEach(function(el){ ro.observe(el); });
+  }
+
+  /* understated count-up */
+  function easeOut(t){ return 1 - Math.pow(1 - t, 3); }
+  function countUp(el){
+    var target = parseFloat(el.getAttribute("data-count")) || 0;
+    var suffix = el.getAttribute("data-suffix") || "";
+    if(reduce){ el.innerHTML = target.toLocaleString("en-US") + (suffix ? '<span class="suffix">'+suffix+'</span>' : ""); return; }
+    var dur = 1500, start = null;
+    function step(ts){
+      if(start === null) start = ts;
+      var p = Math.min((ts - start)/dur, 1);
+      var val = Math.round(target * easeOut(p));
+      el.innerHTML = val.toLocaleString("en-US") + (suffix ? '<span class="suffix">'+suffix+'</span>' : "");
+      if(p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  var nums = document.querySelectorAll(".num[data-count]");
+  if(!("IntersectionObserver" in window)){
+    nums.forEach(countUp);
+  } else {
+    var no = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ if(en.isIntersecting){ countUp(en.target); no.unobserve(en.target); } });
+    }, {threshold:.6});
+    nums.forEach(function(el){ no.observe(el); });
+  }
+
+  /* subtle hero parallax */
+  if(!reduce){
+    var heroScene = document.querySelector(".hero .scene");
+    var ticking = false;
+    window.addEventListener("scroll", function(){
+      if(ticking) return;
+      ticking = true;
+      requestAnimationFrame(function(){
+        var y = window.scrollY;
+        if(y < window.innerHeight && heroScene){ heroScene.style.transform = "translateY(" + (y * 0.12) + "px) scale(1.06)"; }
+        ticking = false;
+      });
+    }, {passive:true});
+  }
+})();
+</script>
+</body>
+</html>

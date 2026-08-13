@@ -36,6 +36,26 @@ export const config = {
   S3_FORCE_PATH_STYLE: String(process.env.S3_FORCE_PATH_STYLE || '').toLowerCase() === 'true',
   CDN_BASE: process.env.CDN_BASE || '',
 
+  // WebRTC TURN relay for meetings. STUN alone can't hole-punch through the
+  // symmetric NAT/CGNAT most mobile carriers use, so without a TURN relay a
+  // share of 5G participants never connect at all. Unset ⇒ STUN only.
+  //
+  // Comma-separated so you can offer both plain and TLS transports, e.g.
+  //   turn:turn.madladslab.com:3478,turns:turn.madladslab.com:5349
+  // (turns:5349 rides 443-style TLS and is what gets through locked-down
+  // mobile/corporate networks that block raw UDP.)
+  TURN_URL: process.env.TURN_URL || '',
+  // Preferred: ephemeral credentials. Share this ONE secret with coturn
+  // (`use-auth-secret` / `static-auth-secret`); the app mints a short-lived
+  // HMAC username:credential per page-load, so nothing reusable is exposed in
+  // page source. Set TURN_SECRET and leave USERNAME/CREDENTIAL blank.
+  TURN_SECRET: process.env.TURN_SECRET || '',
+  TURN_TTL: parseInt(process.env.TURN_TTL || '', 10) || 43200, // cred lifetime (s); 12h covers long meetings + late ICE restarts
+  // Fallback: a static long-lived credential (managed providers, or coturn
+  // with lt-cred-mech). Only used when TURN_SECRET is unset.
+  TURN_USERNAME: process.env.TURN_USERNAME || '',
+  TURN_CREDENTIAL: process.env.TURN_CREDENTIAL || '',
+
   // Ollama LLM — shared "house" AI infra (the default engine)
   OLLAMA_URL: process.env.OLLAMA_URL || 'https://ollama.madladslab.com/v1/chat/completions',
   OLLAMA_KEY: process.env.OLLAMA_KEY || '',
@@ -76,6 +96,16 @@ export const config = {
   MSSEC: process.env.MSSEC,
   MS_TENANT: process.env.MS_TENANT || 'common',
 
+  // Facebook Login — platform-wide sign-in. App at developers.facebook.com →
+  // Use cases → Authentication and account creation, with `email` added (standard
+  // tier, no App Review) and the redirect URI below listed under Valid OAuth
+  // Redirect URIs. `email` is required: dispatchAuth keys users by email, so a
+  // profile without one cannot be matched to an account.
+  FB_AUTH_APPID: process.env.FB_AUTH_APPID,
+  FB_AUTH_APPSEC: process.env.FB_AUTH_APPSEC,
+  FB_AUTH_REDIRECT: process.env.FB_AUTH_REDIRECT,
+  FB_AUTH_SCOPE: process.env.FB_AUTH_SCOPE || 'email,public_profile',
+
   // Master encryption key for tenant secrets
   MASTER_KEY: process.env.MASTER_KEY,
 
@@ -88,7 +118,7 @@ export const config = {
   // Falls back to STRIPE_SEC/STRIPE_PUB, the names the platform keys already use in .env.
   SLAB_STRIPE_SECRET: process.env.SLAB_STRIPE_SECRET || process.env.STRIPE_SEC,
   SLAB_STRIPE_PUBLISHABLE: process.env.SLAB_STRIPE_PUBLISHABLE || process.env.STRIPE_PUB,
-  SLAB_STRIPE_WEBHOOK_SECRET: process.env.SLAB_STRIPE_WEBHOOK_SECRET,
+  SLAB_STRIPE_WEBHOOK_SECRET: process.env.SLAB_STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WHSEC,
   SLAB_STRIPE_PRICE_ID: process.env.SLAB_STRIPE_PRICE_ID,  // optional — go-live uses ad-hoc price_data, not a fixed price ID
 
   // Slab platform PayPal (for go-live activation payments)

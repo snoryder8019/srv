@@ -22,6 +22,12 @@
       <div class="bb-step" data-step="5"><span class="bb-step-num">5</span> AI Search</div>
     </div>
 
+    <div style="display:flex;justify-content:flex-end;margin:-8px 0 16px;">
+      <button type="button" id="bbSkip" style="background:none;border:none;padding:0;font-size:0.75rem;color:var(--slate);cursor:pointer;text-decoration:underline;">
+        Skip for now — take me to the dashboard
+      </button>
+    </div>
+
     <!-- STEP 1: Industry Preset -->
     <div class="bb-panel active" id="step1">
       <div class="card">
@@ -389,6 +395,20 @@ async function saveBrand() {
     btn.textContent = 'Launch My Brand';
   }
 }
+
+// Skip the wizard entirely — nothing here is required to use the platform.
+document.getElementById('bbSkip')?.addEventListener('click', async function() {
+  this.disabled = true;
+  this.textContent = 'Taking you in…';
+  try {
+    const r = await fetch('/admin/brand-builder/skip', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) { window.location.href = '/admin?setup=skipped'; return; }
+    alert(d.error || 'Could not skip setup');
+  } catch (e) { alert('Network error.'); }
+  this.disabled = false;
+  this.textContent = 'Skip for now — take me to the dashboard';
+});
 
 // If brand already has data, allow skipping steps
 <% if (brand.businessType) { %>goStep(2);<% } %>

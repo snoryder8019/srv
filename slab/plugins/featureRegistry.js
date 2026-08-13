@@ -35,6 +35,10 @@ export const NAV_SECTIONS = ['Overview', 'Content', 'Clients & CRM', 'Meetings',
 export const FEATURES = [
   // ── Overview ──────────────────────────────────────────────────────────────
   { key: 'dashboard', section: 'Overview', label: 'Dashboard', url: '/admin', page: 'dashboard', icon: '&#9638;' },
+  // The platform calendar aggregates every dated object across the panel (see
+  // plugins/calendarSources.js). It sits in Overview, not under a module,
+  // because it belongs to no single module — it reads them all.
+  { key: 'calendar',  section: 'Overview', label: 'Calendar',  url: '/admin/calendar', page: 'calendar', icon: '&#128197;', perm: true },
 
   // ── Content ───────────────────────────────────────────────────────────────
   { key: 'pages',     section: 'Content', label: 'Pages',         url: '/admin/pages',            page: 'pages',     icon: '&#9723;', perm: true },
@@ -53,6 +57,9 @@ export const FEATURES = [
   { key: 'clients',    section: 'Clients & CRM', label: 'Clients',       url: '/admin/clients',    page: 'clients',    icon: '&#9673;', perm: true },
   { key: 'onboarding', section: 'Clients & CRM', label: 'Onboarding',    url: '/admin/onboarding', page: 'onboarding', icon: '&#9638;', perm: true },
   { key: 'tickets',    section: 'Clients & CRM', label: 'Help Requests', url: '/admin/tickets',    page: 'tickets',    icon: '&#9888;', perm: true },
+  // "In the Field" — mobile field-ops (GPS check-in, on-site quote/note/upload/waiver,
+  // route ETA, client magic-link pay page). Experimental → off until a tenant opts in.
+  { key: 'field',      section: 'Clients & CRM', label: 'In the Field',  url: '/admin/field',      page: 'field',      icon: '&#128205;', perm: true, experimental: true, advanced: true },
 
   // ── Meetings ──────────────────────────────────────────────────────────────
   { key: 'meetings', section: 'Meetings', label: 'Meetings', url: '/admin/meetings',         page: 'meetings', icon: '&#9707;', perm: true },

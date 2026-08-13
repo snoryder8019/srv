@@ -51,7 +51,7 @@ async function findPayableInvoice(req, token) {
 router.get('/:token', async (req, res) => {
   try {
     const { invoice, clientDoc, error } = await findPayableInvoice(req, req.params.token);
-    if (error === 'not_found') return res.status(404).render('pay-error', { message: 'Invoice not found or link has expired.' });
+    if (error === 'not_found') return res.status(404).render('pay-error', { message: res.locals.t('pay.err_not_found') });
     // Tenant-wide preference: which payment method(s) to offer. 'both' (default), 'stripe', or 'paypal'.
     const pref = req.tenant?.public?.paymentProvider || 'both';
     res.render('pay', {
@@ -64,7 +64,7 @@ router.get('/:token', async (req, res) => {
     });
   } catch (err) {
     console.error('Pay page error:', err);
-    res.status(500).render('pay-error', { message: 'Something went wrong. Please try again.' });
+    res.status(500).render('pay-error', { message: res.locals.t('booking.error_generic') });
   }
 });
 
@@ -72,9 +72,9 @@ router.get('/:token', async (req, res) => {
 router.post('/:token/stripe', async (req, res) => {
   try {
     const { invoice, clientDoc, error } = await findPayableInvoice(req, req.params.token);
-    if (error) return res.status(400).render('pay-error', { message: 'This invoice cannot be paid.' });
+    if (error) return res.status(400).render('pay-error', { message: res.locals.t('pay.err_cannot_pay') });
     if ((req.tenant?.public?.paymentProvider || 'both') === 'paypal') {
-      return res.status(400).render('pay-error', { message: 'Card payments are not enabled for this invoice.' });
+      return res.status(400).render('pay-error', { message: res.locals.t('pay.err_card_disabled') });
     }
     const domain = req.tenant?.domain ? `https://${req.tenant.domain}` : config.DOMAIN;
     const session = await createCheckoutSession(
@@ -87,7 +87,7 @@ router.post('/:token/stripe', async (req, res) => {
     res.redirect(303, session.url);
   } catch (err) {
     console.error('Stripe checkout error:', err);
-    res.status(500).render('pay-error', { message: 'Payment setup failed. Please try again.' });
+    res.status(500).render('pay-error', { message: res.locals.t('pay.err_setup_failed') });
   }
 });
 
@@ -95,9 +95,9 @@ router.post('/:token/stripe', async (req, res) => {
 router.post('/:token/paypal', async (req, res) => {
   try {
     const { invoice, clientDoc, error } = await findPayableInvoice(req, req.params.token);
-    if (error) return res.status(400).render('pay-error', { message: 'This invoice cannot be paid.' });
+    if (error) return res.status(400).render('pay-error', { message: res.locals.t('pay.err_cannot_pay') });
     if ((req.tenant?.public?.paymentProvider || 'both') === 'stripe') {
-      return res.status(400).render('pay-error', { message: 'PayPal is not enabled for this invoice.' });
+      return res.status(400).render('pay-error', { message: res.locals.t('pay.err_paypal_disabled') });
     }
     const domain = req.tenant?.domain ? `https://${req.tenant.domain}` : config.DOMAIN;
     const order = await createOrder(
@@ -114,7 +114,7 @@ router.post('/:token/paypal', async (req, res) => {
     res.redirect(303, approveLink.href);
   } catch (err) {
     console.error('PayPal checkout error:', err);
-    res.status(500).render('pay-error', { message: 'Payment setup failed. Please try again.' });
+    res.status(500).render('pay-error', { message: res.locals.t('pay.err_setup_failed') });
   }
 });
 
@@ -123,7 +123,7 @@ router.get('/:token/success', async (req, res) => {
   try {
     const db = req.db;
     const invoice = await db.collection('invoices').findOne({ paymentToken: req.params.token });
-    if (!invoice) return res.status(404).render('pay-error', { message: 'Invoice not found.' });
+    if (!invoice) return res.status(404).render('pay-error', { message: res.locals.t('pay.err_invoice_not_found') });
     const clientDoc = await db.collection('clients').findOne({ _id: new ObjectId(invoice.clientId) });
 
     // If PayPal — capture the order now
@@ -162,7 +162,7 @@ router.get('/:token/success', async (req, res) => {
     res.render('pay-success', { inv: invoice, cl: clientDoc });
   } catch (err) {
     console.error('Success page error:', err);
-    res.status(500).render('pay-error', { message: 'Something went wrong.' });
+    res.status(500).render('pay-error', { message: res.locals.t('booking.error_generic') });
   }
 });
 
@@ -173,9 +173,9 @@ router.get('/:token/receipt', async (req, res) => {
   try {
     const db = req.db;
     const invoice = await db.collection('invoices').findOne({ paymentToken: req.params.token });
-    if (!invoice) return res.status(404).render('pay-error', { message: 'Receipt not found.' });
+    if (!invoice) return res.status(404).render('pay-error', { message: res.locals.t('pay.err_receipt_not_found') });
     if (invoice.status !== 'paid') {
-      return res.status(400).render('pay-error', { message: 'No receipt yet — this invoice has not been paid.' });
+      return res.status(400).render('pay-error', { message: res.locals.t('pay.err_no_receipt') });
     }
     const clientDoc = await db.collection('clients').findOne({ _id: new ObjectId(invoice.clientId) });
     const payment = (invoice.payments || [])[invoice.payments.length - 1] || null;
@@ -184,8 +184,8 @@ router.get('/:token/receipt', async (req, res) => {
     // Stable, human receipt number derived from the invoice + transaction tail.
     const tail = txnId ? txnId.slice(-6).toUpperCase() : invoice._id.toString().slice(-6).toUpperCase();
     const methodLabel = payment?.provider === 'paypal' ? 'PayPal'
-      : payment?.provider === 'stripe' ? 'Credit / Debit Card'
-      : (payment?.method || 'Card');
+      : payment?.provider === 'stripe' ? res.locals.t('pay.method_card')
+      : (payment?.method || res.locals.t('pay.method_card_default'));
     res.render('receipt', {
       inv: invoice,
       cl: clientDoc,
@@ -197,7 +197,7 @@ router.get('/:token/receipt', async (req, res) => {
     });
   } catch (err) {
     console.error('Receipt page error:', err);
-    res.status(500).render('pay-error', { message: 'Something went wrong.' });
+    res.status(500).render('pay-error', { message: res.locals.t('booking.error_generic') });
   }
 });
 

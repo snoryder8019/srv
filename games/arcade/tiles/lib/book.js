@@ -4,7 +4,7 @@
  *   • SPORTS: real live scores proxied from ESPN's public scoreboard API (cached
  *     server-side; the browser can't call ESPN cross-origin). Moneyline bets debit
  *     the wallet up front and settle when the game goes final.
- *   • KENO: a server-authoritative 25-second draw cycle. Players pick up to 10
+ *   • KENO: a server-authoritative 45s betting + draw cycle. Players pick up to 10
  *     spots and wager; each draw pulls 20 of 80 and pays the catch table. Bets
  *     debit on placement and settle the instant the draw resolves.
  *
@@ -56,7 +56,7 @@ function deriveSpread(comp, hs, as, state) {
 }
 
 export async function getScores() {
-  if (Date.now() - _scores.at < 22000 && _scores.games.length) return _scores.games;
+  if (Date.now() - _scores.at < 10000 && _scores.games.length) return _scores.games;
   if (_scoresInflight) return _scoresInflight;
   _scoresInflight = (async () => {
     const out = [];
@@ -177,10 +177,11 @@ const KENO_PAYS = {
   9: { 5: 5, 6: 25, 7: 200, 8: 3000, 9: 20000 },
   10: { 5: 2, 6: 15, 7: 40, 8: 500, 9: 5000, 10: 50000 },
 };
-const OPEN_MS = 25000, DRAW_MS = 6000, HOLD_MS = 6000;
+const OPEN_MS = 45000, DRAW_MS = 6000, HOLD_MS = 12000;   // slower pace: 45s to bet, 12s to read results
 const keno = { drawId: 1, phase: 'open', drawn: [], endsAt: nowPlus(OPEN_MS), last: { drawId: 0, drawn: [] } };
 const kenoBets = [];     // { id, pid, name, drawId, spots:[], wager, status, matches, payout }
 let _kenoResults = {};   // pid -> latest result summary
+const _kenoHistory = {}; // pid -> [ last N settled { drawId, matches, wager, payout } ] for session W/L
 
 function nowPlus(ms) { return Date.now() + ms; }
 function drawNumbers() { const s = new Set(); while (s.size < 20) s.add(1 + Math.floor(Math.random() * 80)); return [...s].sort((a, b) => a - b); }
@@ -222,7 +223,27 @@ async function resolveKeno() {
     b.status = 'settled'; b.matches = matches; b.payout = Math.round(b.wager * mult);
     try { await wallet.settleChips(b.pid, { wager: b.wager, payout: b.payout, game: 'keno', meta: { drawId, matches } }); } catch (e) {}
     _kenoResults[b.pid] = { drawId, spots: b.spots, drawn, matches, payout: b.payout, wager: b.wager };
+    (_kenoHistory[b.pid] || (_kenoHistory[b.pid] = [])).push({ drawId, matches, wager: b.wager, payout: b.payout });
+    if (_kenoHistory[b.pid].length > 40) _kenoHistory[b.pid].shift();
   }
+}
+
+// ───────────────────────── session W/L record ─────────────────────────
+// Combined book record (sports + keno) from in-memory bets. net = chips credited
+// back (winnings) minus chips wagered, i.e. session profit/loss.
+export function myRecord(pid) {
+  pid = String(pid);
+  let wins = 0, losses = 0, pushes = 0, wagered = 0, returned = 0;
+  for (const b of sportsBets) {
+    if (b.pid !== pid || b.status === 'open') continue;
+    wagered += b.wager; returned += b.payout || 0;
+    if (b.status === 'won') wins++; else if (b.status === 'push') pushes++; else losses++;
+  }
+  for (const h of (_kenoHistory[pid] || [])) {
+    wagered += h.wager; returned += h.payout || 0;
+    if (h.payout > 0) wins++; else losses++;
+  }
+  return { wins, losses, pushes, wagered, returned, net: returned - wagered };
 }
 
 // ───────────────────────── loops ─────────────────────────
@@ -238,9 +259,9 @@ export function startBook(io) {
     else { keno.drawId += 1; keno.phase = 'open'; keno.drawn = []; keno.endsAt = nowPlus(OPEN_MS); }
     if (_io) { try { _io.emit('book:keno', kenoState()); } catch (e) {} }
   }, 1000);
-  // sports refresh + settlement (30s so live quarter/spread bets resolve quickly)
-  setInterval(() => { getScores().then(() => settleSportsBets()).catch(() => {}); }, 30000);
-  console.log('[book] sportsbook + keno started (ESPN scores, 25s keno draw)');
+  // sports refresh + settlement (12s so scores stay live + quarter/spread bets resolve fast)
+  setInterval(() => { getScores().then(() => settleSportsBets()).catch(() => {}); }, 12000);
+  console.log('[book] sportsbook + keno started (ESPN scores 10s cache, 45s keno betting window)');
 }
 
-export default { getScores, placeSportsBet, mySportsBets, kenoState, myKeno, placeKenoBet, startBook };
+export default { getScores, placeSportsBet, mySportsBets, kenoState, myKeno, placeKenoBet, myRecord, startBook };

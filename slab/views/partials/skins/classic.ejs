@@ -1,0 +1,577 @@
+<%
+  // ─── locals guards (identical contract to the other skins) ───
+  const _blocks   = (typeof blocks     !== 'undefined' && Array.isArray(blocks)) ? blocks : [];
+  const _design   = (typeof design     !== 'undefined' && design)     ? design     : {};
+  const _brand    = (typeof brand      !== 'undefined' && brand)      ? brand      : {};
+  const _logos    = (typeof logos      !== 'undefined' && logos)      ? logos      : {};
+  const _navLinks = (typeof navLinks   !== 'undefined' && Array.isArray(navLinks)) ? navLinks : [];
+  const _vis      = (typeof visibility !== 'undefined' && visibility) ? visibility  : {};
+  const _auth     = (typeof centralAuthUrl !== 'undefined' && centralAuthUrl) ? centralAuthUrl : '/admin/login';
+  const _posts    = (typeof latestPosts !== 'undefined' && Array.isArray(latestPosts)) ? latestPosts : [];
+  const _fmtDate  = function (d) { try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch (e) { return ''; } };
+
+  const brandName  = _brand.name || 'Studio';
+  const navLogoDisplay = _design.nav_logo_display || 'auto';
+
+  const headerLinks = _navLinks.filter(function(l){ return l && (!l.location || l.location === 'header' || l.location === 'both'); });
+  const footerLinks = _navLinks.filter(function(l){ return l && (l.location === 'footer' || l.location === 'both'); });
+
+  // lucide sprite icons, cycled by card index — engraved single-weight, inherits currentColor
+  const _luc = (name) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="/vendor/lucide/sprite.svg#' + name + '"/></svg>';
+  const cardIcons = ['box', 'circle-check', 'trending-up', 'sparkles'].map(_luc);
+%><!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta property="og:title" content="<%= brandName %>">
+<meta property="og:description" content="<%= _brand.tagline || _brand.description || '' %>">
+<title><%- brandName %><% if (_brand.tagline) { %> — <%- _brand.tagline %><% } %></title>
+<%- include('../font-vars') %>
+<%- include('../_tokens', { design: _design, tokenDefaults: {} }) %>
+<style>
+  :root{
+    /* skin-local layout vars — brand/type/shape tokens come from partials/_tokens.ejs */
+    --nav-logo-size: <%= _design.nav_logo_size || '38' %>px;
+    --nav-h: <%= Math.max(63, 40 + Math.max((_design.nav_logo_display === 'image' || _design.nav_logo_display === 'both') ? (parseInt(_design.nav_logo_size) || 38) : 0, 28)) %>px;
+    --nav-clear: calc(var(--nav-h, 63px) + 32px);
+  }
+
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{background:var(--surface);color:var(--on-surface);font-family:var(--font-body);line-height:1.65;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  ::selection{background:var(--gold);color:var(--on-gold)}
+  a{color:inherit;text-decoration:none}
+  img{max-width:100%;display:block}
+  :focus-visible{outline:2px solid var(--gold);outline-offset:3px;border-radius:2px}
+
+  .wrap{max-width:var(--wrap);margin:0 auto;padding:0 32px;position:relative}
+
+  .eyebrow{display:inline-flex;align-items:center;gap:9px;font-family:var(--font-body);font-size:12px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--gold)}
+  .eyebrow::before{content:"";width:22px;height:1px;background:var(--gold);opacity:.7}
+  h2.title{font-family:var(--font-heading);font-weight:600;font-size:var(--step-4, clamp(30px,4.4vw,50px));line-height:1.08;letter-spacing:-.01em;color:var(--on-surface);text-wrap:balance;margin:14px 0 0}
+  .lede{max-width:60ch;color:var(--on-surface-muted);font-size:var(--step-0, clamp(15px,1.5vw,18px));margin-top:16px}
+
+  /* ── reveal cadence (staggered) ── */
+  .reveal{opacity:0;transform:translateY(28px);transition:opacity .7s var(--ease-reveal),transform .7s var(--ease-reveal);transition-delay:calc(var(--i,0)*85ms)}
+  .reveal.in{opacity:1;transform:none}
+
+  /* ── buttons ── */
+  .btn{font-family:var(--font-body);font-size:14px;font-weight:600;letter-spacing:.02em;padding:14px 30px;border-radius:calc(var(--card-radius) * .8);cursor:pointer;transition:transform .3s var(--ease-pop),background .25s,border-color .25s,color .25s,box-shadow .25s;border:1px solid transparent;display:inline-flex;align-items:center;gap:9px}
+  .btn-gold{background:var(--gold);color:var(--on-gold);box-shadow:0 10px 26px -14px var(--brand-shadow)}
+  .btn-gold:hover{background:var(--gold-light);transform:translateY(-2px);box-shadow:0 16px 34px -16px var(--brand-shadow)}
+  .btn-ghost{border-color:var(--hairline-strong);color:var(--on-surface)}
+  .btn-ghost:hover{border-color:var(--gold);color:var(--gold)}
+
+  /* ── nav ── */
+  .nav{position:fixed;top:0;left:0;right:0;z-index:60;display:flex;align-items:center;justify-content:space-between;padding:20px 32px;transition:background .35s,border-color .35s,padding .35s,box-shadow .35s;border-bottom:1px solid transparent}
+  .nav.stuck{background:color-mix(in srgb, var(--surface) 82%, transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-color:var(--hairline);padding:13px 32px;box-shadow:0 8px 30px -22px var(--brand-shadow)}
+  .brand{font-family:var(--font-heading);font-size:23px;letter-spacing:.01em;font-weight:600;display:inline-flex;align-items:center;gap:10px;color:var(--on-surface)}
+  .brand img{height:var(--nav-logo-size);width:auto;object-fit:contain;display:block}
+  .nav nav{display:flex;gap:30px;align-items:center}
+  .nav nav a{font-family:var(--font-body);font-size:13px;font-weight:500;letter-spacing:.02em;color:var(--on-surface-muted);transition:color .2s}
+  .nav nav a:hover{color:var(--on-surface)}
+  .nav nav a.book{border:1px solid var(--gold);color:var(--gold);padding:9px 18px;border-radius:calc(var(--card-radius) * .8);font-weight:600;transition:background .25s,color .25s}
+  .nav nav a.book:hover{background:var(--gold);color:var(--on-gold)}
+  @media(max-width:820px){.nav nav a:not(.book){display:none}}
+
+  /* ── hero: confident, token-driven mesh + glow ── */
+  .hero{position:relative;min-height:92svh;display:flex;align-items:center;overflow:hidden;background:var(--surface)}
+  .hero .mesh{position:absolute;inset:0;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(48% 55% at 18% 22%, color-mix(in srgb, var(--navy) 22%, transparent), transparent 70%),
+      radial-gradient(42% 50% at 82% 18%, color-mix(in srgb, var(--gold) 20%, transparent), transparent 68%),
+      radial-gradient(55% 60% at 70% 88%, color-mix(in srgb, var(--navy-mid) 18%, transparent), transparent 72%),
+      radial-gradient(40% 48% at 12% 92%, color-mix(in srgb, var(--gold) 12%, transparent), transparent 70%);
+    animation:meshdrift 22s ease-in-out infinite alternate}
+  @keyframes meshdrift{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(0,-2.5%,0) scale(1.06)}}
+  .hero::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(180deg,transparent 55%,color-mix(in srgb, var(--surface) 88%, transparent))}
+  .hero .wrap{position:relative;z-index:3;padding-top:max(110px, var(--nav-clear));padding-bottom:70px}
+  /* .nav is fixed → out of flow. nav_logo_size can push it past the hero's
+     design padding, so the hero copy clears the measured height instead. */
+  .hero-badge{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-body);font-size:12px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--on-surface-muted);border:1px solid var(--hairline-strong);border-radius:100px;padding:7px 16px;background:color-mix(in srgb, var(--surface) 70%, transparent)}
+  .hero-badge .dot{width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 4px color-mix(in srgb, var(--gold) 22%, transparent)}
+  .hero h1{font-family:var(--font-heading);font-weight:600;font-size:var(--step-7, clamp(42px,7.6vw,92px));line-height:1.02;letter-spacing:-.02em;margin:24px 0 0;text-wrap:balance;color:var(--on-surface);max-width:16ch}
+  .hero .sub{max-width:54ch;margin-top:24px;font-size:var(--step-1, clamp(16px,1.8vw,21px));color:var(--on-surface-muted)}
+  .hero-cta{display:flex;gap:14px;flex-wrap:wrap;margin-top:38px}
+  .scrollcue{position:absolute;bottom:28px;left:50%;transform:translateX(-50%);z-index:3;font-family:var(--font-body);font-size:11px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--on-surface-muted);display:flex;flex-direction:column;align-items:center;gap:10px;opacity:.85}
+  .scrollcue .ln{width:1px;height:40px;background:linear-gradient(var(--gold),transparent);animation:drop 2.2s infinite}
+  @keyframes drop{0%{transform:scaleY(0);transform-origin:top}45%{transform:scaleY(1);transform-origin:top}55%{transform:scaleY(1);transform-origin:bottom}100%{transform:scaleY(0);transform-origin:bottom}}
+
+  /* stagger hero children on load */
+  .hero .anim{opacity:0;transform:translateY(22px);animation:rise .9s var(--ease-reveal) forwards}
+  .hero .anim:nth-child(1){animation-delay:.12s}
+  .hero .anim:nth-child(2){animation-delay:.26s}
+  .hero .anim:nth-child(3){animation-delay:.4s}
+  .hero .anim:nth-child(4){animation-delay:.54s}
+  .hero .anim:nth-child(5){animation-delay:.68s}
+  @keyframes rise{to{opacity:1;transform:none}}
+
+  /* ── stat band (count-up) ── */
+  .console{background:var(--tint-navy);border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline);position:relative}
+  .console .cap{text-align:center;padding:34px 32px 6px}
+  .console .row{display:grid;grid-template-columns:repeat(4,1fr)}
+  .stat{padding:42px 26px;text-align:center;position:relative;border-left:1px solid var(--hairline);transition:background .25s}
+  .stat:first-child{border-left:0}
+  .stat:hover{background:color-mix(in srgb, var(--surface) 88%, var(--gold))}
+  .stat .n{font-family:var(--font-heading);font-weight:600;font-size:clamp(32px,4.6vw,52px);color:var(--gold);font-variant-numeric:tabular-nums;letter-spacing:-.01em;line-height:1}
+  .stat .k{font-family:var(--font-body);font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--on-surface-muted);margin-top:12px}
+  @media(max-width:680px){.console .row{grid-template-columns:1fr 1fr}.stat:nth-child(-n+2){border-top:0}.stat:nth-child(odd){border-left:0}.stat:nth-child(n+3){border-top:1px solid var(--hairline)}}
+
+  /* ── section shell ── */
+  section.block{padding:var(--space-2xl-3xl, clamp(72px,9vw,120px)) 0;position:relative}
+  section.block.tinted{background:var(--surface-1)}
+  .head{max-width:660px}
+  .head.center{max-width:720px;margin:0 auto;text-align:center}
+  .head.center .lede{margin-left:auto;margin-right:auto}
+
+  /* ── cards ── */
+  .svc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:var(--space-s, 20px);margin-top:var(--space-xl, 52px)}
+  .svc{position:relative;background:var(--card-bg);border:1px solid var(--hairline);border-radius:var(--card-radius);padding:32px 28px 34px;overflow:hidden;transition:transform .3s,border-color .3s,box-shadow .3s}
+  .svc::before{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--gold) 12%, transparent), transparent 60%);opacity:0;transition:opacity .35s}
+  .svc:hover{transform:translateY(-6px);border-color:color-mix(in srgb, var(--gold) 55%, var(--border));box-shadow:var(--elev-float, 0 30px 60px -34px var(--brand-shadow))}
+  .svc:hover::before{opacity:1}
+  .svc-media{display:block;width:calc(100% + 56px);max-width:none;margin:-32px -28px 20px;aspect-ratio:16/10;object-fit:cover;border-radius:var(--card-radius) var(--card-radius) 0 0;border-bottom:1px solid var(--hairline)}
+  .svc.has-media .ico{display:none}
+  .svc.has-media .no{color:color-mix(in srgb, var(--on-surface) 55%, transparent);text-shadow:0 1px 8px var(--brand-shadow)}
+  a.svc{cursor:pointer}
+  .svc .ico{width:44px;height:44px;color:var(--gold);position:relative}
+  .svc .ico svg{width:100%;height:100%}
+  .svc h3{font-family:var(--font-heading);font-size:24px;font-weight:600;margin:22px 0 8px;color:var(--on-surface);position:relative}
+  .svc p{font-size:15px;color:var(--on-surface-muted);max-width:36ch;position:relative}
+  .svc .no{position:absolute;top:28px;right:28px;font-family:var(--font-body);font-size:13px;font-weight:600;color:color-mix(in srgb, var(--on-surface) 32%, transparent)}
+
+  /* ── split ── */
+  .split-grid{display:grid;grid-template-columns:1fr 1fr;gap:clamp(36px,5vw,68px);align-items:center}
+  .split-media img{width:100%;border:1px solid var(--hairline);border-radius:var(--card-radius);box-shadow:0 30px 70px -44px var(--brand-shadow)}
+  .split-media .ph{width:100%;aspect-ratio:4/3;border-radius:var(--card-radius);background:linear-gradient(135deg,var(--navy),var(--navy-mid));border:1px solid var(--hairline)}
+  .split-text .btn{margin-top:28px}
+  @media(max-width:820px){.split-grid{grid-template-columns:1fr}}
+
+  /* ── faq flow ── */
+  .flow{margin-top:52px;display:grid;gap:0}
+  .step{display:grid;grid-template-columns:76px 1fr;gap:24px;padding:30px 0;border-top:1px solid var(--hairline);align-items:baseline}
+  .step:last-child{border-bottom:1px solid var(--hairline)}
+  .step .sn{font-family:var(--font-body);font-size:14px;font-weight:600;color:var(--gold);letter-spacing:.05em}
+  .step h4{font-family:var(--font-heading);font-size:clamp(21px,2.6vw,28px);font-weight:600;color:var(--on-surface);transition:color .3s}
+  .step:hover h4{color:var(--gold)}
+  .step p{color:var(--on-surface-muted);font-size:15px;margin-top:8px;max-width:62ch}
+
+  /* ── pricing ── */
+  .price-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-s, 20px);margin-top:var(--space-xl, 52px)}
+  .tier{background:var(--card-bg);border:1px solid var(--hairline);border-radius:var(--card-radius);padding:36px 30px;position:relative;transition:transform .3s,border-color .3s,box-shadow .3s;display:flex;flex-direction:column}
+  .tier:hover{transform:translateY(-6px);border-color:color-mix(in srgb, var(--gold) 45%, var(--border));box-shadow:var(--elev-float, 0 30px 60px -36px var(--brand-shadow))}
+  .tier.feat{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold),0 34px 74px -42px var(--brand-shadow)}
+  .tier.feat::after{content:"Most popular";position:absolute;top:-11px;left:30px;font-family:var(--font-body);font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;background:var(--gold);color:var(--on-gold);padding:5px 13px;border-radius:100px}
+  .tier .tk{font-family:var(--font-body);font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--on-surface-muted)}
+  .tier .amt{font-family:var(--font-heading);font-weight:600;font-size:46px;color:var(--on-surface);margin-top:14px;line-height:1}
+  .tier ul{list-style:none;margin:24px 0 28px;display:grid;gap:12px}
+  .tier li{font-size:14.5px;color:var(--on-surface-muted);display:flex;gap:11px;align-items:flex-start}
+  .tier li::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--gold);margin-top:7px;flex-shrink:0}
+  .tier .btn{width:100%;justify-content:center;margin-top:auto}
+  @media(max-width:820px){.price-grid{grid-template-columns:1fr}}
+
+  /* ── testimonials ── */
+  .tstmt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:var(--space-s, 20px);margin-top:var(--space-xl, 52px)}
+  .tstmt{background:var(--card-bg);border:1px solid var(--hairline);border-radius:var(--card-radius);padding:32px 30px;display:flex;flex-direction:column;position:relative}
+  .tstmt::before{content:"\201C";position:absolute;top:14px;right:26px;font-family:var(--font-heading);font-size:64px;line-height:1;color:color-mix(in srgb, var(--gold) 40%, transparent)}
+  .tstmt blockquote{font-family:var(--font-heading);font-style:italic;font-weight:500;font-size:20px;line-height:1.4;color:var(--on-surface);position:relative}
+  .tstmt figcaption{margin-top:22px;font-family:var(--font-body);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+  .tstmt .tn{color:var(--gold);font-weight:600;display:block}
+  .tstmt .tr{color:var(--on-surface-muted);display:block;margin-top:4px}
+
+  /* ── blog posts ── */
+  .post-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:var(--space-s, 20px);margin-top:var(--space-xl, 52px)}
+  .post{display:flex;flex-direction:column;background:var(--card-bg);border:1px solid var(--hairline);border-radius:var(--card-radius);padding:30px 28px 32px;transition:transform .3s,border-color .3s,box-shadow .3s;position:relative;overflow:hidden}
+  .post:hover{transform:translateY(-6px);border-color:color-mix(in srgb, var(--gold) 55%, var(--border));box-shadow:var(--elev-float, 0 30px 60px -34px var(--brand-shadow))}
+  .post-media{display:block;width:calc(100% + 56px);max-width:none;margin:-30px -28px 20px;aspect-ratio:16/9;object-fit:cover;border-bottom:1px solid var(--hairline)}
+  .post .pd{font-family:var(--font-body);font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+  .post h3{font-family:var(--font-heading);font-size:23px;font-weight:600;line-height:1.2;margin:12px 0 10px;color:var(--on-surface)}
+  .post p{font-size:14.5px;color:var(--on-surface-muted);flex:1}
+  .post .pl{margin-top:18px;font-family:var(--font-body);font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--gold);display:inline-flex;align-items:center;gap:7px}
+  .post .pl::after{content:"\2192";transition:transform .25s var(--ease-pop)}
+  .post:hover .pl::after{transform:translateX(5px)}
+
+  /* ── aurora: multicolor full-viewport statement ── */
+  .aurora{position:relative;min-height:100svh;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden;isolation:isolate}
+  .aurora .au-bg{position:absolute;inset:-12%;z-index:-1;filter:blur(52px) saturate(1.25);
+    background:
+      radial-gradient(42% 46% at 22% 28%, color-mix(in srgb, var(--au-1) 62%, transparent), transparent 70%),
+      radial-gradient(46% 52% at 78% 24%, color-mix(in srgb, var(--au-2) 58%, transparent), transparent 70%),
+      radial-gradient(50% 55% at 68% 80%, color-mix(in srgb, var(--au-3) 55%, transparent), transparent 72%),
+      radial-gradient(40% 48% at 18% 82%, color-mix(in srgb, var(--au-4) 50%, transparent), transparent 70%);
+    animation:aurora-drift 24s ease-in-out infinite alternate}
+  .aurora .au-sheen{position:absolute;inset:0;z-index:-1;mix-blend-mode:soft-light;
+    background:conic-gradient(from 210deg at 50% 42%, transparent, color-mix(in srgb, var(--au-2) 40%, transparent), transparent 32%, color-mix(in srgb, var(--au-1) 34%, transparent), transparent 68%);
+    animation:aurora-spin 42s linear infinite}
+  .aurora::after{content:"";position:absolute;inset:0;z-index:-1;background:radial-gradient(80% 70% at 50% 50%, transparent 40%, color-mix(in srgb, var(--surface) 72%, transparent))}
+  @keyframes aurora-drift{from{transform:translate3d(-2%,-1%,0) rotate(-1.5deg) scale(1)}to{transform:translate3d(2%,2%,0) rotate(1.5deg) scale(1.12)}}
+  @keyframes aurora-spin{to{transform:rotate(1turn)}}
+  .aurora .wrap{position:relative;padding-top:80px;padding-bottom:80px}
+  .aurora h2{font-family:var(--font-heading);font-weight:600;font-size:var(--step-7, clamp(38px,6.4vw,84px));line-height:1.03;letter-spacing:-.015em;color:var(--on-surface);text-wrap:balance;max-width:18ch;margin:0 auto}
+  .aurora p{color:var(--on-surface-muted);font-size:var(--step-1, clamp(16px,1.8vw,21px));max-width:52ch;margin:22px auto 0}
+  .aurora .hero-cta{justify-content:center;margin-top:36px}
+
+  /* ── ticker ── */
+  .ticker-band{background:var(--ticker-bg);overflow:hidden;position:relative;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
+  .ticker-band.sticky{position:sticky;top:0;z-index:55}
+  .ticker-track{display:inline-flex;align-items:center;gap:22px;white-space:nowrap;padding:15px 0;animation:tick var(--ticker-speed) linear infinite;will-change:transform}
+  .ticker-track.rtl{animation-direction:reverse}
+  @keyframes tick{to{transform:translateX(-50%)}}
+  .tick-item{font-family:var(--font-heading);font-size:19px;color:var(--ticker-text)}
+  .tick-dot{color:var(--ticker-dot);font-size:9px}
+
+  /* ── closing cta ── */
+  .close{position:relative;text-align:center;padding:clamp(88px,12vw,150px) 0;overflow:hidden;background:var(--tint-navy);border-top:1px solid var(--hairline)}
+  .close::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(70% 120% at 50% 118%, color-mix(in srgb, var(--gold) 20%, transparent), transparent 60%)}
+  .close h2{font-family:var(--font-heading);font-weight:600;font-size:var(--step-6, clamp(34px,5.6vw,66px));line-height:1.04;letter-spacing:-.015em;color:var(--on-surface);text-wrap:balance;position:relative}
+  .close p{color:var(--on-surface-muted);margin:18px auto 0;max-width:46ch;position:relative}
+  .close .hero-cta{position:relative}
+
+  /* ── footer ── */
+  footer{background:var(--navy-deep);color:var(--on-navy-deep);padding:44px 0;position:relative}
+  footer .wrap{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+  footer .brand{font-size:19px;color:var(--on-navy-deep)}
+  footer small{font-family:var(--font-body);font-size:12px;letter-spacing:.04em;color:color-mix(in srgb, var(--on-navy-deep) 62%, transparent)}
+  .foot-links{display:flex;gap:22px;flex-wrap:wrap}
+  .foot-links a{font-family:var(--font-body);font-size:12px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:color-mix(in srgb, var(--on-navy-deep) 68%, transparent);transition:color .2s}
+  .foot-links a:hover{color:var(--gold-light)}
+
+  /* ── scroll progress hairline (native scroll-driven animation, no JS) ── */
+  @supports (animation-timeline: scroll()) {
+    body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;z-index:70;
+      background:linear-gradient(90deg,var(--gold),var(--gold-light));
+      transform-origin:0 50%;transform:scaleX(0);
+      animation:slab-progress linear both;animation-timeline:scroll(root)}
+    @keyframes slab-progress{to{transform:scaleX(1)}}
+  }
+
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none!important;scroll-behavior:auto!important}
+    .reveal{opacity:1;transform:none;transition:none}
+    .hero .anim{opacity:1;transform:none}
+    .hero .mesh{transform:none}
+    .ticker-track{transform:none}
+  }
+</style>
+</head>
+<body>
+
+<% if (_vis.header !== false) { %>
+<header class="nav" id="nav">
+  <a href="/" class="brand">
+    <% if ((_logos.logo_primary || _logos.logo_white) && navLogoDisplay !== 'text') { %>
+      <img src="<%= _logos.logo_primary || _logos.logo_white %>" alt="<%- brandName %>">
+    <% } else { %>
+      <%- brandName %>
+    <% } %>
+  </a>
+  <% if (headerLinks.length) { %>
+  <nav>
+    <% headerLinks.forEach(function(l, i){ var isLast = (i === headerLinks.length - 1); %>
+      <a href="<%= l.url || '#' %>"<% if (l.target) { %> target="<%= l.target %>"<% } %> class="<%= isLast ? 'book' : '' %>"><%- l.label %></a>
+    <% }); %>
+  </nav>
+  <% } %>
+</header>
+<% } %>
+
+<main>
+<% _blocks.forEach(function(block, _bi){
+     if (!block) return;
+     var f  = block.fields || {};
+     var im = block.images || {};
+     var t  = block.type;
+%>
+
+<% if (t === 'hero') { %>
+  <section class="hero" data-slab-block="<%= block.id %>" data-slab-type="hero">
+    <div class="mesh"></div>
+    <div class="wrap">
+      <% if (f.badge || _brand.tagline) { %><div class="hero-badge anim"><span class="dot"></span><span data-slab-field="badge"><%- f.badge || _brand.tagline %></span></div><% } %>
+      <% if (f.eyebrow) { %><div class="eyebrow anim" style="margin-top:26px" data-slab-field="eyebrow"><%- f.eyebrow %></div><% } %>
+      <% if (f.heading) { %><h1 class="anim" data-slab-field="heading"><%- f.heading %></h1><% } %>
+      <% if (f.subheading) { %><p class="sub anim" data-slab-field="subheading"><%- f.subheading %></p><% } %>
+      <% if (f.cta_text || f.cta2_text) { %>
+      <div class="hero-cta anim">
+        <% if (f.cta_text) { %><a href="<%= f.cta_link || '#' %>" class="btn btn-gold" data-slab-field="cta_text"><%- f.cta_text %></a><% } %>
+        <% if (f.cta2_text) { %><a href="<%= f.cta2_link || '#' %>" class="btn btn-ghost" data-slab-field="cta2_text"><%- f.cta2_text %></a><% } %>
+      </div>
+      <% } %>
+    </div>
+    <div class="scrollcue"><span>Scroll</span><span class="ln"></span></div>
+  </section>
+
+<% } else if (t === 'stats') { %>
+  <section class="console" data-slab-block="<%= block.id %>" data-slab-type="stats">
+    <div class="wrap" style="padding:0">
+      <% if (f.heading) { %><div class="cap"><span class="eyebrow" data-slab-field="heading"><%- f.heading %></span></div><% } %>
+      <div class="row">
+        <% for (var s = 1; s <= 4; s++) { var sn = f['stat'+s+'_num']; var sk = f['stat'+s+'_label']; if (sn) { %>
+        <div class="stat reveal" style="--i:<%= s-1 %>">
+          <div class="n" data-slab-field="stat<%= s %>_num"><%- sn %></div>
+          <% if (sk) { %><div class="k" data-slab-field="stat<%= s %>_label"><%- sk %></div><% } %>
+        </div>
+        <% } } %>
+      </div>
+    </div>
+  </section>
+
+<% } else if (t === 'cards') { %>
+  <section class="block<%= _bi % 2 ? ' tinted' : '' %>" data-slab-block="<%= block.id %>" data-slab-type="cards">
+    <div class="wrap">
+      <div class="head">
+        <% if (f.heading) { %><h2 class="title reveal" data-slab-field="heading"><%- f.heading %></h2><% } %>
+        <% if (f.subtext) { %><p class="lede reveal" style="--i:1" data-slab-field="subtext"><%- f.subtext %></p><% } %>
+      </div>
+      <div class="svc-grid">
+        <% for (var c = 1; c <= 4; c++) {
+             var ct = f['card'+c+'_title']; var cb = f['card'+c+'_body'];
+             var cimg = im['card'+c+'_image'] || f['card'+c+'_image'];
+             var clink = f['card'+c+'_link'];
+             var tag = clink ? 'a' : 'div';
+             if (ct) { %>
+        <<%- tag %><% if (clink) { %> href="<%= clink %>" target="_blank" rel="noopener"<% } %> class="svc reveal<%= cimg ? ' has-media' : '' %>" style="--i:<%= c-1 %>">
+          <% if (cimg) { %><img class="svc-media" src="<%= cimg %>" alt="<%- ct %>" loading="lazy"><% } %>
+          <span class="no"><%= (c < 10 ? '0'+c : c) %></span>
+          <div class="ico"><%- cardIcons[(c-1) % cardIcons.length] %></div>
+          <h3 data-slab-field="card<%= c %>_title"><%- ct %></h3>
+          <% if (cb) { %><p data-slab-field="card<%= c %>_body"><%- cb %></p><% } %>
+        </<%- tag %>>
+        <% } } %>
+      </div>
+    </div>
+  </section>
+
+<% } else if (t === 'text') { %>
+  <section class="block<%= _bi % 2 ? ' tinted' : '' %>" data-slab-block="<%= block.id %>" data-slab-type="text">
+    <div class="wrap">
+      <div class="head">
+        <% if (f.subheading) { %><div class="eyebrow reveal" data-slab-field="subheading"><%- f.subheading %></div><% } %>
+        <% if (f.heading) { %><h2 class="title reveal" style="--i:1" data-slab-field="heading"><%- f.heading %></h2><% } %>
+        <% if (f.body) { %><p class="lede reveal" style="--i:2" data-slab-field="body"><%- f.body %></p><% } %>
+      </div>
+    </div>
+  </section>
+
+<% } else if (t === 'split') { %>
+  <section class="block<%= _bi % 2 ? ' tinted' : '' %>" data-slab-block="<%= block.id %>" data-slab-type="split">
+    <div class="wrap split-grid">
+      <div class="split-text reveal">
+        <% if (f.heading) { %><h2 class="title" data-slab-field="heading"><%- f.heading %></h2><% } %>
+        <% if (f.body) { %><p class="lede" data-slab-field="body"><%- f.body %></p><% } %>
+        <% if (f.cta_text) { %><a href="<%= f.cta_link || '#' %>" class="btn btn-gold" data-slab-field="cta_text"><%- f.cta_text %></a><% } %>
+      </div>
+      <div class="split-media reveal" style="--i:1">
+        <% if (im.main_image) { %><img src="<%= im.main_image %>" alt="<%- f.heading || brandName %>"><% } else { %><div class="ph"></div><% } %>
+      </div>
+    </div>
+  </section>
+
+<% } else if (t === 'pricing') { %>
+  <section class="block<%= _bi % 2 ? ' tinted' : '' %>" data-slab-block="<%= block.id %>" data-slab-type="pricing">
+    <div class="wrap">
+      <div class="head center">
+        <% if (f.heading) { %><h2 class="title reveal" data-slab-field="heading"><%- f.heading %></h2><% } %>
+        <% if (f.subtext) { %><p class="lede reveal" style="--i:1" data-slab-field="subtext"><%- f.subtext %></p><% } %>
+      </div>
+      <div class="price-grid">
+        <% for (var p = 1; p <= 3; p++) {
+             var pn = f['tier'+p+'_name']; var pp = f['tier'+p+'_price'];
+             var pf = f['tier'+p+'_features']; var pc = f['tier'+p+'_cta'];
+             if (pn) {
+               var feats = (pf || '').split('\n').map(function(x){ return x.trim(); }).filter(Boolean);
+        %>
+        <div class="tier reveal<%= p === 2 ? ' feat' : '' %>" style="--i:<%= p-1 %>">
+          <div class="tk" data-slab-field="tier<%= p %>_name"><%- pn %></div>
+          <% if (pp) { %><div class="amt" data-slab-field="tier<%= p %>_price"><%- pp %></div><% } %>
+          <% if (feats.length) { %>
+          <ul data-slab-field="tier<%= p %>_features">
+            <% feats.forEach(function(line){ %><li><%- line %></li><% }); %>
+          </ul>
+          <% } %>
+          <% if (pc) { %><a href="<%= f['tier'+p+'_cta_link'] || '#' %>" class="btn <%= p === 2 ? 'btn-gold' : 'btn-ghost' %>" data-slab-field="tier<%= p %>_cta"><%- pc %></a><% } %>
+        </div>
+        <% } } %>
+      </div>
+    </div>
+  </section>
+
+<% } else if (t === 'testimonials') { %>
+  <section class="block<%= _bi % 2 ? ' tinted' : '' %>" data-slab-block="<%= block.id %>" data-slab-type="testimonials">
+    <div class="wrap">
+      <div class="head center">
+        <% if (f.heading) { %><h2 class="title reveal" data-slab-field="heading"><%- f.heading %></h2><% } %>
+        <% if (f.subtext) { %><p class="lede reveal" style="--i:1" data-slab-field="subtext"><%- f.subtext %></p><% } %>
+      </div>
+      <div class="tstmt-grid">
+        <% for (var q = 1; q <= 3; q++) { var tq = f['t'+q+'_quote']; var tnm = f['t'+q+'_name']; var trl = f['t'+q+'_role']; if (tq) { %>
+        <figure class="tstmt reveal" style="--i:<%= q-1 %>">
+          <blockquote data-slab-field="t<%= q %>_quote"><%- tq %></blockquote>
+          <% if (tnm || trl) { %>
+          <figcaption>
+            <% if (tnm) { %><span class="tn" data-slab-field="t<%= q %>_name"><%- tnm %></span><% } %>
+            <% if (trl) { %><span class="tr" data-slab-field="t<%= q %>_role"><%- trl %></span><% } %>
+          </figcaption>
+          <% } %>
+        </figure>
+        <% } } %>
+      </div>
+    </div>
+  </section>
+
+<% } else if (t === 'faq') { %>
+  <section class="block<%= _bi % 2 ? ' tinted' : '' %>" data-slab-block="<%= block.id %>" data-slab-type="faq">
+    <div class="wrap">
+      <div class="head">
+        <% if (f.heading) { %><h2 class="title reveal" data-slab-field="heading"><%- f.heading %></h2><% } %>
+        <% if (f.subtext) { %><p class="lede reveal" style="--i:1" data-slab-field="subtext"><%- f.subtext %></p><% } %>
+      </div>
+      <div class="flow">
+        <% for (var q2 = 1; q2 <= 5; q2++) { var qq = f['q'+q2]; var aa = f['a'+q2]; if (qq) { %>
+        <div class="step reveal" style="--i:<%= q2-1 %>">
+          <div class="sn"><%= (q2 < 10 ? '0'+q2 : q2) %></div>
+          <div>
+            <h4 data-slab-field="q<%= q2 %>"><%- qq %></h4>
+            <% if (aa) { %><p data-slab-field="a<%= q2 %>"><%- aa %></p><% } %>
+          </div>
+        </div>
+        <% } } %>
+      </div>
+    </div>
+  </section>
+
+<% } else if (t === 'ticker') { %>
+  <% var tickItems = (f.items || '').split('|').map(function(x){ return x.trim(); }).filter(Boolean);
+     var tickRtl = (f.direction && String(f.direction).toLowerCase() === 'right');
+     var tickSticky = (f.sticky && String(f.sticky).toLowerCase() === 'true');
+     var tickStyle = '';
+     if (f.bg) tickStyle += '--ticker-bg:' + f.bg + ';';
+     if (f.text_color) tickStyle += '--ticker-text:' + f.text_color + ';';
+     if (f.speed) tickStyle += '--ticker-speed:' + f.speed + 's;';
+  %>
+  <% if (tickItems.length) { %>
+  <section class="ticker-band<%= tickSticky ? ' sticky' : '' %>" data-slab-block="<%= block.id %>" data-slab-type="ticker"<% if (tickStyle) { %> style="<%= tickStyle %>"<% } %>>
+    <div class="ticker-track<%= tickRtl ? ' rtl' : '' %>" data-slab-field="items">
+      <% for (var rep = 0; rep < 2; rep++) { tickItems.forEach(function(it){ %><span class="tick-item"><%- it %></span><span class="tick-dot">&#9670;</span><% }); } %>
+    </div>
+  </section>
+  <% } %>
+
+<% } else if (t === 'cta') { %>
+  <section class="close" data-slab-block="<%= block.id %>" data-slab-type="cta">
+    <div class="wrap">
+      <% if (f.heading) { %><h2 class="reveal" data-slab-field="heading"><%- f.heading %></h2><% } %>
+      <% if (f.subtext) { %><p class="reveal" style="--i:1" data-slab-field="subtext"><%- f.subtext %></p><% } %>
+      <% if (f.btn_text) { %>
+      <div class="hero-cta reveal" style="--i:2;justify-content:center">
+        <a href="<%= f.btn_link || '#' %>" class="btn btn-gold" data-slab-field="btn_text"><%- f.btn_text %></a>
+      </div>
+      <% } %>
+    </div>
+  </section>
+
+<% } else if (t === 'blog') { %>
+  <% if (_posts.length) { %>
+  <section class="block<%= _bi % 2 ? ' tinted' : '' %>" data-slab-block="<%= block.id %>" data-slab-type="blog">
+    <div class="wrap">
+      <div class="head">
+        <% if (f.heading) { %><h2 class="title reveal" data-slab-field="heading"><%- f.heading %></h2><% } %>
+        <% if (f.subtext) { %><p class="lede reveal" style="--i:1" data-slab-field="subtext"><%- f.subtext %></p><% } %>
+      </div>
+      <div class="post-grid">
+        <% _posts.forEach(function(p, pi){ %>
+        <a class="post reveal" style="--i:<%= pi %>" href="/blog/<%= p.slug %>">
+          <% if (p.featuredImageUrl) { %><img class="post-media" src="<%= p.featuredImageUrl %>" alt="<%- p.title %>" loading="lazy"><% } %>
+          <span class="pd"><%= _fmtDate(p.publishedAt) %></span>
+          <h3><%- p.title %></h3>
+          <% if (p.excerpt) { %><p><%- String(p.excerpt).slice(0, 160) %></p><% } %>
+          <span class="pl">Read post</span>
+        </a>
+        <% }); %>
+      </div>
+    </div>
+  </section>
+  <% } %>
+
+<% } else if (t === 'aurora') { %>
+  <% var auC = String(f.colors || '').split('|').map(function(x){ return x.trim(); }).filter(Boolean);
+     var auDef = ['var(--gold)', 'var(--navy-mid)', 'var(--gold-light)', 'var(--accent-2)'];
+     var auStyle = '';
+     for (var ai = 0; ai < 4; ai++) auStyle += '--au-' + (ai+1) + ':' + (auC[ai] || auDef[ai]) + ';';
+  %>
+  <section class="aurora" data-slab-block="<%= block.id %>" data-slab-type="aurora" style="<%= auStyle %>">
+    <div class="au-bg"></div>
+    <div class="au-sheen"></div>
+    <div class="wrap">
+      <% if (f.heading) { %><h2 class="reveal" data-slab-field="heading"><%- f.heading %></h2><% } %>
+      <% if (f.subtext) { %><p class="reveal" style="--i:1" data-slab-field="subtext"><%- f.subtext %></p><% } %>
+      <% if (f.cta_text) { %>
+      <div class="hero-cta reveal" style="--i:2">
+        <a href="<%= f.cta_link || '#' %>" class="btn btn-gold" data-slab-field="cta_text"><%- f.cta_text %></a>
+      </div>
+      <% } %>
+    </div>
+  </section>
+
+<% } else { %>
+  <section class="block<%= _bi % 2 ? ' tinted' : '' %>" data-slab-block="<%= block.id %>" data-slab-type="<%= block.type %>">
+    <div class="wrap">
+      <div class="head">
+        <% if (f.subheading) { %><div class="eyebrow reveal" data-slab-field="subheading"><%- f.subheading %></div><% } %>
+        <% if (f.heading) { %><h2 class="title reveal" style="--i:1" data-slab-field="heading"><%- f.heading %></h2><% } %>
+        <% if (f.body) { %><p class="lede reveal" style="--i:2" data-slab-field="body"><%- f.body %></p>
+        <% } else if (f.subtext) { %><p class="lede reveal" style="--i:2" data-slab-field="subtext"><%- f.subtext %></p><% } %>
+      </div>
+    </div>
+  </section>
+<% } %>
+
+<% }); %>
+</main>
+
+<% if (_vis.footer !== false) { %>
+<footer>
+  <div class="wrap">
+    <div class="brand"><%- brandName %></div>
+    <div class="foot-links">
+      <% footerLinks.forEach(function(l){ %>
+        <a href="<%= l.url || '#' %>"<% if (l.target) { %> target="<%= l.target %>"<% } %>><%- l.label %></a>
+      <% }); %>
+      <a href="<%= _auth %>">Admin</a>
+    </div>
+    <small>
+      <% if (_brand.location) { %><%- _brand.location %><% } %><% if (_brand.location && _brand.tagline) { %> &middot; <% } %><% if (_brand.tagline) { %><%- _brand.tagline %><% } %>
+    </small>
+  </div>
+</footer>
+<% } %>
+
+<script>
+/* Publish the fixed nav's measured height so the hero can clear it (the CSS
+   carries only a server-side estimate until the logo and web fonts land). */
+(function(){
+  var n = document.querySelector('.nav');
+  if (!n) return;
+  function sync(){
+    /* .stuck shrinks the nav's padding on scroll — measuring then would shrink the
+       hero's top padding mid-scroll, so only the resting height counts. */
+    if (n.classList.contains('stuck')) return;
+    document.documentElement.style.setProperty('--nav-h', n.offsetHeight + 'px');
+  }
+  sync();
+  window.addEventListener('resize', sync);
+  window.addEventListener('load', sync);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(sync);
+  if (window.ResizeObserver) { try { new ResizeObserver(sync).observe(n); } catch(e) {} }
+})();
+(function(){
+  /* nav hairline on scroll — reveal + count-up moved to partials/_motion.ejs */
+  var nav = document.getElementById('nav');
+  if (nav) addEventListener('scroll', function(){ nav.classList.toggle('stuck', scrollY > 40); }, {passive:true});
+})();
+</script>
+<%- include('../_motion') %>
+<%- include('../_cinema') %>
+</body>
+</html>

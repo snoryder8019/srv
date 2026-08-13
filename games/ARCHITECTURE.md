@@ -2,6 +2,13 @@
 
 **Status:** active · **Last settled:** 2026-05-30 · **Owner of identity & analytics:** `games.madladslab.com`
 
+> ⚠️ **Ops model changed (2026-07):** `/srv` now runs under **systemd on the WSL2 / Greeley box**, not tmux
+> on the Linode. The §2 topology table's "tmux session" / "Supervised by" columns and the tmux recipe formerly
+> in §10 are superseded — every service is a systemd unit `srv-<name>`; manage with `systemctl` / `journalctl`.
+> The Arcade platforms actually live under **`/srv/games/arcade/*`** (cards, tiles, td, madlands, reels) and
+> `/srv/games/matchmaking`, **not** the top-level `/srv/cards` etc. shown in §2. New arcade units since this doc
+> last settled: `srv-madlands` (3730), `srv-reels` (3740). See /srv/README.md for the reconciled table.
+
 This is the canonical map of the MadLadsLab **Arcade**: the multiplayer browser-game
 platform that sits on top of `games.madladslab.com`. It explains how the services fit
 together and points to the per-surface protocol docs. Read this first; then the
@@ -59,7 +66,7 @@ separate top-level service. The platform is the scaffold; variants are content.
 | **hex** (platform, planned) | `/srv/hex` | TBD (hex.madladslab.com) | TBD (3650-range) | ESM | `hex` | to add |
 
 Supervision files: `/srv/auto-start-npm.json` (boot) and `/srv/service-watchdog.json`
-(liveness). Each Arcade service runs in **its own tmux session** for failure isolation —
+(liveness). Each Arcade service runs in **its own systemd unit (`srv-<name>`)** for failure isolation —
 a crashing table never takes down the portal, and the portal is never in the gameplay path.
 
 Apache terminates TLS and reverse-proxies each subdomain to its loopback port, with the
@@ -216,28 +223,23 @@ between games — without leaving the current table. One implementation, served 
 
 ## 10. Operations
 
-**Restart a service** (watchdog tool is unreliable; use tmux directly):
+Services run as **systemd units** on the WSL2 / Greeley box (migrated off tmux 2026-07). Each Arcade service
+is its own unit for failure isolation: `srv-games` (portal), `srv-cards`, `srv-matchmaking`, `srv-tiles`,
+`srv-td`, `srv-madlands`, `srv-reels`, plus `srv-triple-twenty`.
+
 ```
-cd /srv/<svc> && node -c <entry>            # or: node --check app.js  (ESM)
-tmux kill-session -t <session>; sleep 1
-tmux new-session -d -s <session> "cd /srv/<svc> && npm start 2>&1 | tee -a /srv/<svc>/<svc>.log"
-sleep 5 && curl -s -o /dev/null -w '%{http_code}\n' https://<domain>/health
+systemctl status  srv-<name>                 # state
+systemctl restart srv-<name>                 # restart (replaces the old tmux kill/new-session dance)
+journalctl -u srv-<name> -n 100 --no-pager   # recent logs
+journalctl -u srv-<name> -f                  # follow
+ss -lntp | grep :<port>                       # confirm it is listening
 ```
-Recreate the session with the **exact** name/cmd in `service-watchdog.json` so the watchdog
-doesn't double-start it.
 
-**execute_command guardrails:** no `killall`/`pkill`/`kill -9`, no `rm -rf /<path>`
-(use `cd /srv && rm -rf <name>`), no `dd`/`mkfs`/`reboot`/`shutdown`.
+systemd `Restart=` self-heals crashes; the old `service-watchdog.json` / `start-all-services.sh` are retired.
 
-**Known risks / cleanup owed:**
-- ⚠ `service-watchdog.json` lists **both** `servers` and `cards` on port **3600**. Only
-  cards is actually on 3600; the `servers` entry is stale. If `servers` is ever revived it
-  will collide — fix the watchdog entry (servers is otherwise dormant).
-- ⚠ **Towers (`td`) is unsupervised** — running in a manual tmux session, absent from both
-  `auto-start-npm.json` and `service-watchdog.json`. It will not auto-recover on crash/boot.
-  Folded into supervision as part of the hex migration.
-
----
+**execute_command guardrails (MCP):** blocked — killall/pkill/kill -9, recursive deletes from root,
+`systemctl stop|disable|mask`, reboot/shutdown/halt, dd/mkfs, fork bombs, remote-pipe-to-shell.
+`systemctl restart|status` and `journalctl` are allowed.
 
 ## 11. Roadmap (settled, not yet built)
 

@@ -8,6 +8,9 @@ import { config } from '../../config/config.js';
 import { webSearch, callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
 import { agentLLMOpts } from '../../plugins/agentRegistry.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
+import {
+  resolveCampaignSchedule, scheduleCampaign, unscheduleCampaign, deliverCampaign,
+} from '../../plugins/campaignSchedule.js';
 
 const router = express.Router();
 const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -459,20 +462,27 @@ router.post('/campaigns', async (req, res) => {
     const { subject, preheader, body, targetFunnel, targetTags } = req.body;
     if (!subject || !body) return res.redirect('/admin/email-marketing?tab=campaigns&error=Subject+and+body+required');
 
+    // An empty schedule field just means "draft" — same rule on create and update.
+    let sched;
+    try { sched = resolveCampaignSchedule(req.body); }
+    catch (err) { return res.redirect('/admin/email-marketing?tab=campaigns&error=' + encodeURIComponent(err.message)); }
+
     await db.collection('campaigns').insertOne({
       subject,
       preheader: preheader || '',
       body,
       targetFunnel: targetFunnel || 'all',
       targetTags: targetTags ? targetTags.split(',').map(t => t.trim()).filter(Boolean) : [],
-      status: 'draft',
+      status: sched.status,
+      scheduledAt: sched.scheduledAt,
       sentCount: 0,
       sentAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
-    res.redirect('/admin/email-marketing?tab=campaigns&success=Campaign+created');
+    res.redirect('/admin/email-marketing?tab=campaigns&success='
+      + (sched.scheduledAt ? encodeURIComponent(`Scheduled for ${sched.scheduledAt.toLocaleString()}`) : 'Campaign+created'));
   } catch (err) {
     console.error('Create campaign error:', err);
     res.redirect('/admin/email-marketing?tab=campaigns&error=Failed+to+create+campaign');
@@ -486,14 +496,24 @@ router.post('/campaigns/:id/update', async (req, res) => {
     const campaign = await db.collection('campaigns').findOne({ _id: new ObjectId(req.params.id) });
     if (!campaign) return res.redirect('/admin/email-marketing?tab=campaigns&error=Campaign+not+found');
     if (campaign.status === 'sent') return res.redirect('/admin/email-marketing?tab=campaigns&error=Sent+campaigns+cannot+be+edited');
+    if (campaign.status === 'sending') return res.redirect('/admin/email-marketing?tab=campaigns&error=Campaign+is+sending+right+now');
 
     const { subject, preheader, body, targetFunnel, targetTags } = req.body;
     if (!subject || !body) return res.redirect('/admin/email-marketing?tab=campaigns&error=Subject+and+body+required');
+
+    // The schedule field is authoritative on every save: a date puts the
+    // campaign on the calendar, a cleared date takes it back off.
+    let sched;
+    try { sched = resolveCampaignSchedule(req.body); }
+    catch (err) { return res.redirect('/admin/email-marketing?tab=campaigns&error=' + encodeURIComponent(err.message)); }
 
     const set = {
       subject,
       preheader: preheader || '',
       body,
+      status: sched.status,
+      scheduledAt: sched.scheduledAt,
+      sendError: null,
       updatedAt: new Date(),
     };
     // Follow-up campaigns target explicit contact IDs — don't clobber their segment targeting.
@@ -503,7 +523,8 @@ router.post('/campaigns/:id/update', async (req, res) => {
     }
 
     await db.collection('campaigns').updateOne({ _id: campaign._id }, { $set: set });
-    res.redirect('/admin/email-marketing?tab=campaigns&success=Campaign+updated');
+    res.redirect('/admin/email-marketing?tab=campaigns&success='
+      + (sched.scheduledAt ? encodeURIComponent(`Scheduled for ${sched.scheduledAt.toLocaleString()}`) : 'Campaign+updated'));
   } catch (err) {
     console.error('Update campaign error:', err);
     res.redirect('/admin/email-marketing?tab=campaigns&error=Failed+to+update+campaign');
@@ -630,6 +651,8 @@ router.post('/campaigns/:id/preview', express.json(), async (req, res) => {
 });
 
 // ── Send campaign ──
+// Sends immediately, through the same claim-and-deliver core the scheduler uses,
+// so a manual send and a due scheduled send can never both go out.
 router.post('/campaigns/:id/send', async (req, res) => {
   try {
     const db = req.db;
@@ -637,46 +660,46 @@ router.post('/campaigns/:id/send', async (req, res) => {
     if (!campaign) return res.redirect('/admin/email-marketing?tab=campaigns&error=Campaign+not+found');
     if (campaign.status === 'sent') return res.redirect('/admin/email-marketing?tab=campaigns&error=Campaign+already+sent');
 
-    // Build contact filter — follow-up campaigns use explicit contact IDs
-    let contacts;
-    if (campaign.targetContactIds?.length) {
-      contacts = await db.collection('contacts').find({
-        _id: { $in: campaign.targetContactIds.map(id => id instanceof ObjectId ? id : new ObjectId(id)) },
-        status: 'subscribed',
-      }).toArray();
-    } else {
-      const contactFilter = { status: 'subscribed' };
-      if (campaign.targetFunnel && campaign.targetFunnel !== 'all') {
-        contactFilter.funnel = campaign.targetFunnel;
-      }
-      if (campaign.targetTags?.length) {
-        contactFilter.tags = { $in: campaign.targetTags };
-      }
-      contacts = await db.collection('contacts').find(contactFilter).toArray();
-    }
-    if (!contacts.length) return res.redirect('/admin/email-marketing?tab=campaigns&error=No+matching+contacts');
-
-    let sent = 0, failed = 0;
-    for (const contact of contacts) {
-      try {
-        await sendCampaignEmail(contact.email, contact.name, campaign.subject, campaign.preheader, campaign.body, campaign._id, contact._id, req.tenant);
-        sent++;
-      } catch (err) {
-        console.error(`[Campaign] Failed to send to ${contact.email}:`, err.message);
-        failed++;
-      }
+    const out = await deliverCampaign(db, campaign, req.tenant);
+    if (!out.ok) {
+      return res.redirect(`/admin/email-marketing?tab=campaigns&error=${encodeURIComponent(out.error || 'Send failed')}`);
     }
 
-    await db.collection('campaigns').updateOne(
-      { _id: campaign._id },
-      { $set: { status: 'sent', sentCount: sent, failedCount: failed, sentAt: new Date(), updatedAt: new Date() } }
-    );
-
-    console.log(`[Email Marketing] Campaign "${campaign.subject}" sent to ${sent} contacts (${failed} failed)`);
-    res.redirect(`/admin/email-marketing?tab=campaigns&success=Sent+to+${sent}+contacts`);
+    console.log(`[Email Marketing] Campaign "${campaign.subject}" sent to ${out.sent} contacts (${out.failed} failed)`);
+    res.redirect(`/admin/email-marketing?tab=campaigns&success=Sent+to+${out.sent}+contacts`);
   } catch (err) {
     console.error('Send campaign error:', err);
     res.redirect(`/admin/email-marketing?tab=campaigns&error=${encodeURIComponent(err.message || 'Send failed')}`);
+  }
+});
+
+// ── Schedule / unschedule (the calendar path for campaigns) ──
+// Mirrors the blog + social scheduling contract: a POST with a date puts it on
+// the calendar, a POST to /unschedule pulls it back to draft. Both bounce to
+// wherever the admin was, so the campaign cards and the platform calendar chips
+// can drive the same endpoints.
+router.post('/campaigns/:id/schedule', async (req, res) => {
+  try {
+    const at = req.body.scheduledAt || (req.body.date ? `${req.body.date}T${req.body.time || '09:00'}` : '');
+    if (!at) return res.redirect(backTo(req).split('?')[0] + '?tab=campaigns&error=Pick+a+send+date+and+time');
+    const when = await scheduleCampaign(req.db, req.params.id, new Date(at));
+    if (req.xhr) return res.json({ ok: true, scheduledAt: when.toISOString() });
+    res.redirect(`/admin/email-marketing?tab=campaigns&success=${encodeURIComponent(`Scheduled for ${when.toLocaleString()}`)}`);
+  } catch (err) {
+    console.error('[email] schedule error:', err.message);
+    if (req.xhr) return res.status(err.status || 500).json({ ok: false, error: err.message });
+    res.redirect(`/admin/email-marketing?tab=campaigns&error=${encodeURIComponent(err.message || 'Schedule failed')}`);
+  }
+});
+
+router.post('/campaigns/:id/unschedule', async (req, res) => {
+  try {
+    await unscheduleCampaign(req.db, req.params.id);
+    if (req.xhr) return res.json({ ok: true });
+    res.redirect('/admin/email-marketing?tab=campaigns&success=Back+to+draft');
+  } catch (err) {
+    console.error('[email] unschedule error:', err.message);
+    res.redirect('/admin/email-marketing?tab=campaigns&error=Unschedule+failed');
   }
 });
 

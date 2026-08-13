@@ -1,0 +1,109 @@
+<% const _t = (typeof t === 'function') ? t : (k => k); %>
+<!DOCTYPE html>
+<html lang="<%= (typeof htmlLang !== 'undefined' && htmlLang) || 'en' %>">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= _t('field.title') %> — <%= brand?.name || 'Home' %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    :root {
+      --navy:<%= design.color_primary %>; --gold:<%= design.color_accent %>; --ivory:<%= design.color_bg %>;
+      --slate:#6B7380; --white:#FDFCFA;
+    }
+    body { font-family:'<%= design.font_body || 'Jost' %>',sans-serif; background:var(--ivory); color:var(--on-surface); min-height:100vh; padding:24px; display:flex; justify-content:center; }
+    .wrap { max-width:600px; width:100%; }
+    .card { background:var(--surface); border-radius:6px; overflow:hidden; box-shadow:0 2px 20px rgba(0,0,0,.07); margin-bottom:18px; }
+    .head { background:var(--navy); padding:26px 30px; }
+    .brand { font-family:'<%= design.font_heading || 'Cormorant Garamond' %>',serif; font-size:22px; color:var(--white); font-weight:300; }
+    .head-label { font-size:11px; color:var(--gold); text-transform:uppercase; letter-spacing:2px; margin-top:2px; }
+    .gold-bar { height:3px; background:var(--gold); }
+    .body { padding:26px 30px; }
+    .greet { font-size:18px; margin-bottom:4px; }
+    .intro { color:var(--slate); font-size:14px; margin-bottom:20px; }
+    .sec-label { font-size:11px; color:var(--slate); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px; }
+    .job-title { font-size:16px; font-weight:600; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-top:1px solid var(--border); }
+    .row:first-of-type { border-top:none; }
+    .badge { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; padding:3px 9px; border-radius:10px; background:rgba(201,168,72,0.15); color:var(--gold); }
+    .badge.paid { background:rgba(20,83,45,0.14); color:#14532D; }
+    .eta { background:rgba(201,168,72,0.12); border:1px solid var(--gold); border-radius:6px; padding:12px 14px; font-size:14px; margin-bottom:18px; }
+    .btn { display:inline-block; background:var(--navy); color:var(--white); text-decoration:none; padding:9px 16px; border-radius:4px; font-size:13px; font-weight:500; }
+    .btn.gold { background:var(--gold); }
+    .muted { color:var(--slate); font-size:13px; padding:8px 0; }
+    .amt { font-weight:600; font-variant-numeric:tabular-nums; }
+    .foot { text-align:center; color:var(--slate); font-size:12px; padding:6px 0 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="head">
+        <div class="brand"><%= brand?.name || '' %></div>
+        <div class="head-label"><%= _t('field.title') %></div>
+      </div>
+      <div class="gold-bar"></div>
+      <div class="body">
+        <div class="greet"><%= clientDoc?.name ? ('Hi ' + clientDoc.name) : (_t('field.title')) %></div>
+        <div class="intro"><%= _t('field.portal_intro') %></div>
+
+        <% if (job.eta && job.eta.minutes != null) { %>
+          <div class="eta">&#128663; <%= _t('field.portal_eta', { min: job.eta.minutes }) %></div>
+        <% } %>
+
+        <div class="sec-label"><%= _t('field.portal_status') %></div>
+        <div class="row">
+          <div class="job-title"><%= job.title %></div>
+          <span class="badge"><%= _t('field.status.' + job.status) %></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quote -->
+    <div class="card">
+      <div class="body">
+        <div class="sec-label"><%= _t('field.portal_quote_heading') %></div>
+        <% if (engagement && engagement.accessToken) { %>
+          <div class="row">
+            <div><%= engagement.title || engagement.engagementNumber %></div>
+            <a class="btn gold" href="/engage/<%= engagement.accessToken %>"><%= _t('field.portal_view_quote') %></a>
+          </div>
+        <% } else { %>
+          <div class="muted"><%= _t('field.portal_no_quote') %></div>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Invoices -->
+    <div class="card">
+      <div class="body">
+        <div class="sec-label"><%= _t('field.portal_invoices_heading') %></div>
+        <% if (invoices && invoices.length) { %>
+          <% invoices.forEach(function(inv){ %>
+            <% const paid = ['paid','void'].includes(inv.status); %>
+            <div class="row">
+              <div>
+                <div><%= inv.title || inv.invoiceNumber %></div>
+                <div class="muted" style="padding:0;">#<%= inv.invoiceNumber %></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;">
+                <span class="amt">$<%= Number(inv.amount || 0).toFixed(2) %></span>
+                <% if (paid) { %>
+                  <span class="badge paid"><%= _t('field.portal_paid') %></span>
+                <% } else { %>
+                  <a class="btn" href="/pay/<%= inv.paymentToken %>"><%= _t('field.portal_pay') %></a>
+                <% } %>
+              </div>
+            </div>
+          <% }); %>
+        <% } else { %>
+          <div class="muted"><%= _t('field.portal_no_invoices') %></div>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="foot"><%= _t('field.portal_help') %></div>
+  </div>
+</body>
+</html>

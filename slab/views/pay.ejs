@@ -1,9 +1,10 @@
+<% const _t = (typeof t === 'function') ? t : (k => k); %>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Invoice <%= inv.invoiceNumber %> — <%= brand?.name || 'Home' %></title>
+  <title><%= _t('pay.invoice') %> <%= inv.invoiceNumber %> — <%= brand?.name || 'Home' %></title>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
@@ -48,7 +49,7 @@
 <div class="invoice-card">
   <div class="inv-header">
     <div class="inv-brand"><%- brand?.name || '' %></div>
-    <div class="inv-label">Invoice</div>
+    <div class="inv-label"><%= _t('pay.invoice') %></div>
   </div>
   <div class="gold-bar"></div>
 
@@ -58,22 +59,22 @@
 
     <div class="inv-meta">
       <div class="inv-meta-item">
-        <div class="inv-meta-label">Invoice #</div>
+        <div class="inv-meta-label"><%= _t('pay.invoice_number') %></div>
         <div class="inv-meta-value"><%= inv.invoiceNumber || '—' %></div>
       </div>
       <div class="inv-meta-item">
-        <div class="inv-meta-label">Client</div>
+        <div class="inv-meta-label"><%= _t('pay.client') %></div>
         <div class="inv-meta-value"><%= cl?.name || '—' %></div>
       </div>
       <div class="inv-meta-item">
-        <div class="inv-meta-label">Due Date</div>
-        <div class="inv-meta-value"><%= inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) : 'Upon receipt' %></div>
+        <div class="inv-meta-label"><%= _t('pay.due_date') %></div>
+        <div class="inv-meta-value"><%= inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) : _t('pay.upon_receipt') %></div>
       </div>
     </div>
 
     <!-- Line items -->
     <table>
-      <thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+      <thead><tr><th><%= _t('pay.description') %></th><th><%= _t('pay.qty') %></th><th><%= _t('pay.rate') %></th><th><%= _t('pay.amount') %></th></tr></thead>
       <tbody>
         <% if (inv.lineItems?.length) { %>
           <% for (const li of inv.lineItems) { %>
@@ -95,37 +96,37 @@
 
     <div class="total-row">
       <div class="total-box">
-        <div class="total-label">Total Due</div>
+        <div class="total-label"><%= _t('pay.total_due') %></div>
         <div class="total-amount">$<%= inv.amount.toFixed(2) %></div>
       </div>
     </div>
 
     <% if (paid) { %>
       <div style="text-align:center;">
-        <div class="paid-badge">Paid</div>
-        <p style="font-size:13px;color:var(--slate);">This invoice has been paid. Thank you!</p>
-        <a href="/pay/<%= inv.paymentToken %>/receipt" class="btn-stripe" style="display:inline-block;width:auto;text-decoration:none;margin-top:16px;">View / Print Receipt</a>
+        <div class="paid-badge"><%= _t('pay.paid') %></div>
+        <p style="font-size:13px;color:var(--slate);"><%= _t('pay.paid_thanks') %></p>
+        <a href="/pay/<%= inv.paymentToken %>/receipt" class="btn-stripe" style="display:inline-block;width:auto;text-decoration:none;margin-top:16px;"><%= _t('pay.view_print_receipt') %></a>
       </div>
     <% } else { %>
       <div class="pay-buttons">
         <% if (stripeKey) { %>
         <form method="POST" action="/pay/<%= inv.paymentToken %>/stripe">
-          <button type="submit" class="btn-stripe">Pay with Card</button>
+          <button type="submit" class="btn-stripe"><%= _t('pay.pay_with_card') %></button>
         </form>
         <% } %>
         <% if (paypalId) { %>
         <form method="POST" action="/pay/<%= inv.paymentToken %>/paypal">
-          <button type="submit" class="btn-paypal">Pay with PayPal</button>
+          <button type="submit" class="btn-paypal"><%= _t('pay.pay_with_paypal') %></button>
         </form>
         <% } %>
         <% if (!stripeKey && !paypalId) { %>
-          <p style="text-align:center;color:var(--slate);font-size:14px;">Online payment is not available yet. Please contact us to arrange payment.</p>
+          <p style="text-align:center;color:var(--slate);font-size:14px;"><%= _t('pay.no_online_payment') %></p>
         <% } %>
       </div>
     <% } %>
 
     <% if (inv.notes) { %>
-    <div class="inv-notes"><strong>Notes:</strong> <%= inv.notes %></div>
+    <div class="inv-notes"><strong><%= _t('pay.notes_label') %></strong> <%= inv.notes %></div>
     <% } %>
   </div>
 

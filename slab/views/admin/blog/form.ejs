@@ -61,6 +61,15 @@
   .ap-msg.assistant .ap-bubble { background: var(--ivory); color: var(--on-surface); border: 1px solid var(--border); border-radius: 4px 4px 4px 1px; }
   .ap-fill-notice { font-size: 0.68rem; color: var(--success,#15803D); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
   .ap-search-notice { font-size: 0.68rem; color: var(--slate); font-style: italic; }
+  .ap-fail-notice { font-size: 0.68rem; color: var(--danger,#B91C1C); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .ap-warn-notice { font-size: 0.68rem; color: var(--gold,#C9A848); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .ap-retry, .ap-report { margin-top: 6px; border-radius: 2px; font-size: 0.66rem; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; padding: 6px 12px; cursor: pointer; font-family: inherit; }
+  .ap-retry { background: var(--navy,#1C2B4A); color: var(--on-navy,#FDFCFA); border: none; }
+  .ap-retry:disabled { opacity: 0.55; cursor: default; }
+  .ap-report { background: transparent; color: var(--navy,#1C2B4A); border: 1.5px solid var(--border); }
+  .ap-report:disabled { opacity: 0.6; cursor: default; }
+  .ap-fail-note { font-size: 0.68rem; color: var(--slate); font-style: italic; margin-top: 5px; }
 
   .ap-footer {
     padding: 14px 20px;
@@ -279,10 +288,30 @@
         </div>
         <div class="form-field">
           <label>Status</label>
-          <select name="status">
+          <select name="status" id="field-status">
             <option value="draft" <%= !post || post.status === 'draft' ? 'selected' : '' %>>Draft</option>
+            <option value="scheduled" <%= post && post.status === 'scheduled' ? 'selected' : '' %>>Scheduled</option>
             <option value="published" <%= post && post.status === 'published' ? 'selected' : '' %>>Published</option>
           </select>
+        </div>
+        <%# Schedule row — only meaningful when status is "Scheduled"; the script
+            below shows/hides it and pre-fills the next open slot. Choosing a date
+            puts the post on the platform calendar; the publisher flips it live. %>
+        <div class="form-field" id="schedule-row" style="display:none;">
+          <label>Goes live</label>
+          <div style="display:flex;gap:8px;">
+            <%
+              var _sd = '', _st = '09:00';
+              if (post && post.scheduledAt) {
+                var _dt = new Date(post.scheduledAt);
+                _sd = _dt.toISOString().slice(0,10);
+                _st = _dt.toTimeString().slice(0,5);
+              }
+            %>
+            <input type="date" name="scheduledDate" id="field-scheduledDate" value="<%= _sd %>" style="flex:1;">
+            <input type="time" name="scheduledTime" id="field-scheduledTime" value="<%= _st %>" style="width:120px;">
+          </div>
+          <span id="schedule-hint" style="font-size:0.65rem;color:var(--slate);"></span>
         </div>
         <div class="form-field" style="position:relative;">
           <label>
@@ -741,7 +770,7 @@ agentInput.addEventListener('input', function() {
   this.style.height = 'auto';
   this.style.height = Math.min(this.scrollHeight, 120) + 'px';
 });
-document.getElementById('agentSend').addEventListener('click', sendAgent);
+document.getElementById('agentSend').addEventListener('click', function() { sendAgent(); });
 
 // ── TWO-STATE REVERT ──
 // fieldStates[key] = { original, ai }  (undefined until AI fills the field)
@@ -886,15 +915,18 @@ function getCurrentPost() {
   };
 }
 
-async function sendAgent() {
-  const text = agentInput.value.trim();
+// A definitive ask ("write a post about X") must end with fields in this form.
+// The server reports `required`/`complete`/`failed` so the panel can hold that
+// line: a write that filled nothing renders as a FAILURE with a one-click retry,
+// never as a friendly sentence over an empty editor.
+async function sendAgent(overrideText) {
+  const text = (overrideText != null ? overrideText : agentInput.value).trim();
   if (!text) return;
-  agentInput.value = '';
-  agentInput.style.height = 'auto';
+  if (overrideText == null) { agentInput.value = ''; agentInput.style.height = 'auto'; }
   document.getElementById('agentSend').disabled = true;
 
   agentMessages.push({ role: 'user', content: text });
-  appendMsg('user', text);
+  if (overrideText == null) appendMsg('user', text);
   showTyping(false);
 
   try {
@@ -907,24 +939,120 @@ async function sendAgent() {
     hideTyping();
 
     if (data.error) {
-      appendMsg('assistant', 'Error: ' + data.error);
+      appendMsg('assistant', 'Error: ' + data.error, retryButton(text, data.error));
+    } else if (data.failed) {
+      // Hard outcome: the model answered but produced no post. Say so plainly.
+      appendMsg('assistant',
+        'I did not produce a post — nothing was written to the form. ' +
+        (data.message ? 'The model replied: "' + String(data.message).slice(0, 180) + '"' : ''),
+        '<div class="ap-fail-notice" style="margin-top:4px;">✕ 0 fields filled</div>' + retryButton(text, 'write produced no fields'));
+      agentMessages.push({ role: 'assistant', content: 'FAILED — no post produced.' });
     } else {
-      const fills = Object.entries(data.fill || {});
+      const fills = Object.entries(data.fill || {}).filter(function(e) { return e[1]; });
       fills.forEach(([key, val]) => fillField(key, val));
       agentMessages.push({ role: 'assistant', content: data.message });
 
       let extra = '';
       if (fills.length) extra = '<div class="ap-fill-notice" style="margin-top:4px;">✓ ' + fills.length + ' field' + (fills.length > 1 ? 's' : '') + ' filled</div>';
+      if (data.degraded) extra += '<div class="ap-warn-notice" style="margin-top:4px;">⚠ Recovered from a malformed reply — read it before publishing</div>';
       appendMsg('assistant', data.message, extra);
     }
   } catch(e) {
     hideTyping();
-    appendMsg('assistant', 'Connection error. Please try again.');
+    appendMsg('assistant', 'Connection error.', retryButton(text, 'connection error'));
   } finally {
     document.getElementById('agentSend').disabled = false;
     agentInput.focus();
   }
 }
+
+// Failure affordance, matching the universal agent modal: a retry that reposts
+// the exact request (held a few seconds — the usual cause is a busy model, and
+// an instant re-fire just fails again) plus a report that ships the failure to
+// the /superadmin/reports error feed.
+const RETRY_HOLD_SECONDS = 5;
+function retryButton(text, detail) {
+  const id = 'apRetry' + Date.now() + Math.floor(Math.random() * 1000);
+  setTimeout(function() {
+    const b = document.getElementById(id);
+    const p = document.getElementById(id + 'p');
+    const n = document.getElementById(id + 'n');
+    if (b) {
+      let left = RETRY_HOLD_SECONDS;
+      const tick = setInterval(function() {
+        left--;
+        if (!b.isConnected) { clearInterval(tick); return; }
+        if (left <= 0) { clearInterval(tick); b.disabled = false; b.textContent = '↻ Try again'; }
+        else b.textContent = 'Retry in ' + left + 's';
+      }, 1000);
+      b.addEventListener('click', function() {
+        if (b.disabled) return;
+        clearInterval(tick);
+        b.disabled = true; b.textContent = 'Retrying…';
+        sendAgent(text);
+      });
+    }
+    if (p) p.addEventListener('click', function() {
+      p.disabled = true;
+      reportAgentFailure(detail, text);
+      p.textContent = 'Reported ✓';
+      if (n) n.textContent = 'Sent to the error log. Retry when you\'re ready.';
+    });
+  }, 0);
+  return '<div class="ap-fail-note" id="' + id + 'n">Give it a few seconds — the model may be busy.</div>' +
+         '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+         '<button type="button" class="ap-retry" id="' + id + '" disabled>Retry in ' + RETRY_HOLD_SECONDS + 's</button>' +
+         '<button type="button" class="ap-report" id="' + id + 'p">&#9873; Report</button></div>';
+}
+
+function reportAgentFailure(detail, text) {
+  try {
+    const body = JSON.stringify({
+      kind: 'agent-failure',
+      message: 'Blog agent failed: ' + String(detail || 'unknown'),
+      source: 'blog/form',
+      line: 0, col: 0,
+      stack: JSON.stringify({ request: String(text || '').slice(0, 500) }).slice(0, 4000),
+    });
+    if (navigator.sendBeacon) navigator.sendBeacon('/api/client-error', new Blob([body], { type: 'application/json' }));
+    else fetch('/api/client-error', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(function(){});
+  } catch (e) { /* reporting must never throw */ }
+}
+
+// ── SCHEDULE ROW ──
+// The date/time inputs only matter when status is "Scheduled". Show them then,
+// and offer the next open reading-hour slot so scheduling is one click, matching
+// social's auto-slot behaviour.
+(function() {
+  var statusSel = document.getElementById('field-status');
+  var row = document.getElementById('schedule-row');
+  var dateEl = document.getElementById('field-scheduledDate');
+  var timeEl = document.getElementById('field-scheduledTime');
+  var hint = document.getElementById('schedule-hint');
+  if (!statusSel || !row) return;
+
+  function refresh() {
+    var on = statusSel.value === 'scheduled';
+    row.style.display = on ? '' : 'none';
+    if (on && !dateEl.value) suggestSlot();
+  }
+  function suggestSlot() {
+    hint.textContent = 'Finding the next open slot…';
+    fetch('/admin/blog/next-slots?n=1')
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.ok && d.slots && d.slots[0]) {
+          var dt = new Date(d.slots[0]);
+          dateEl.value = dt.toISOString().slice(0,10);
+          timeEl.value = dt.toTimeString().slice(0,5);
+          hint.textContent = 'Next open slot — change it if you like.';
+        } else { hint.textContent = ''; }
+      })
+      .catch(function(){ hint.textContent = ''; });
+  }
+  statusSel.addEventListener('change', refresh);
+  refresh();
+})();
 
 // ── CONTENT TYPE HINT ──
 (function() {

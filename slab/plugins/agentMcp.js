@@ -89,6 +89,17 @@ function isTransientNetErr(e) {
   return /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|socket hang up|fetch failed|forcibly closed|wsarecv/i.test(m);
 }
 
+// A GPU TDR reset (the flaky winhost box) crashes the llama runner MID-inference.
+// The LB surfaces that as an HTTP 500 whose BODY carries the crash signature —
+// "llama runner process has terminated", or a raw socket reset ("wsarecv",
+// "forcibly closed", "connection reset"). Unlike a clean 500 (a real app bug we
+// own), these are the same transient class as a 502/503 and clear within a
+// second or two, so they earn the one retry. Without this a single GPU hiccup
+// throws straight through and the blog/copy/etc. agent returns "Agent error"
+// with nothing written. A genuine slow-inference AbortSignal timeout is a
+// separate network error and is still NOT retried (see below).
+const TRANSIENT_BODY_RE = /llama runner|terminated|forcibly closed|wsarecv|connection reset|ECONNRESET/i;
+
 // makeInit() must return a FRESH fetch init each call — an AbortSignal.timeout()
 // signal is single-use and can't be shared across attempts. Returns the ok Response.
 async function fetchOkWithRetry(url, makeInit, { tries = 2, backoffMs = 800, label = 'backend' } = {}) {
@@ -100,7 +111,10 @@ async function fetchOkWithRetry(url, makeInit, { tries = 2, backoffMs = 800, lab
       const body = await res.text().catch(() => '');
       const err = new Error(`${label} request failed (HTTP ${res.status}): ${body.slice(0, 200)}`);
       err.status = res.status;
-      err.retryable = RETRYABLE_STATUS.has(res.status);
+      // Retry on a retryable status OR a 5xx whose body reveals a transient
+      // backend crash (GPU TDR reset surfaced as a 500). Never on 4xx (ours).
+      err.retryable = RETRYABLE_STATUS.has(res.status)
+        || (res.status >= 500 && TRANSIENT_BODY_RE.test(body));
       throw err;
     } catch (e) {
       lastErr = e;
@@ -492,6 +506,101 @@ export function tryParseAgentResponse(raw) {
   return merge({ message, fill });
 }
 
+// ── Definitive-outcome enforcement (blog) ─────────────────────────────────────
+// "Write a blog post" is a DEFINITIVE request: the outcome the user asked for is
+// FIELDS IN THE FORM, not a chat reply. Models drift — they answer in prose,
+// drop the <CONTENT> sentinel, or emit markdown — and tryParseAgentResponse then
+// returns an empty fill. The surface fills nothing, says something friendly, and
+// reads to the user as "the agent failed to write". These helpers convert a
+// loose answer into a usable post so a hard request still lands hard.
+
+const BLOCK_HTML_RE = /<(p|h[1-6]|ul|ol|li|blockquote)\b/i;
+
+/** Markdown-ish / plain prose → the small HTML subset the blog editor accepts. */
+export function htmlFromLooseText(text) {
+  const src = String(text || '')
+    .replace(/```(?:html|json|markdown)?/gi, '')
+    .replace(/<\/?(?:CONTENT|BODY|HTML)>/gi, '')
+    .trim();
+  if (!src) return '';
+  if (BLOCK_HTML_RE.test(src)) return src; // already HTML — leave it alone
+
+  const inline = (s) => String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+
+  const out = [];
+  let list = null;
+  const flush = () => {
+    if (list && list.length) out.push('<ul>' + list.map((li) => '<li>' + inline(li) + '</li>').join('') + '</ul>');
+    list = null;
+  };
+  for (const rawLine of src.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) { flush(); continue; }
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { flush(); const lvl = Math.min(Math.max(h[1].length, 2), 3); out.push(`<h${lvl}>${inline(h[2])}</h${lvl}>`); continue; }
+    const li = line.match(/^(?:[-*•]|\d+[.)])\s+(.*)$/);
+    if (li) { if (!list) list = []; list.push(li[1]); continue; }
+    flush();
+    out.push('<p>' + inline(line) + '</p>');
+  }
+  flush();
+  return out.join('\n');
+}
+
+/** A blog fill only counts as DONE when the form gets a headline AND a body. */
+export function isBlogFillComplete(fill) {
+  return !!(fill && String(fill.title || '').trim() && String(fill.content || '').trim());
+}
+
+const textLen = (html) => String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length;
+
+// Drop the envelope JSON line so a salvaged body isn't polluted with metadata.
+const stripEnvelopeJson = (raw) => String(raw || '')
+  .replace(/\{[\s\S]*?"fill"\s*:\s*\{[\s\S]*?\}\s*\}/, '')
+  .replace(/```(?:json)?[\s\S]*?```/g, '')
+  .trim();
+
+function deriveTitle(content, raw, topic) {
+  const fromHeading = String(content || '').match(/<h[12][^>]*>([\s\S]*?)<\/h[12]>/i);
+  if (fromHeading) {
+    const t = fromHeading[1].replace(/<[^>]+>/g, '').trim();
+    if (t.length >= 8) return t.slice(0, 120);
+  }
+  const mdHeading = String(raw || '').match(/^\s*#{1,3}\s+(.+)$/m);
+  if (mdHeading && mdHeading[1].trim().length >= 8) return mdHeading[1].trim().slice(0, 120);
+  const t = String(topic || '').trim().replace(/\s+/g, ' ');
+  if (!t) return '';
+  return (t.charAt(0).toUpperCase() + t.slice(1)).slice(0, 120);
+}
+
+/**
+ * Last-resort recovery for a blog generation: pull a body out of whatever the
+ * model actually said and derive a headline, so a definitive write request never
+ * ends in an empty form. Returns { ...parsed, fill, recovered } — `recovered`
+ * true means the surface should tell the user the draft came from a salvage.
+ */
+export function salvageBlogPost(parsed, { topic = '', raw = '' } = {}) {
+  const out = { ...(parsed || {}) };
+  const fill = { ...(out.fill || {}) };
+  let recovered = false;
+
+  if (!String(fill.content || '').trim()) {
+    const body = htmlFromLooseText(stripEnvelopeJson(raw));
+    if (textLen(body) >= 200) { fill.content = body; recovered = true; }
+  }
+  if (!String(fill.title || '').trim()) {
+    const t = deriveTitle(fill.content, raw, topic);
+    if (t) { fill.title = t; recovered = true; }
+  }
+
+  out.fill = fill;
+  out.recovered = recovered;
+  return out;
+}
+
 // ── MCP Tool Definitions (follows MCP spec schema) ───────────────────────────
 
 export const MCP_TOOLS = [
@@ -861,29 +970,52 @@ async function handleWriteBlogPost({ topic, context, brandContext }) {
   const contextNote = context ? `\n\nAdditional context: ${context}` : '';
   const brand = brandContext ? `\n${brandContext}\n` : '';
 
-  const systemPrompt = `You are a blog writing assistant for the business.
+  const systemPrompt = `You are the in-house blog writer for the business below. You write publish-ready posts in ITS voice, for ITS actual customers — not generic filler.
 ${brand}
-Your output MUST follow this two-part shape — a JSON line first, then the HTML content inside <CONTENT>…</CONTENT> sentinel tags. Nothing else.
+Your output MUST follow this two-part shape — a JSON line first, then the HTML body inside <CONTENT>…</CONTENT> sentinel tags. Nothing else.
 
-EXAMPLE OUTPUT (follow exactly):
-{"message":"Wrote a post on social media tips","fill":{"title":"Five Social Media Tips","excerpt":"Practical tactics.","category":"Marketing","tags":"social media, small business"}}
+EXAMPLE OUTPUT (follow the shape exactly):
+{"message":"Wrote a post on cutting winter heating bills","fill":{"title":"5 Ways to Cut Your Winter Heating Bill Without Freezing","excerpt":"Simple, proven fixes that keep your home warm and your energy costs down all season.","category":"Home Tips","tags":"heating, energy savings, winter, home maintenance"}}
 <CONTENT>
-<h2>Heading</h2>
-<p>Paragraph with <strong>bold</strong> and a normal " quote — no escaping needed inside this block.</p>
-<ul><li>Tip one</li><li>Tip two</li></ul>
-<p>Closing call to action mentioning the business by name.</p>
+<p>Opening hook — a specific, relatable scenario or a surprising fact that pulls the reader in. No "In today's fast-paced world" clichés.</p>
+<h2>First real subtopic</h2>
+<p>Concrete, useful explanation with <strong>a key point</strong> emphasized. Speak to the reader as "you".</p>
+<ul><li>Actionable, specific tip</li><li>Another specific tip</li></ul>
+<h2>Second real subtopic</h2>
+<p>More substance the reader can act on today.</p>
+<h2>Bringing it together</h2>
+<p>Wrap up the value, then a warm, natural call to action that names the business and invites the next step.</p>
 </CONTENT>
 
-RULES:
-- JSON object on ONE LINE with title, excerpt, category, tags (do NOT include "content" in the JSON — it lives in the sentinel block).
-- Inside <CONTENT>, write 400-800 words of raw HTML — no JSON escaping, real newlines and " quotes are fine.
-- Use <h2>, <p>, <strong>, <ul>, <li> tags.
-- End the HTML with a soft CTA mentioning the business by name.
+WRITING RULES:
+- TITLE: specific and compelling, ideally with a number or a clear benefit — never generic like "The Importance of X". EXCERPT: 1–2 sentences that make someone want to click. CATEGORY: one short, sensible label. TAGS: 3–6 comma-separated, lowercase, relevant to the topic and the business.
+- JSON object on ONE LINE with title, excerpt, category, tags (do NOT put "content" in the JSON — it lives in the sentinel block).
+- Inside <CONTENT>: 600–900 words of raw HTML. No JSON escaping — real newlines and " quotes are fine.
+- STRUCTURE: open with a hook paragraph (no bare <h2> first), then 3–5 <h2> sections with scannable content, at least one <ul> list of concrete tips, and a closing paragraph with a soft CTA that names the business.
+- Only these tags: <h2>, <h3>, <p>, <strong>, <em>, <ul>, <li>, <ol>, <blockquote>. No <html>, <head>, <title>, or <h1> (the post title is separate).
+- VOICE: match the brand's tone and speak to its real audience. Be genuinely useful and confident — no fluff, no hedging, no "as an AI".
+- AUDIENCE: you are writing for the business's CUSTOMERS, about its services and expertise. NEVER write about marketing, SEO, content strategy, or running the business — unless that is literally what this business sells.
+- If the topic is phrased as a marketing INSTRUCTION rather than a subject (e.g. "a local-SEO post targeting Greeley", "something for the spring campaign"), treat it as the GOAL and choose a real customer-facing subject that achieves it — for that example, a genuinely useful local guide to one of the services above for readers in that area. Do NOT make the marketing tactic itself the topic, and never blend it into the title.${contextNote}${researchCtx}`;
 
-Tailor content to the business and audience above. Tone: practical, approachable.${contextNote}${researchCtx}`;
+  // A topic sometimes arrives as a marketing INSTRUCTION rather than a subject
+  // ("write a local-SEO post targeting Greeley"). The house model takes the
+  // tactic literally and writes ABOUT SEO for a lawn-care company whose readers
+  // are homeowners. The system-prompt rule alone doesn't hold on a small model,
+  // so restate the ask in the USER turn — highest salience. Deterministic: the
+  // same input always gets the same reframing.
+  const MARKETING_TACTIC_RE = /\b(seo|search engine|keywords?|ranking|backlinks?|content (calendar|strategy)|funnel|conversions?|click-through|impressions)\b/i;
+  const userMsg = MARKETING_TACTIC_RE.test(topic)
+    ? `The business owner asked for: "${topic}".\n\nThat states a marketing GOAL, not a subject. Do NOT write about marketing, SEO, or content strategy — the readers are this business's customers, not marketers. Instead pick ONE of the business's own services from the brand context and write a genuinely useful post about it, naturally serving that goal (work the service area into the title and body so it reads as a local guide). The title must name the service and the place, never the tactic.`
+    : `Write a blog post about: ${topic}`;
 
-  const raw = await callLLM([{ role: 'user', content: `Write a blog post about: ${topic}` }], systemPrompt);
-  return tryParseAgentResponse(raw);
+  const raw = await callLLM([{ role: 'user', content: userMsg }], systemPrompt);
+  // A drifted reply (prose, no sentinel) parses to an empty fill, and Apply then
+  // dies on "Blog post needs a title." Salvage so the post still lands.
+  const parsed = salvageBlogPost(tryParseAgentResponse(raw), { topic, raw });
+  if (!isBlogFillComplete(parsed.fill)) {
+    console.warn('[write_blog_post] incomplete after salvage — topic:', String(topic).slice(0, 80));
+  }
+  return parsed;
 }
 
 const SECTION_FIELDS = {

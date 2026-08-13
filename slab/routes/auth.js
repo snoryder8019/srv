@@ -1,5 +1,6 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import { createHmac } from 'node:crypto';
 import rateLimit from 'express-rate-limit';
 import { ObjectId } from 'mongodb';
 import { getSlabDb, getTenantDb } from '../plugins/mongo.js';
@@ -35,6 +36,15 @@ const MS_AUTH_URL = (t) => `https://login.microsoftonline.com/${t}/oauth2/v2.0/a
 const MS_TOKEN_URL = (t) => `https://login.microsoftonline.com/${t}/oauth2/v2.0/token`;
 const MS_GRAPH_ME_URL = 'https://graph.microsoft.com/v1.0/me';
 const MS_SCOPE = 'openid profile email offline_access User.Read';
+
+// Facebook Login (Graph v21.0 — matches every other Graph call site in the app).
+// Unlike Google/Microsoft there is no tenant-override path: Meta validates the
+// redirect URI against a fixed allow-list on the app, so every flow returns to
+// the platform callback and hands off to the tenant via one-time token.
+const FB_AUTH_URL = 'https://www.facebook.com/v21.0/dialog/oauth';
+const FB_TOKEN_URL = 'https://graph.facebook.com/v21.0/oauth/access_token';
+const FB_ME_URL = 'https://graph.facebook.com/v21.0/me';
+const FB_ME_FIELDS = 'id,name,email,first_name,last_name';
 
 // ── OAuth credential resolver ────────────────────────────────────────────────
 
@@ -91,6 +101,19 @@ function getMicrosoftCreds(req) {
     clientSecret: config.MSSEC,
     azureTenant: config.MS_TENANT,
     callbackUrl: `${config.DOMAIN}/auth/microsoft/callback`,
+    source: 'platform',
+  };
+}
+
+/**
+ * Get Facebook Login credentials. Platform-only — see FB_AUTH_URL note above.
+ * FB_AUTH_REDIRECT must match a Valid OAuth Redirect URI on the Meta app exactly.
+ */
+function getFacebookCreds() {
+  return {
+    clientId: config.FB_AUTH_APPID,
+    clientSecret: config.FB_AUTH_APPSEC,
+    callbackUrl: config.FB_AUTH_REDIRECT || `${config.DOMAIN}/auth/facebook/callback`,
     source: 'platform',
   };
 }
@@ -160,6 +183,34 @@ function redirectToMicrosoft(req, res, { authType, linkClientId }) {
   });
 
   res.redirect(`${MS_AUTH_URL(creds.azureTenant)}?${params}`);
+}
+
+// ── Redirect to Facebook ──────────────────────────────────────────────────────
+
+function redirectToFacebook(req, res, { authType, linkClientId }) {
+  const creds = getFacebookCreds();
+  if (!creds.clientId || !creds.clientSecret) {
+    return res.redirect('/admin/login?error=oauth');
+  }
+
+  const state = buildState({
+    authType,
+    returnDomain: req.hostname,
+    tenantDbName: req.tenant?.db || null,
+    oauthSource: creds.source,
+    callbackUrl: creds.callbackUrl,
+    linkClientId: linkClientId || null,
+  });
+
+  const params = new URLSearchParams({
+    client_id: creds.clientId,
+    redirect_uri: creds.callbackUrl,
+    response_type: 'code',
+    scope: config.FB_AUTH_SCOPE,
+    state,
+  });
+
+  res.redirect(`${FB_AUTH_URL}?${params}`);
 }
 
 // ── Admin Google OAuth ───────────────────────────────────────────────────────
@@ -390,6 +441,115 @@ router.get('/microsoft/callback', async (req, res) => {
   }
 });
 
+// ── Facebook OAuth entry points (mirror the Google flows above) ──────────────
+router.get('/facebook', (req, res) => {
+  redirectToFacebook(req, res, { authType: 'admin' });
+});
+router.get('/facebook/client', (req, res) => {
+  redirectToFacebook(req, res, { authType: 'client', linkClientId: req.query.cid || null });
+});
+router.get('/facebook/superadmin', (req, res) => {
+  redirectToFacebook(req, res, { authType: 'superadmin' });
+});
+router.get('/facebook/delegate', (req, res) => {
+  redirectToFacebook(req, res, { authType: 'delegate' });
+});
+
+// ── Central Facebook OAuth redirect — workspace picker flow ──────────────────
+router.get('/facebook/central', (req, res) => {
+  const creds = getFacebookCreds();
+  if (!creds.clientId || !creds.clientSecret) return res.redirect('/auth/login?error=oauth');
+
+  const state = buildState({
+    authType: 'central',
+    returnDomain: 'slab.madladslab.com',
+    tenantDbName: null,
+    oauthSource: 'platform',
+    callbackUrl: creds.callbackUrl,
+  });
+
+  const params = new URLSearchParams({
+    client_id: creds.clientId,
+    redirect_uri: creds.callbackUrl,
+    response_type: 'code',
+    scope: config.FB_AUTH_SCOPE,
+    state,
+  });
+
+  res.redirect(`${FB_AUTH_URL}?${params}`);
+});
+
+// ── Shared Facebook callback — all FB flows return here ──────────────────────
+router.get('/facebook/callback', async (req, res) => {
+  try {
+    // 1. Verify state token. Meta reports user-side cancellation as error=access_denied
+    // rather than omitting the code, so bounce those back cleanly instead of 'oauth'.
+    const { code, state: stateToken, error: fbError } = req.query;
+    if (fbError) return res.redirect('/auth/login?error=cancelled');
+    if (!code || !stateToken) return res.redirect('/admin/login?error=oauth');
+
+    let ctx;
+    try {
+      ctx = verifyState(stateToken);
+    } catch {
+      return res.redirect('/admin/login?error=oauth_expired');
+    }
+
+    const { returnDomain, callbackUrl } = ctx;
+    const creds = getFacebookCreds();
+
+    // 2. Exchange code for a token. Facebook's exchange is a GET with query params
+    // (not a POST body like Google/Microsoft) and returns 200 with an `error`
+    // object on failure, so check for the token rather than the status.
+    const tokenParams = new URLSearchParams({
+      client_id: creds.clientId,
+      client_secret: creds.clientSecret,
+      redirect_uri: callbackUrl || creds.callbackUrl,
+      code,
+    });
+    const tokenRes = await fetch(`${FB_TOKEN_URL}?${tokenParams}`);
+    const tokens = await tokenRes.json();
+    if (!tokens.access_token) {
+      console.error('[auth] FB token exchange failed:', tokens.error || tokens);
+      return res.redirect(`https://${returnDomain}/admin/login?error=oauth`);
+    }
+
+    // 3. Get the profile. appsecret_proof is required when the app has "Require app
+    // secret" enabled and harmless otherwise, so always send it.
+    const proof = createHmac('sha256', creds.clientSecret).update(tokens.access_token).digest('hex');
+    const meParams = new URLSearchParams({
+      fields: FB_ME_FIELDS,
+      access_token: tokens.access_token,
+      appsecret_proof: proof,
+    });
+    const meRes = await fetch(`${FB_ME_URL}?${meParams}`);
+    const me = await meRes.json();
+
+    // Facebook omits `email` entirely when the permission was declined at the
+    // consent screen, or when the account has no verified address (phone-only
+    // signups). dispatchAuth keys on email, so there is nothing to match against.
+    const email = (me.email || '').toLowerCase();
+    if (!email) {
+      console.error('[auth] FB profile missing email:', me.error || me);
+      return res.redirect(`https://${returnDomain}/admin/login?error=no_email`);
+    }
+
+    const profile = {
+      email,
+      id: me.id,
+      name: me.name || '',
+      given_name: me.first_name || '',
+      family_name: me.last_name || '',
+    };
+
+    // 4. Hand off to the shared dispatch (find/create user + route by authType)
+    return dispatchAuth(req, res, ctx, profile, 'facebook');
+  } catch (err) {
+    console.error('[auth] FB OAuth callback error:', err);
+    res.redirect('/admin/login?error=oauth');
+  }
+});
+
 // ── Shared callback — all OAuth flows return here ────────────────────────────
 router.get('/google/callback', async (req, res) => {
   try {
@@ -470,8 +630,16 @@ router.get('/google/callback', async (req, res) => {
   }
 });
 
+// Identity field on the user doc, per provider. Unlisted providers fall back to
+// googleId — the historical default from before this was multi-provider.
+const PROVIDER_ID_FIELD = {
+  google: 'googleId',
+  microsoft: 'microsoftId',
+  facebook: 'facebookId',
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
-// SHARED DISPATCH — provider-agnostic (Google or Microsoft). Given a normalized
+// SHARED DISPATCH — provider-agnostic (Google, Microsoft or Facebook). Given a normalized
 // profile { email, id, name, given_name, family_name } and the verified state
 // ctx, find/create the user, link the provider, and route by authType.
 // ══════════════════════════════════════════════════════════════════════════════
@@ -483,9 +651,10 @@ async function dispatchAuth(req, res, ctx, profile, provider = 'google') {
     linkClientId,
   } = ctx;
 
-  // Provider-specific identity field on the user doc (googleId | microsoftId) and
-  // the identity claims we forward to downstream portals in their SSO tokens.
-  const idField = provider === 'microsoft' ? 'microsoftId' : 'googleId';
+  // Provider-specific identity field on the user doc (googleId | microsoftId |
+  // facebookId) and the identity claims we forward to downstream portals in
+  // their SSO tokens.
+  const idField = PROVIDER_ID_FIELD[provider] || 'googleId';
   const idClaims = { providerId: profile.id, authProvider: provider, [idField]: profile.id };
 
   // Find or create user — link this provider to an existing local account by email
@@ -825,6 +994,7 @@ async function resolveSlabsAndRedirect(req, res, profile, provider = 'google') {
     return res.render('auth/central-login', {
       oauthCid: config.GGLCID || '',
       msCid: config.MSCID || '',
+      fbCid: config.FB_AUTH_APPID || '',
       errorMsg: 'No workspace found for this account. Contact your administrator or sign up.',
     });
   }
@@ -861,7 +1031,7 @@ async function redirectToSlab(res, slab, profile, provider = 'google') {
   }
 
   // Ensure the sign-in provider is linked
-  const idField = provider === 'microsoft' ? 'microsoftId' : 'googleId';
+  const idField = PROVIDER_ID_FIELD[provider] || 'googleId';
   const updates = {};
   const gid = profile.id || profile.sub;
   if (gid && !user[idField]) updates[idField] = gid;
@@ -916,9 +1086,12 @@ router.get('/login', (req, res) => {
   let errorMsg = null;
   if (error === 'unauthorized') errorMsg = 'Your account does not have admin access to that workspace.';
   if (error === 'not_found') errorMsg = 'Account not found. Please try again.';
-  if (error === 'oauth') errorMsg = 'Google sign-in failed. Please try again.';
+  if (error === 'oauth') errorMsg = 'Sign-in failed. Please try again.';
+  if (error === 'oauth_expired') errorMsg = 'Sign-in took too long. Please try again.';
+  if (error === 'cancelled') errorMsg = 'Sign-in was cancelled.';
+  if (error === 'no_email') errorMsg = 'That account did not share an email address. Allow email access, or sign in another way.';
   if (error === 'expired') errorMsg = 'Session expired. Please sign in again.';
-  res.render('auth/central-login', { oauthCid: config.GGLCID || '', msCid: config.MSCID || '', errorMsg });
+  res.render('auth/central-login', { oauthCid: config.GGLCID || '', msCid: config.MSCID || '', fbCid: config.FB_AUTH_APPID || '', errorMsg });
 });
 
 // ── Central email/password login — find slab by email, verify, redirect ─────

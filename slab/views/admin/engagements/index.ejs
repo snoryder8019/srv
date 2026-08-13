@@ -66,7 +66,7 @@ textarea { min-height:64px; resize:vertical; }
         <h2>Services Builder</h2>
         <% if (!services.length) { %><div style="font-size:13px;color:var(--slate);">No services yet. Add your offerings once — packages and letters are assembled from them.</div><% } %>
         <% services.forEach(s => { %>
-        <div class="svc-row" onclick='openServiceForm(<%- JSON.stringify(JSON.stringify({ _id:String(s._id), name:s.name, blurb:s.blurb, description:s.description, category:s.category, pricing:s.pricing, timeframe:s.timeframe, deliverables:s.deliverables, sortOrder:s.sortOrder })) %>)'>
+        <div class="svc-row" data-sid="<%= s._id %>">
           <div>
             <div class="svc-name"><%= s.name %> <span class="svc-cat"><%= s.category %></span></div>
             <div class="svc-sub"><%= s.blurb %><%= s.timeframe && timeframeLabel(s.timeframe) ? ' · ' + timeframeLabel(s.timeframe) : '' %></div>
@@ -128,7 +128,7 @@ textarea { min-height:64px; resize:vertical; }
         <div style="font-size:11px;color:var(--slate);margin-bottom:10px;">Build packages once from your services. Letters call on them — then adjust names or pricing per letter without touching these.</div>
         <% if (!templates.length) { %><div style="font-size:13px;color:var(--slate);">No packages yet.</div><% } %>
         <% templates.forEach(t => { %>
-        <div class="tpl-row" onclick='openTplForm(<%- JSON.stringify(JSON.stringify({ _id:String(t._id), name:t.name, label:t.label, selectMode:t.selectMode, options:t.options })) %>)'>
+        <div class="tpl-row" data-tid="<%= t._id %>">
           <div>
             <div class="svc-name"><%= t.name %></div>
             <div class="svc-sub"><%= t.options.length %> option<%= t.options.length === 1 ? '' : 's' %> · <%= t.selectMode === 'many' ? 'pick any' : 'pick one' %></div>
@@ -186,22 +186,29 @@ textarea { min-height:64px; resize:vertical; }
 </div>
 
 <script>
-const SERVICES = <%- JSON.stringify(services.map(s => ({ id:String(s._id), name:s.name, price:priceLabel(s.pricing) }))) %>;
+const SERVICES = <%- safeJson(services.map(s => ({ id:String(s._id), name:s.name, price:priceLabel(s.pricing) }))) %>;
+
+// Full edit payloads, keyed by id. Rows carry only their id and a delegated
+// listener looks the record up here — so a row added later is editable with no
+// rebinding, and catalog copy can hold any quote or ampersand it likes.
+const SERVICE_DOCS = <%- safeJson(services.reduce((m, s) => (m[String(s._id)] = { _id:String(s._id), name:s.name, blurb:s.blurb, description:s.description, category:s.category, pricing:s.pricing, timeframe:s.timeframe, deliverables:s.deliverables, sortOrder:s.sortOrder }, m), {})) %>;
+const TEMPLATE_DOCS = <%- safeJson(templates.reduce((m, t) => (m[String(t._id)] = { _id:String(t._id), name:t.name, label:t.label, selectMode:t.selectMode, options:t.options }, m), {})) %>;
+
 function esc(s){ const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML.replace(/"/g,'&quot;'); }
 
 // ── Service form ──
-function openServiceForm(json) {
+function openServiceForm(sid) {
   const f = document.getElementById('svcForm');
   const form = document.getElementById('svcFormEl');
   f.classList.add('open');
   const arch = document.getElementById('f_archive');
-  if (!json) {
+  const s = sid ? SERVICE_DOCS[sid] : null;
+  if (!s) {
     form.action = '/admin/engagements/services';
     form.reset(); arch.style.display = 'none';
     f.scrollIntoView({ behavior:'smooth', block:'nearest' });
     return;
   }
-  const s = JSON.parse(json);
   form.action = '/admin/engagements/services/' + s._id;
   arch.style.display = ''; arch.dataset.sid = s._id;
   document.getElementById('f_name').value = s.name || '';
@@ -226,11 +233,12 @@ function archiveService() {
 
 // ── Package template form ──
 let TPL_OPTS = [];
-function openTplForm(json) {
+function openTplForm(tid) {
   const f = document.getElementById('tplForm');
   f.classList.add('open');
   const del = document.getElementById('t_delete');
-  if (!json) {
+  const t = tid ? TEMPLATE_DOCS[tid] : null;
+  if (!t) {
     document.getElementById('tplFormEl').reset();
     document.getElementById('t_id').value = '';
     del.style.display = 'none';
@@ -239,7 +247,6 @@ function openTplForm(json) {
     f.scrollIntoView({ behavior:'smooth', block:'nearest' });
     return;
   }
-  const t = JSON.parse(json);
   document.getElementById('t_id').value = t._id;
   document.getElementById('t_name').value = t.name || '';
   document.getElementById('t_label').value = t.label || '';
@@ -288,4 +295,12 @@ function deleteTpl() {
   f.method = 'POST'; f.action = '/admin/engagements/templates/' + tid + '/delete';
   document.body.appendChild(f); f.submit();
 }
+
+// ── Row → edit form, delegated at the document so every row is live ──
+document.addEventListener('click', function (ev) {
+  const svc = ev.target.closest('.svc-row[data-sid]');
+  if (svc) return openServiceForm(svc.dataset.sid);
+  const tpl = ev.target.closest('.tpl-row[data-tid]');
+  if (tpl) return openTplForm(tpl.dataset.tid);
+});
 </script>

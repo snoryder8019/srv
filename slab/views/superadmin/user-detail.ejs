@@ -110,9 +110,16 @@
   </div>
 
   <div class="container">
-    <% if (typeof sent !== 'undefined' || (typeof req !== 'undefined' && req?.query?.sent)) { %>
+    <% if (typeof tmppw !== 'undefined' && tmppw) { %>
+    <div class="card" style="border-color:#166534; background:#0e1f14;">
+      <h2 style="color:#86efac;">Temporary password set</h2>
+      <p style="font-size:12px; color:#a3a3a3; margin-bottom:10px;">Share this with <strong style="color:#e5e5e5;"><%= user.email %></strong> over a secure channel. It won't be shown again — they can sign in with it and change it in Settings.</p>
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <code id="tmppw" style="font-size:18px; font-weight:700; letter-spacing:1px; color:#c9a848; background:#0a0a0a; border:1px solid #262626; padding:8px 14px; border-radius:6px;"><%= tmppw %></code>
+        <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('tmppw').textContent).then(()=>{this.textContent='Copied';})">Copy</button>
+      </div>
+    </div>
     <% } %>
-    <% /* Check for sent param via simple check */ %>
 
     <!-- User Header -->
     <div class="card">
@@ -300,6 +307,9 @@
       <div style="display:flex; gap:10px; align-items:center;">
         <form method="POST" action="/superadmin/users/<%= tenantDb %>/<%= user._id %>/toggle-admin" style="display:inline;">
           <button type="submit" class="btn btn-sm"><%= user.isAdmin ? 'Revoke Admin' : 'Grant Admin' %></button>
+        </form>
+        <form method="POST" action="/superadmin/users/<%= tenantDb %>/<%= user._id %>/reset-password" style="display:inline;" onsubmit="return confirm('Reset password for <%= (user.email || '').replace(/\'/g, '') %>? A temporary password will be generated and shown once.')">
+          <button type="submit" class="btn btn-sm">Reset Password</button>
         </form>
         <form method="POST" action="/superadmin/users/<%= tenantDb %>/<%= user._id %>/delete" style="display:inline;" onsubmit="return confirm('Permanently delete <%= (user.email || '').replace(/\'/g, '') %>? This cannot be undone.')">
           <button type="submit" class="btn btn-sm" style="border-color:#f87171; color:#f87171;">Delete User</button>

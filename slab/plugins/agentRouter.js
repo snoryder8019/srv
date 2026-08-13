@@ -162,6 +162,75 @@ export const MODULE_DEPARTMENT = {
   // invoice…" still routes to invoice on its own.
 };
 
+// Thread-context → the departments a module's ✦ launcher may actually reach.
+// The MODULE_DEPARTMENT map above only BIASES routing; this HARD-SCOPES a
+// surface's agent to its own job. Without it the multi-tool orchestrator on a
+// keyed (Claude) tenant is handed every private tool regardless of which ✦ was
+// opened — so the Blog Agent could propose a fill_site_copy change and overwrite
+// the homepage. A module scoped here can only touch the tools listed; anything
+// unlisted (or the null/dashboard coordinator surface) stays unrestricted.
+// Keep aligned with the launcher's module map in public/js/agentLauncher.js.
+export const MODULE_DEPARTMENTS = {
+  // /admin/design, /admin/copy, /admin/sections all resolve to module 'design'.
+  design:  ['copy', 'section', 'design', 'theme', 'typography', 'visibility'],
+  pages:   ['page'],
+  blog:    ['blog'],
+  clients: ['research', 'outreach'],
+  social:  ['social', 'social_batch', 'carousel', 'story', 'social_insights', 'social_score', 'autopilot', 'asset'],
+  'email-marketing': ['email'],
+  bookkeeping: ['invoice'],
+  assets:  ['asset'],
+  'print-studio': ['print'],
+  onboarding: ['onboarding'],
+  // Careers has no content-mutating job of its own — empty list = assist/navigate
+  // only, so its ✦ can answer/research but never reach blog/copy/design tools.
+  careers: [],
+};
+
+// The Set of department keys a module's agent may run, or null = unrestricted
+// (the dashboard/general coordinator surface, or an unknown module). 'assist' and
+// 'navigate' are non-mutating and always allowed. web_search is added separately
+// by the caller — it's read-only research, in scope everywhere.
+export function departmentsForModule(module) {
+  if (!module) return null;
+  const list = MODULE_DEPARTMENTS[module];
+  if (!list) return null;
+  return new Set([...list, 'assist', 'navigate']);
+}
+
+// Surfaces with ONE obvious job: the ✦ here should just DO it for any real
+// request instead of asking the LLM router whether to act. The house router
+// model (qwen2.5:7b) misclassifies even explicit asks ("write a blog post
+// about X") to 'assist', so a module-scoped launcher kept "going conversational"
+// and never wrote. Being on the surface already declares intent — route direct.
+// Multi-tool surfaces (design, social, clients) still route so the model can
+// pick WHICH tool; 'bookkeeping' is deliberately absent (its analytical asks
+// must NOT auto-draft invoices — see MODULE_DEPARTMENT note above).
+export const MODULE_PRIMARY = {
+  blog: 'blog', pages: 'page', 'email-marketing': 'email',
+  'print-studio': 'print', assets: 'asset', onboarding: 'onboarding',
+};
+
+// Genuine chit-chat that should stay conversational even on a single-job surface
+// (a greeting, a thanks, a "what can you do"). Conservative on purpose: only very
+// short, whole-message greetings match, so "help me write a post about X" (a real
+// task) is NEVER swallowed as small talk. Anything substantive falls through.
+const SMALLTALK_RE = /^(hi|hey|hello|yo|sup|thanks|thank you|ty|ok|okay|cool|nice|great|good (morning|afternoon|evening|day)|how are you|how's it going|what'?s up|who are you|what can you do|what do you do|help)[\s!.?]*$/i;
+export function isSmallTalk(message) {
+  const m = String(message || '').trim();
+  if (!m) return true;
+  return m.length <= 28 && SMALLTALK_RE.test(m);
+}
+
+// Navigation phrases fast-pathed inside routeMessage — replicated here so the
+// direct-route surfaces can defer "open the editor"/"go to pages" to the router
+// instead of writing a post about it.
+const NAV_PREFIXES = ['go to ', 'open ', 'show me ', 'take me to ', 'navigate to ', 'show '];
+export function isNavCommand(message) {
+  const m = String(message || '').toLowerCase().trim();
+  return NAV_PREFIXES.some((p) => m.startsWith(p));
+}
+
 const stripToJson = (raw) => {
   const cleaned = String(raw || '').replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
   const m = cleaned.match(/\{[\s\S]*\}/);
@@ -244,6 +313,12 @@ export async function runDepartment(db, tenant, { department, task, section_type
     fill: result.fill || {},
     suggestedBlocks: result.suggestedBlocks || null,
     tool_used: toolName,
+    // The engine/model this run actually resolved to after the inheritance chain
+    // (agent override > thread kind > tenant default > platform). Surfaced so the
+    // ✦ modal can show WHICH agent ran on WHAT, instead of that being invisible
+    // and only configurable over in Agent Control.
+    engine: effEngine || '',
+    model: effModel || '',
     action: DEPT_ACTIONS[department] || DEPT_ACTIONS.copy,
     section_type: section_type || null,
     page_type: page_type || null,

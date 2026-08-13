@@ -368,9 +368,12 @@ export const COPY_SECTIONS = {
            'contact_service_label', 'contact_service_placeholder',
            'contact_message_label', 'contact_message_placeholder',
            'contact_service_fallback', 'contact_service_extra',
+           // Marketing opt-in checkbox (consent wording shown next to the box)
+           'contact_optin_label', 'contact_optin_terms',
            // Per-field visibility toggles (checkbox; empty = visible, 'true' = hidden)
            'contact_fname_hidden', 'contact_lname_hidden', 'contact_email_hidden',
-           'contact_company_hidden', 'contact_service_hidden', 'contact_message_hidden'],
+           'contact_company_hidden', 'contact_service_hidden', 'contact_message_hidden',
+           'contact_optin_hidden'],
   footer: [
     // Brand / about
     'footer_tagline', 'footer_about', 'footer_copyright', 'footer_legal',

@@ -37,14 +37,14 @@ router.post('/waitlist', async (req, res) => {
       location: req.body.location,
       ip,
     });
-    const msg = result.status === 'invalid' ? 'Please enter a valid email.'
-      : result.status === 'exists' ? "You're already on the list — we'll be in touch."
-      : "You're on the list. We'll reach out as the mesh opens up.";
+    const msg = result.status === 'invalid' ? res.locals.t('network.err_invalid_email')
+      : result.status === 'exists' ? res.locals.t('network.waitlist_exists')
+      : res.locals.t('network.waitlist_joined');
     if (wantsJson) return res.json({ ok: result.ok, status: result.status, message: msg });
     return res.redirect('/network?joined=' + result.status + '#waitlist');
   } catch (err) {
     console.error('[network] waitlist failed:', err);
-    if (wantsJson) return res.status(500).json({ ok: false, message: 'Something went wrong — try again.' });
+    if (wantsJson) return res.status(500).json({ ok: false, message: res.locals.t('network.err_generic') });
     return res.redirect('/network?error=waitlist#waitlist');
   }
 });
@@ -54,14 +54,14 @@ router.post('/follow', async (req, res) => {
   try {
     const result = await followMembers({ email: req.body.email, keys: req.body.keys });
     const message = result.status === 'invalid'
-      ? 'Please enter a valid email.'
+      ? res.locals.t('network.err_invalid_email')
       : result.subscribed
-        ? `Done — you're following ${result.subscribed} brand${result.subscribed === 1 ? '' : 's'} on the network.`
-        : 'Pick at least one brand to follow.';
+        ? res.locals.t(result.subscribed === 1 ? 'network.follow_done_one' : 'network.follow_done_many', { count: result.subscribed })
+        : res.locals.t('network.follow_none');
     return res.json({ ok: result.ok, status: result.status, subscribed: result.subscribed, message });
   } catch (err) {
     console.error('[network] follow failed:', err);
-    return res.status(500).json({ ok: false, message: 'Something went wrong — try again.' });
+    return res.status(500).json({ ok: false, message: res.locals.t('network.err_generic') });
   }
 });
 

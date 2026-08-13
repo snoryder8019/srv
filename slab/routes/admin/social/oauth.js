@@ -149,7 +149,7 @@ router.get('/google/callback', async (req, res) => {
 // the Page (no manual token pasting, no monthly expiry). Reuses the App ID/Secret
 // already saved on the Facebook connection — one Meta app powers FB/IG/Threads.
 const FB_GRAPH_V = 'https://graph.facebook.com/v21.0';
-const FB_LOGIN_SCOPES = [
+export const FB_LOGIN_SCOPES = [
   'pages_show_list', 'pages_manage_posts', 'pages_read_engagement',
   'pages_manage_metadata', 'pages_manage_engagement',
   'publish_video',                 // ← Facebook Live (create live_videos)

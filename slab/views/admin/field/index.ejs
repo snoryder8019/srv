@@ -1,0 +1,199 @@
+<%- include('../partials/head', { title: 'In the Field' }) %>
+<%- include('../partials/sidebar', { page: 'field', user: user }) %>
+
+<style>
+  .fld-wrap    { padding:16px 20px 80px; max-width:1080px; margin:0 auto; }
+  .fld-title   { font-size:1.4rem; font-weight:700; color:var(--on-surface); display:flex; align-items:center; gap:10px; }
+  .fld-exp     { font-size:0.55rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; background:rgba(201,168,72,0.16); color:#9a7d2a; padding:2px 7px; border-radius:3px; }
+  .fld-sub     { font-size:0.82rem; color:var(--slate); margin:4px 0 20px; max-width:680px; line-height:1.5; }
+  .fld-flash   { padding:10px 14px; border-radius:4px; font-size:0.85rem; margin-bottom:16px; }
+  .fld-flash.ok  { background:rgba(20,83,45,0.12); color:#14532D; }
+  .fld-flash.err { background:rgba(220,38,38,0.1); color:#b91c1c; }
+
+  .fld-grid    { display:grid; grid-template-columns:320px 1fr; gap:20px; align-items:start; }
+  @media (max-width:820px){ .fld-grid { grid-template-columns:1fr; } }
+
+  .fld-card    { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:16px; }
+  .fld-card h2 { font-size:0.95rem; font-weight:700; color:var(--on-surface); margin:0 0 4px; }
+  .fld-card .hint { font-size:0.75rem; color:var(--slate); margin:0 0 14px; line-height:1.4; }
+
+  /* Staff rows */
+  .staff-row   { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 0; border-top:1px solid var(--border); }
+  .staff-row:first-of-type { border-top:none; }
+  .staff-name  { font-size:0.86rem; color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .staff-mail  { font-size:0.7rem; color:var(--slate); }
+
+  /* Toggle (matches Labs) */
+  .lswitch { position:relative; display:inline-block; width:42px; height:24px; flex-shrink:0; }
+  .lswitch input { opacity:0; width:0; height:0; }
+  .lslider { position:absolute; cursor:pointer; inset:0; background:#cbd5e1; border-radius:24px; transition:.2s; }
+  .lslider:before { content:""; position:absolute; height:18px; width:18px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s; }
+  .lswitch input:checked + .lslider { background:#14532D; }
+  .lswitch input:checked + .lslider:before { transform:translateX(18px); }
+
+  /* Jobs */
+  .jobs-head   { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .job-row     { display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--border); }
+  .job-row:first-of-type { border-top:none; }
+  .job-main    { flex:1; min-width:0; }
+  .job-name    { font-size:0.9rem; font-weight:600; color:var(--text); }
+  .job-meta    { font-size:0.73rem; color:var(--slate); margin-top:2px; display:flex; flex-wrap:wrap; gap:10px; }
+  .badge       { font-size:0.62rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; padding:3px 8px; border-radius:10px; white-space:nowrap; }
+  .badge.scheduled { background:rgba(100,116,139,0.15); color:#475569; }
+  .badge.en_route  { background:rgba(201,168,72,0.18); color:#9a7d2a; }
+  .badge.on_site   { background:rgba(20,83,45,0.15); color:#14532D; }
+  .badge.complete  { background:rgba(37,99,235,0.12); color:#1d4ed8; }
+  .badge.canceled  { background:rgba(220,38,38,0.1); color:#b91c1c; }
+  .fld-empty   { padding:24px; text-align:center; color:var(--slate); font-size:0.85rem; border:1px dashed var(--border); border-radius:6px; }
+
+  /* New-job modal */
+  .fld-modal-bg  { position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:600; display:none; align-items:center; justify-content:center; padding:16px; }
+  .fld-modal-bg.open { display:flex; }
+  .fld-modal     { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:22px; width:440px; max-width:96vw; max-height:90vh; overflow:auto; }
+  .fld-modal h3  { margin:0 0 16px; font-size:1rem; font-weight:700; color:var(--on-surface); }
+  .fld-field     { margin-bottom:12px; }
+  .fld-field label { display:block; font-size:0.72rem; font-weight:600; color:var(--slate); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:5px; }
+  .fld-field input, .fld-field select {
+    width:100%; padding:8px 10px; background:var(--bg); border:1px solid var(--border);
+    border-radius:6px; color:var(--text); font-size:0.85rem; box-sizing:border-box;
+  }
+  .fld-field input:focus, .fld-field select:focus { outline:none; border-color:var(--gold); }
+  .fld-modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:18px; }
+</style>
+
+<div class="fld-wrap">
+  <div class="fld-title">
+    <%= t('field.title') %> <span class="fld-exp">exp</span>
+    <a class="btn btn-secondary" style="margin-left:auto;font-size:0.8rem;padding:6px 12px;" href="/admin/field/route"><%= t('field.route_link') %></a>
+  </div>
+  <p class="fld-sub"><%= t('field.subtitle') %></p>
+
+  <% if (success) { %>
+    <div class="fld-flash ok">
+      <%= success === 'job_created' ? t('field.flash_job_created')
+        : success === 'tech_updated' ? t('field.flash_tech_updated')
+        : success %>
+    </div>
+  <% } %>
+  <% if (error) { %>
+    <div class="fld-flash err"><%= error === 'title_required' ? t('field.err_title_required') : error %></div>
+  <% } %>
+
+  <div class="fld-grid">
+    <!-- ── Field staff ─────────────────────────────────────────────────────── -->
+    <div class="fld-card">
+      <h2><%= t('field.techs_heading') %></h2>
+      <p class="hint"><%= t('field.techs_hint') %></p>
+      <% users.forEach(function(u){ %>
+        <div class="staff-row">
+          <div class="staff-name">
+            <%= u.displayName || u.email %>
+            <% if (u.displayName) { %><div class="staff-mail"><%= u.email %></div><% } %>
+          </div>
+          <form method="POST" action="/admin/field/techs/<%= u._id %>">
+            <input type="hidden" name="enabled" value="<%= u.fieldEnabled ? 'false' : 'true' %>">
+            <label class="lswitch" title="<%= t('field.enable_field') %>">
+              <input type="checkbox" <%= u.fieldEnabled ? 'checked' : '' %> onchange="this.closest('form').submit()">
+              <span class="lslider"></span>
+            </label>
+          </form>
+        </div>
+      <% }); %>
+      <% if (!users.length) { %>
+        <div class="fld-empty"><%= t('field.no_techs') %></div>
+      <% } %>
+    </div>
+
+    <!-- ── Field jobs ──────────────────────────────────────────────────────── -->
+    <div class="fld-card">
+      <div class="jobs-head">
+        <h2 style="margin:0;"><%= t('field.jobs_heading') %></h2>
+        <button class="btn" type="button" onclick="document.getElementById('newJobModal').classList.add('open')">
+          + <%= t('field.new_job') %>
+        </button>
+      </div>
+
+      <% if (!jobs.length) { %>
+        <div class="fld-empty"><%= t('field.no_jobs') %></div>
+      <% } %>
+
+      <% jobs.forEach(function(j){ %>
+        <a class="job-row" href="/admin/field/jobs/<%= j._id %>" style="text-decoration:none;color:inherit;">
+          <div class="job-main">
+            <div class="job-name"><%= j.title %></div>
+            <div class="job-meta">
+              <% if (j.clientId && clientMap[j.clientId.toString()]) { %>
+                <span><%= clientMap[j.clientId.toString()] %></span>
+              <% } %>
+              <span>
+                <%= t('field.assigned_to') %>:
+                <%= (j.assignedTo && j.assignedTo.length)
+                      ? j.assignedTo.map(function(id){ return userMap[id.toString()] || '—'; }).join(', ')
+                      : t('field.unassigned') %>
+              </span>
+              <% if (j.address) { %><span>&#128205; <%= j.address %></span><% } %>
+              <% if (j.estimatedMinutes) { %><span>~<%= j.estimatedMinutes %> min</span><% } %>
+            </div>
+          </div>
+          <span class="badge <%= j.status %>"><%= t('field.status.' + j.status) %></span>
+        </a>
+      <% }); %>
+    </div>
+  </div>
+</div>
+
+<!-- ── New job modal ─────────────────────────────────────────────────────────── -->
+<div class="fld-modal-bg" id="newJobModal">
+  <div class="fld-modal">
+    <h3><%= t('field.new_job') %></h3>
+    <form method="POST" action="/admin/field/jobs">
+      <div class="fld-field">
+        <label><%= t('field.job_title') %></label>
+        <input type="text" name="title" required autocomplete="off">
+      </div>
+      <div class="fld-field">
+        <label><%= t('field.client') %></label>
+        <select name="clientId">
+          <option value=""><%= t('field.select_client') %></option>
+          <% clients.forEach(function(c){ %>
+            <option value="<%= c._id %>"><%= c.name || c.company || c.email %></option>
+          <% }); %>
+        </select>
+      </div>
+      <div class="fld-field">
+        <label><%= t('field.assigned_to') %></label>
+        <select name="assignedTo">
+          <option value=""><%= t('field.unassigned') %></option>
+          <% techs.forEach(function(u){ %>
+            <option value="<%= u._id %>"><%= u.displayName || u.email %></option>
+          <% }); %>
+        </select>
+      </div>
+      <div class="fld-field">
+        <label><%= t('field.address') %></label>
+        <input type="text" name="address" autocomplete="off">
+      </div>
+      <div class="fld-field">
+        <label><%= t('field.scheduled_for') %></label>
+        <input type="datetime-local" name="scheduledAt">
+      </div>
+      <div class="fld-field">
+        <label><%= t('field.est_minutes') %></label>
+        <input type="number" name="estimatedMinutes" min="1" step="1">
+      </div>
+      <div class="fld-modal-actions">
+        <button class="btn btn-secondary" type="button" onclick="document.getElementById('newJobModal').classList.remove('open')"><%= t('field.cancel') %></button>
+        <button class="btn" type="submit"><%= t('field.create') %></button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  // Close modal on backdrop click
+  document.getElementById('newJobModal').addEventListener('click', function(e){
+    if (e.target === this) this.classList.remove('open');
+  });
+</script>
+
+</div></div></body></html>

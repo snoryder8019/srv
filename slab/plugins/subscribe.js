@@ -28,6 +28,11 @@ function tenantDomain(tenant) {
 /**
  * Capture a lead into the tenant `contacts` collection.
  *
+ * `consent` is the proof-of-permission record for surfaces where the visitor
+ * ticked an explicit opt-in box (contact form, etc.): { text, ip, userAgent }.
+ * Stored verbatim alongside a server-side timestamp so the tenant can show
+ * exactly what was agreed to, and when, if a recipient ever disputes it.
+ *
  * @returns {Promise<{ status: 'pending'|'subscribed'|'exists'|'ignored'|'invalid', message: string }>}
  *   - pending    → double opt-in confirm email sent, awaiting click
  *   - subscribed → live on the list (single opt-in, or double-opt-in degraded
@@ -38,7 +43,7 @@ function tenantDomain(tenant) {
  */
 export async function captureLead({
   db, tenant, email, name = '', funnel = 'lead', tags = [], source = 'website',
-  formId = null, optIn = 'double', welcome = null,
+  formId = null, optIn = 'double', welcome = null, consent = null,
 }) {
   const clean = (email || '').toLowerCase().trim();
   if (!clean || !EMAIL_RE.test(clean)) return { status: 'invalid', message: 'Please enter a valid email address.' };
@@ -51,13 +56,24 @@ export async function captureLead({
 
   const baseTags = Array.isArray(tags) ? tags.filter(Boolean) : [];
   const now = new Date();
+  const consentRecord = consent ? {
+    text: String(consent.text || '').slice(0, 500),
+    ip: consent.ip || '',
+    userAgent: String(consent.userAgent || '').slice(0, 300),
+    source: source || 'website',
+    at: now,
+  } : null;
   const existing = await db.collection('contacts').findOne({ email: clean });
 
   if (existing && existing.status === 'subscribed') {
-    // Already on the list — just enrich tags/source, never re-spam.
+    // Already on the list — just enrich tags/source, never re-spam. A fresh
+    // consent tick still gets recorded: it's newer proof for the same address.
     await db.collection('contacts').updateOne(
       { _id: existing._id },
-      { $set: { updatedAt: now }, $addToSet: baseTags.length ? { tags: { $each: baseTags } } : { tags: { $each: [] } } }
+      {
+        $set: { updatedAt: now, ...(consentRecord ? { consent: consentRecord } : {}) },
+        $addToSet: baseTags.length ? { tags: { $each: baseTags } } : { tags: { $each: [] } },
+      }
     );
     return { status: 'exists', message: "You're already subscribed — thanks!" };
   }
@@ -78,6 +94,7 @@ export async function captureLead({
   };
   if (formId) set.formId = String(formId);
   if (confirmToken) { set.confirmToken = confirmToken; set.confirmSentAt = now; }
+  if (consentRecord) set.consent = consentRecord;
 
   await db.collection('contacts').updateOne(
     { email: clean },

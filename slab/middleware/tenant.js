@@ -100,12 +100,17 @@ export function resolveTenant(req, res, next) {
 
 async function lookupTenant(domain) {
   const slab = getSlabDb();
-  // Match by primary domain OR custom domain
+  // Match by primary domain OR custom domain. Custom domains are stored as the
+  // apex (no `www.`), but visitors reach the site on both apex and www — so try
+  // the www-stripped form too, else `www.<customdomain>` 404s as "Unknown site".
+  const host = String(domain || '').toLowerCase();
+  const apex = host.replace(/^www\./, '');
+  const hosts = apex === host ? [host] : [host, apex];
   const doc = await slab.collection('tenants').findOne({
     $or: [
-      { domain },
-      { 'meta.customDomain': domain },
-      { 'public.customDomain': domain },
+      { domain: { $in: hosts } },
+      { 'meta.customDomain': { $in: hosts } },
+      { 'public.customDomain': { $in: hosts } },
     ],
     status: { $in: ['active', 'preview', 'suspended'] },
   });
@@ -126,7 +131,11 @@ async function lookupTenant(domain) {
   // Decrypt secrets once, store decrypted in cache (memory only)
   // Check if brand setup wizard is complete (has required fields filled)
   const brand = doc.brand || {};
-  const brandSetupComplete = !!(brand.name && brand.businessType && brand.industry) || !!doc.meta?.brandSetupAt;
+  // Skipping counts as "done" for routing purposes — the owner gets into the
+  // dashboard immediately and the setup checklist nags them there instead.
+  const brandSetupComplete = !!(brand.name && brand.businessType && brand.industry)
+    || !!doc.meta?.brandSetupAt
+    || !!doc.meta?.brandSetupSkipped;
 
   // Prefer canonical custom domain for outbound URLs (invoice payment links,
   // meeting invites, tracking, etc). Fall back to wildcard subdomain only when
@@ -173,6 +182,8 @@ function applyTenant(req, res, tenant) {
     brandSetupComplete: tenant.brandSetupComplete,
     previewExpiresAt: tenant.meta?.previewExpiresAt || null,
     plan: tenant.meta?.plan || 'free',
+    billingState: tenant.meta?.billingState || null,   // 'active' | 'lapsed' | null (non-recurring)
+    expiresAt: tenant.meta?.expiresAt || null,
   };
 }
 

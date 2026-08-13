@@ -10,6 +10,7 @@ import { callLLM, callVisionLLM, webSearch, tryParseAgentResponse, runTool, gene
 import { loadBrandContext } from '../../../plugins/brandContext.js';
 import { buildAssetReferenceIndex, annotateAssets } from '../../../plugins/usageMap.js';
 import { wouldExceedQuota, getQuotaLabel } from '../../../plugins/storage.js';
+import { composeStudioVideo, MAX_COMPOSE_SECONDS } from '../../../plugins/videoCompose.js';
 import { PACKS, getPack, fileUrl, listingUrl } from '../../../data/asset-packs.js';
 import { generateThumbnail, deriveThumbKey } from '../../../plugins/thumbnails.js';
 import { generateWebVariant, deriveWebKey } from '../../../plugins/webVariant.js';
@@ -114,6 +115,41 @@ router.get('/list', async (req, res) => {
       buildAssetReferenceIndex(db),
     ]);
     res.json({ assets: annotateAssets(assets, refIdx), total });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /admin/assets/counts — every folder/client badge in one aggregation.
+// The folder panel used to fetch the full asset list once per folder just to
+// read `total` off it; this replaces N unbounded queries with two grouped ones.
+router.get('/counts', async (req, res) => {
+  try {
+    const col = req.db.collection('assets');
+    const [total, byFolder, byClient] = await Promise.all([
+      col.countDocuments({}),
+      // Assets carry both the `folders` array and the legacy `folder` string;
+      // union them so an asset is counted once per folder regardless of shape.
+      col.aggregate([
+        { $project: { slugs: { $setUnion: [
+          { $ifNull: ['$folders', []] },
+          { $cond: [{ $ifNull: ['$folder', false] }, ['$folder'], []] },
+        ] } } },
+        { $unwind: '$slugs' },
+        { $group: { _id: '$slugs', n: { $sum: 1 } } },
+      ]).toArray(),
+      col.aggregate([
+        { $match: { clientId: { $exists: true, $nin: [null, ''] } } },
+        { $group: { _id: '$clientId', n: { $sum: 1 } } },
+      ]).toArray(),
+    ]);
+
+    const folders = {};
+    byFolder.forEach((r) => { if (r._id) folders[String(r._id)] = r.n; });
+    const clients = {};
+    byClient.forEach((r) => { if (r._id) clients[String(r._id)] = r.n; });
+
+    res.json({ total, folders, clients });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -318,6 +354,76 @@ router.post('/social-upload', assetMem.single('image'), async (req, res) => {
     res.json({ success: true, asset: { ...doc, _id: r.insertedId } });
   } catch (err) {
     console.error('Social upload error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /admin/assets/social-upload-video — flatten a Studio design that has a
+// video layer into a real MP4 and store it as a video asset.
+//
+// The PNG export path above freezes a video layer into a still — which is how a
+// video design ended up published as a photo. The client sends the design split
+// around the video (under/over PNGs) so ffmpeg can rebuild the exact z-order.
+router.post('/social-upload-video', assetMem.fields([{ name: 'under', maxCount: 1 }, { name: 'over', maxCount: 1 }]), async (req, res) => {
+  try {
+    const db = req.db;
+    const { folder = 'clients', title, preset, clientId, videoUrl } = req.body;
+    const under = req.files?.under?.[0];
+    const over = req.files?.over?.[0];
+    if (!under || !over) return res.status(400).json({ error: 'Design layers missing' });
+    if (!videoUrl) return res.status(400).json({ error: 'No video layer in this design' });
+    if (!config.LINODE_KEY || !config.LINODE_SECRET) {
+      return res.status(500).json({ error: 'S3 storage not configured' });
+    }
+
+    let box;
+    try { box = JSON.parse(req.body.box || '{}'); }
+    catch { return res.status(400).json({ error: 'Bad video placement data' }); }
+    if (!(box.w > 0 && box.h > 0)) return res.status(400).json({ error: 'Bad video placement data' });
+
+    const { buffer, seconds } = await composeStudioVideo({
+      videoUrl,
+      underPng: under.buffer,
+      overPng: over.buffer,
+      canvasW: Number(req.body.canvasW) || 1080,
+      canvasH: Number(req.body.canvasH) || 1080,
+      box,
+    });
+
+    // Quota is checked against the ENCODED size — the composite, not the inputs.
+    if (req.tenant && await wouldExceedQuota(db, req.tenant, buffer.length)) {
+      return res.status(413).json({ error: `Storage limit reached (${getQuotaLabel(req.tenant)}). Delete files or upgrade.`, code: 'STORAGE_QUOTA_EXCEEDED' });
+    }
+
+    const name = `${(title || 'social-asset').replace(/\s+/g, '-')}-${preset || 'social'}.mp4`;
+    const { key, url, filename } = await uploadToLinode(buffer, folder, name, 'video/mp4', req.tenant?.s3Prefix);
+    const doc = {
+      filename,
+      originalName: name,
+      folders: [folder],
+      folder,
+      clientId: clientId || null,
+      publicUrl: url,
+      bucketKey: key,
+      thumbUrl: null, thumbKey: null,
+      webUrl: null, webKey: null, webSize: null,
+      fileType: 'video',
+      mimeType: 'video/mp4',
+      size: buffer.length,
+      title: title || name.replace(/\.[^.]+$/, ''),
+      tags: ['social', 'video', preset || 'generated'].filter(Boolean),
+      generatedFrom: { preset, source: videoUrl, seconds, createdAt: new Date() },
+      uploadedAt: new Date(),
+    };
+    const r = await db.collection('assets').insertOne(doc);
+    res.json({
+      success: true,
+      asset: { ...doc, _id: r.insertedId },
+      seconds,
+      trimmed: seconds >= MAX_COMPOSE_SECONDS,
+    });
+  } catch (err) {
+    console.error('Social video compose error:', err);
     res.status(500).json({ error: err.message });
   }
 });

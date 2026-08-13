@@ -113,8 +113,22 @@ function getCamStatus() {
 
 let pollInterval = null;
 
+// gs-rust hosts Rust locally under its own user. On a Linode-only box (users
+// provisioned on demand) that account is absent, so skip position polling
+// entirely — otherwise the 5s poll spams sudo "unknown user gs-rust".
+function _gsRustExists() {
+  try {
+    return require('fs').readFileSync('/etc/passwd', 'utf8')
+      .split('\n').some(l => l.startsWith('gs-rust:'));
+  } catch { return false; }
+}
+
 function init() {
   if (pollInterval) return;
+  if (!_gsRustExists()) {
+    console.log('[server-cam] gs-rust user absent (Linode-only host) — position polling disabled');
+    return;
+  }
   // Poll every 5 seconds when Rust is running
   pollInterval = setInterval(() => {
     if (rust.isRunning()) pollRustPositions();

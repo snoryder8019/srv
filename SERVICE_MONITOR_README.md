@@ -1,5 +1,10 @@
 # Service Monitor Documentation
 
+> ⚠️ **DEPRECATED (2026-07).** This tmux-based `service-monitor.service` (watching madladslab/acm/ps) is
+> obsolete. Every app is now its own systemd unit `srv-<name>` with `Restart=`, so systemd supervises and
+> auto-restarts them — there is no separate monitor and no tmux. Use `systemctl status srv-<name>` and
+> `journalctl -u srv-<name>`. Kept for historical reference only. See /srv/README.md.
+
 ## Overview
 
 Automatic service monitoring and recovery system for madladslab, acm, and ps services.

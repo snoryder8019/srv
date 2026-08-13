@@ -45,7 +45,7 @@ router.post('/:slug/submit', express.json({ limit: '1mb' }), async (req, res) =>
   try {
     const db = req.db;
     const form = await db.collection('onboarding_forms').findOne({ slug: req.params.slug, status: 'active' });
-    if (!form) return res.status(404).json({ error: 'Form not found' });
+    if (!form) return res.status(404).json({ error: res.locals.t('forms.form_not_found') });
 
     const { data, respondentEmail, respondentName } = req.body;
 
@@ -65,7 +65,7 @@ router.post('/:slug/submit', express.json({ limit: '1mb' }), async (req, res) =>
     res.json({ ok: true });
   } catch (err) {
     console.error('[forms] submit error:', err);
-    res.status(500).json({ error: 'Failed to submit response' });
+    res.status(500).json({ error: res.locals.t('forms.submit_failed') });
   }
 });
 

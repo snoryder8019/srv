@@ -1,5 +1,8 @@
 <%
   /* ── Shared tenant header — one source of truth for all public pages ── */
+  /* i18n shim: use the request-bound translator when present, else echo the key
+     (keeps the partial safe if ever rendered outside the locale middleware). */
+  const _t = (typeof t === 'function') ? t : (k => k);
   const _hdr_start = parseInt(design.nav_logo_split) || 0;
   const _hdr_end   = parseInt(design.nav_logo_split_end) || 0;
   const _bname     = brand?.name || '';
@@ -62,10 +65,55 @@
   const _hdrPadYEff   = _hdrLayout === 'compact'  ? Math.max(8,  parseInt(_hdrPadY) - 8)
                       : _hdrLayout === 'spacious' ? Math.min(60, parseInt(_hdrPadY) + 12)
                       : _hdrPadY;
+  /* ── Nav height estimate (px) ──
+     The nav is fixed/absolute, so it is OUT OF FLOW: nothing below it reserves
+     space automatically. Hero sections reserve space via --nav-clear. The script
+     at the bottom measures the real height, but a tenant with a 122px logo would
+     otherwise get a header sitting on top of their hero until that script runs
+     (and forever if it is blocked). So compute a server-side estimate too. */
+  const _navPadYNum   = parseInt(_hdrPadYEff) || 20;
+  const _navLogoHNum  = _showLogoImg ? (parseInt(_navLogoSize) || 48) : 0;
+  const _navTextHNum  = _showWordmark
+    ? Math.round(parseFloat(_navBrandSize || '1.4') * 16 * 1.15)
+      + (_showTagline ? Math.round(parseFloat(_navTaglineSize || '0.58') * 16 * 1.2) + 2 : 0)
+    : 0;
+  /* stack puts the logo above the text; every other composition sits them side by side */
+  const _navInnerH    = (_showLogoImg && _showWordmark && _navLogoLayout === 'stack')
+    ? _navLogoHNum + 6 + _navTextHNum
+    : Math.max(_navLogoHNum, _navTextHNum, 20);
+  /* 'centered' stacks the links row under the wordmark (10px gap + ~20px row) */
+  const _navHEst      = _navPadYNum * 2 + _navInnerH + (_hdrLayout === 'centered' ? 30 : 0) + 1;
+  /* mobile collapses the links and clamps padding to 16px (see the media query below) */
+  const _navHEstSm    = 16 * 2 + _navInnerH + 1;
 %>
 <style>
+  /* ── Nav clearance tokens ──
+     --nav-h    real rendered nav height (server estimate here, refined by JS below)
+     --nav-clear how much top space content under the nav must reserve.
+
+     Only a STICKY header needs clearance. Sticky means position:fixed — the header
+     is out of flow and floats over the hero, so every hero/page-hero pads its top
+     with max(<design padding>, var(--nav-clear)) to keep its copy out from under a
+     tall wordmark or an oversized logo. A non-sticky header is position:relative:
+     it sits in normal flow, occupies its own band, and nothing renders behind it —
+     so clearance is 0 and each hero keeps exactly its own design padding.
+     (Non-sticky used to be position:absolute, which is equally out of flow: the
+     header overlaid the hero whether sticky was on or off.)
+     Banner height is deliberately NOT in --nav-clear — the banners already push
+     the document down themselves. */
+  :root {
+    --nav-h: <%= _navHEst %>px;
+    --nav-gap: 32px;
+    --nav-clear: <%= _hdrSticky ? 'calc(var(--nav-h, 0px) + var(--nav-gap, 32px))' : '0px' %>;
+    /* How much vertical space the header consumes IN FLOW — 0 when it floats.
+       A viewport-height hero subtracts this so "100vh hero" still means one
+       screenful once the header sits above it instead of over it. */
+    --nav-flow-h: <%= _hdrSticky ? '0px' : 'var(--nav-h, 0px)' %>;
+  }
+  @media (max-width:900px) { :root { --nav-h: <%= _navHEstSm %>px;--nav-gap: 24px; } }
+
   /* ── NAV (shared header) ── */
-  #main-nav { position:<%= _hdrSticky ? 'fixed' : 'absolute' %>;top:0;width:100%;z-index:1000;display:flex;justify-content:space-between;align-items:center;padding:<%= _hdrPadYEff %>px <%= _hdrPadX %>px;background:<%= design.nav_bg || 'color-mix(in srgb, var(--bg, var(--ivory)) 95%, transparent)' %>;<%= _hdrBlur ? 'backdrop-filter:blur(10px);' : '' %>border-bottom:1px solid var(--border);transition:border-color 0.3s, box-shadow 0.3s; }
+  #main-nav { position:<%= _hdrSticky ? 'fixed' : 'relative' %>;<%= _hdrSticky ? 'top:var(--banner-h, 0px);' : '' %>width:100%;z-index:1000;display:flex;justify-content:space-between;align-items:center;padding:<%= _hdrPadYEff %>px <%= _hdrPadX %>px;background:<%= design.nav_bg || 'color-mix(in srgb, var(--bg, var(--ivory)) 95%, transparent)' %>;<%= _hdrBlur ? 'backdrop-filter:blur(10px);' : '' %>border-bottom:1px solid var(--border);transition:border-color 0.3s, box-shadow 0.3s; }
   <% if (_hdrShadow) { %>#main-nav.scrolled { border-color:var(--border);box-shadow:0 2px 24px color-mix(in srgb, var(--primary, var(--navy)) 10%, transparent); }<% } %>
   /* Layout variants */
   <% if (_hdrLayout === 'centered') { %>
@@ -120,7 +168,7 @@
   <% } %>
 
   /* dark layout overrides (explicit dark layout) */
-  [data-layout="dark"] #main-nav { background:rgba(15,27,48,0.95); }
+  [data-layout="dark"] #main-nav { background:<%= design.nav_bg || 'rgba(15,27,48,0.95)' %>; }
   [data-layout="dark"] #main-nav.scrolled { border-color:rgba(201,168,72,0.15);box-shadow:0 2px 24px rgba(0,0,0,0.3); }
   [data-layout="dark"] #main-nav .nav-wordmark-top { color:var(--white); }
   [data-layout="dark"] #main-nav .nav-wordmark-sub { color:var(--accent, var(--gold)); }
@@ -168,7 +216,7 @@
   </a>
   <ul class="nav-links">
     <% if (design.vis_nav_home !== 'false') { %>
-    <li><a href="/" <%= _hdr_active === 'home' ? 'class="active"' : '' %>>Home</a></li>
+    <li><a href="/" <%= _hdr_active === 'home' ? 'class="active"' : '' %>><%= _t('nav.home') %></a></li>
     <% } %>
     <% if (typeof navPages !== 'undefined' && navPages.length) { %>
       <% navPages.forEach(function(p) { %>
@@ -181,13 +229,16 @@
       <% }); %>
     <% } %>
     <% if (design.vis_nav_blog !== 'false') { %>
-    <li><a href="/blog" <%= _hdr_active === 'blog' ? 'class="active"' : '' %>>Blog</a></li>
+    <li><a href="/blog" <%= _hdr_active === 'blog' ? 'class="active"' : '' %>><%= _t('nav.blog') %></a></li>
     <% } %>
     <% if (design.vis_nav_cta !== 'false') { %>
     <li><a href="<%= _navCtaLink %>" class="nav-cta"><%= _navCtaText %></a></li>
     <% } %>
     <% if (typeof bookingEnabled !== 'undefined' && bookingEnabled) { %>
-    <li><a href="/book" style="background:var(--primary,var(--navy));color:var(--on-navy,#fff);padding:7px 16px;border-radius:4px;font-size:0.78rem">📅 Book</a></li>
+    <li><a href="/book" style="background:var(--primary,var(--navy));color:var(--on-navy,#fff);padding:7px 16px;border-radius:4px;font-size:0.78rem">📅 <%= _t('nav.book') %></a></li>
+    <% } %>
+    <% if (typeof multilangOn !== 'undefined' && multilangOn) { %>
+    <li class="nav-lang"><%- include('lang-switcher', { size: 'sm' }) %></li>
     <% } %>
   </ul>
 </nav>
@@ -195,14 +246,49 @@
 <script>
 (function(){var n=document.getElementById('main-nav');if(n)window.addEventListener('scroll',function(){n.classList.toggle('scrolled',window.scrollY>60)});})();
 /* Publish the nav's real rendered height so hero content can reserve space for it
-   (the wordmark/logo/tagline can make the nav taller than the hero's default top padding). */
+   (the wordmark/logo/tagline can make the nav taller than the hero's default top padding).
+   header.ejs ships a server-side estimate of the same value; this refines it once
+   the real fonts and logo have laid out. Also publishes --banner-h so the nav drops
+   below a preview/maintenance banner instead of hiding underneath it. */
 (function(){
   var n=document.getElementById('main-nav');
   if(!n)return;
-  function sync(){document.documentElement.style.setProperty('--nav-h', n.offsetHeight + 'px');}
+  var root=document.documentElement;
+  var BANNERS={'slab-preview-banner':'--preview-banner-h','maintenance-banner':'--maint-banner-h'};
+  function bannerH(){
+    var total=0;
+    Object.keys(BANNERS).forEach(function(id){
+      var b=document.getElementById(id);
+      /* both banners are position:fixed, so offsetParent is always null here —
+         the computed display is the only honest visibility signal. */
+      var h=(b && getComputedStyle(b).display!=='none') ? b.offsetHeight : 0;
+      /* each banner also reserves its own height in the document flow, so it
+         needs its measurement individually, not just the combined offset */
+      root.style.setProperty(BANNERS[id], h + 'px');
+      total+=h;
+    });
+    return total;
+  }
+  function sync(){
+    root.style.setProperty('--nav-h', n.offsetHeight + 'px');
+    root.style.setProperty('--banner-h', bannerH() + 'px');
+  }
   sync();
   window.addEventListener('resize', sync);
   window.addEventListener('load', sync);
   if(document.fonts && document.fonts.ready) document.fonts.ready.then(sync);
+  /* the banners are dismissable — re-measure when one is removed or hidden */
+  if(window.ResizeObserver){ try{ new ResizeObserver(sync).observe(n); }catch(e){} }
+  /* both banners are dismissable — one hides itself via style, one removes itself */
+  if(window.MutationObserver){
+    ['slab-preview-banner','maintenance-banner'].forEach(function(id){
+      var b=document.getElementById(id);
+      if(!b)return;
+      try{
+        new MutationObserver(sync).observe(b, {attributes:true, attributeFilter:['style','class']});
+        if(b.parentNode) new MutationObserver(sync).observe(b.parentNode, {childList:true});
+      }catch(e){}
+    });
+  }
 })();
 </script>

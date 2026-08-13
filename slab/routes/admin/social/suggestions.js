@@ -22,7 +22,7 @@ import { getVoice, saveVoice, synthesizeProfile, recordCorrection, buildVoiceBlo
 import { enqueueJob, getJob, listJobs } from '../../../plugins/socialJobs.js';
 import { recordDesignFeedback, listDesignFeedback, removeDesignFeedback, getDesignPrefs, describePrefs } from '../../../plugins/socialDesign.js';
 import { scoreLivePosts, getReliability } from '../../../plugins/socialScore.js';
-import { suggestSlots, staggerByPlatform } from '../../../plugins/socialSchedule.js';
+import { suggestSlots, staggerByPlatform, newGroupId } from '../../../plugins/socialSchedule.js';
 import { fetchAllFollows, followsAction } from '../../../plugins/socialFollows.js';
 import {
   AUTO_TOKEN_PLATFORMS, tryAutoUpgrade, linkInstagramFromFacebook,
@@ -242,14 +242,20 @@ router.post('/suggestions/:id/auto-slot', express.json(), async (req, res) => {
     if (!post) return res.json({ ok: false, error: 'Not found' });
     const targets = await resolveTargetPlatforms(db, post, req.body?.platforms);
     if (!targets.length) return res.json({ ok: false, error: 'No connected account can post this' });
-    const slots = await suggestSlots(db, Math.max(1, targets.length));
+    // One network per DAY (maxPerDay:1) so a multi-network draft spreads into a
+    // steady daily cadence rather than firing every network on the same day.
+    const slots = await suggestSlots(db, Math.max(1, targets.length), { maxPerDay: 1 });
     if (!slots.length) return res.json({ ok: false, error: 'No open slot found' });
     await materializeSeamless(req, post);   // slice the panorama before it (and any staggered clones) schedule
     const bodyOverride = (typeof req.body?.body === 'string' && req.body.body.trim()) ? req.body.body.slice(0, 2000) : null;
     // Stagger: the draft's first network keeps this doc at slot[0]; each extra
     // network becomes its own scheduled post at its own slot — networks don't
     // all fire at the same single time.
+    // One groupId spans the whole run — this doc AND the clones — so the Calendar
+    // reads them as a single staggered post instead of N identical thumbnails.
+    const groupId = targets.length > 1 ? newGroupId() : null;
     const $set = { status: 'scheduled', scheduledAt: slots[0], platforms: [targets[0]], suggestion: false, updatedAt: new Date() };
+    if (groupId) $set.groupId = groupId;
     if (bodyOverride) $set.body = bodyOverride;
     await db.collection('social_posts').updateOne({ _id: post._id }, { $set });
     if (targets.length > 1) {
@@ -259,7 +265,7 @@ router.post('/suggestions/:id/auto-slot', express.json(), async (req, res) => {
         publishedAt: null, results: [], suggestion: false,
         createdBy: post.createdBy || req.adminUser?.email || null, createdAt: new Date(), updatedAt: new Date(),
       };
-      const extra = staggerByPlatform(base, targets.slice(1), slots.slice(1));
+      const extra = staggerByPlatform(base, targets.slice(1), slots.slice(1), { groupId });
       if (extra.length) await db.collection('social_posts').insertMany(extra);
     }
     res.json({ ok: true, scheduledAt: slots[0], platforms: targets, scheduled: targets.length });

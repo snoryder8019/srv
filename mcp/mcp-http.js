@@ -7,8 +7,9 @@
  * via mcp.madladslab.com
  *
  * CRITICAL SAFETY RULES:
- * - NEVER use 'killall node' - kills all services!
- * - ALWAYS use tmux session management for service control
+ * - Services are systemd units named srv-<name> on a WSL2 box (Greeley host).
+ * - Manage them with systemctl / journalctl, NOT tmux (migrated off tmux 2026-07).
+ * - Never stop/disable/mask units or broadly kill node; use `systemctl restart srv-<name>`.
  */
 
 import 'dotenv/config';
@@ -23,8 +24,24 @@ import { spawn } from 'child_process';
 import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { join, resolve } from 'path';
 import { verifyJWT } from './lib/jwtVerify.js';
+import { checkGamesHealth, formatGamesHealth } from './lib/gamesHealth.js';
 
 const PORT = process.env.MCP_PORT || 3650;
+
+// ── Connection greeting (served in the MCP `initialize` result) ────
+// Guidance a connecting client sees for the whole /srv stack; keep in sync
+// with the ops model (currently systemd on WSL2).
+const SERVER_INSTRUCTIONS = `This connector manages the MadLadsLab /srv stack, now running on a WSL2 Ubuntu box (the Greeley GPU host) - NOT the old Linode.
+
+SERVICE MANAGEMENT IS systemd, NOT tmux. Every app is a systemd unit named srv-<name> (srv-games, srv-slab, srv-cards, srv-matchmaking, srv-tiles, srv-td, srv-mcp, srv-opsTrain, srv-mllOauth, srv-mllPitches, srv-codevs, srv-madlands, srv-reels, srv-piper-tts, srv-triple-twenty; plus graffiti-tv.service). Drive them via execute_command:
+  status:  systemctl status srv-<name>   |  systemctl is-active srv-<name>
+  logs:    journalctl -u srv-<name> -n 100 --no-pager
+  restart: systemctl restart srv-<name>
+Ground truth for what is running = systemctl + ss -lntp / ps, resolved live.
+
+The tmux_* tools and restart_service_safe / emergency_restart_all are LEGACY from the tmux era and will find nothing (no tmux server runs). Use systemctl / journalctl via execute_command instead.
+
+Access is scoped to /srv. execute_command runs as root behind a defense-in-depth blocklist (no killall / pkill / kill -9, no systemctl stop|disable|mask, no reboot/shutdown, no fork bombs).`;
 
 // ── Auth config (resource server) ─────────────────────────────────
 // /mcp accepts either: (a) a static bearer key — for curl / Claude Code / the
@@ -243,11 +260,11 @@ const TOOLS = [
   },
   {
     name: 'execute_command',
-    description: 'Execute a bash command safely. NEVER use "killall node". Use tmux session management instead.',
+    description: 'Execute a bash command safely (root, scoped to /srv). PRIMARY control plane: use systemctl / journalctl here to manage the srv-<name> systemd units. Do NOT use tmux - the stack migrated off it.',
     inputSchema: {
       type: 'object',
       properties: {
-        command: { type: 'string', description: 'Command to execute. Forbidden: killall, rm -rf /, dd, mkfs, reboot, shutdown' },
+        command: { type: 'string', description: 'Command to execute. Blocked (defense-in-depth): killall/pkill/kill -9, recursive deletes from root, systemctl stop|disable|mask, reboot/shutdown/halt, dd/mkfs, fork bombs, remote curl|sh.' },
         timeout: { type: 'number', description: 'Timeout in ms (default: 30000)', default: 30000 },
       },
       required: ['command'],
@@ -255,12 +272,12 @@ const TOOLS = [
   },
   {
     name: 'tmux_list_sessions',
-    description: 'List all running tmux sessions with their status.',
+    description: 'LEGACY (pre-systemd). Lists tmux sessions - now empty; the stack runs under systemd. Use execute_command: `systemctl list-units "srv-*" --type=service`.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'tmux_session_status',
-    description: 'Get detailed status of a specific tmux session.',
+    description: 'LEGACY (pre-systemd). Use execute_command: `systemctl status srv-<name>` instead.',
     inputSchema: {
       type: 'object',
       properties: { session: { type: 'string', description: 'Session name' } },
@@ -269,7 +286,7 @@ const TOOLS = [
   },
   {
     name: 'tmux_capture_logs',
-    description: 'Capture recent output from a tmux session.',
+    description: 'LEGACY (pre-systemd). Use execute_command: `journalctl -u srv-<name> -n 100 --no-pager` instead.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -290,7 +307,7 @@ const TOOLS = [
   },
   {
     name: 'restart_service_safe',
-    description: 'Safely restart a service using tmux. NEVER uses killall.',
+    description: 'LEGACY (pre-systemd tmux restart). Use execute_command: `systemctl restart srv-<name>` instead.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -312,8 +329,26 @@ const TOOLS = [
   },
   {
     name: 'emergency_restart_all',
-    description: 'Emergency: Restart ALL services using /srv/start-all-services.sh.',
+    description: 'LEGACY: runs /srv/start-all-services.sh (tmux-era starter). Prefer per-unit `systemctl restart srv-<name>`.',
     inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'games_platform_health',
+    description:
+      'One-call health check of the whole /srv/games fleet: portal (3500), matchmaking (3610), '
+      + 'and the arcade services cards/tiles/towers/madlands/reels. Reports systemd state, whether '
+      + 'the port is held, and whether the app actually answers HTTP — the third catches a wedged '
+      + 'process that systemd still calls "active". Start here when something is wrong with games.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        json: {
+          type: 'boolean',
+          description: 'Return the full structured result instead of the compact table (default false)',
+          default: false,
+        },
+      },
+    },
   },
 ];
 
@@ -508,6 +543,11 @@ async function handleTool(name, args) {
       return JSON.stringify({ message: 'Emergency restart initiated', output: result.stdout, success: result.success }, null, 2);
     }
 
+    case 'games_platform_health': {
+      const result = await checkGamesHealth();
+      return args?.json ? JSON.stringify(result, null, 2) : formatGamesHealth(result);
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -518,8 +558,8 @@ const transports = {};
 
 function createServer() {
   const server = new Server(
-    { name: 'srv-manager', version: '2.0.0' },
-    { capabilities: { tools: {} } }
+    { name: 'srv-manager', version: '2.1.0' },
+    { capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));

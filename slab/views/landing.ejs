@@ -1,6 +1,8 @@
+<% const _t = (typeof t === 'function') ? t : (k => k); %>
 <!DOCTYPE html>
-<html lang="en" data-snap="<%= (typeof design !== 'undefined' && design && design.snap_enabled === 'true') ? 'true' : 'false' %>">
+<html lang="<%= typeof htmlLang !== 'undefined' ? htmlLang : 'en' %>" data-snap="<%= (typeof design !== 'undefined' && design && design.snap_enabled === 'true') ? 'true' : 'false' %>">
 <head>
+  <%- include('partials/_tokens', { design: (typeof design !== 'undefined' && design) ? design : {}, bare: true }) %>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <%
@@ -37,7 +39,7 @@
     const heroHeading = c.hero_heading     || '';
     const heroEm      = c.hero_heading_em  || '';
     const heroSub     = c.hero_sub         || '';
-    const heroCta     = c.hero_cta_primary || c.hero_cta || 'Get Started';
+    const heroCta     = c.hero_cta_primary || c.hero_cta || _t('home.cta.get_started');
     const heroCtaLink = c.hero_cta_primary_link || '/start';
     const heroCta2    = c.hero_cta_secondary || '';
     const heroCta2Link = c.hero_cta_secondary_link || '';
@@ -73,7 +75,7 @@
     // Extra pricing tiers (tenant-configurable)
     const defaultCtaLink = '/start';
     const tiers = [];
-    if (priceAmount) tiers.push({ label: priceLabel || 'Plan', amount: priceAmount, unit: priceUnit, equiv: '', featured: false, ctaLink: defaultCtaLink });
+    if (priceAmount) tiers.push({ label: priceLabel || _t('home.pricing.plan'), amount: priceAmount, unit: priceUnit, equiv: '', featured: false, ctaLink: defaultCtaLink });
     if (c.pricing_tier2_amount) tiers.push({ label: c.pricing_tier2_label, amount: c.pricing_tier2_amount, unit: c.pricing_tier2_unit, equiv: c.pricing_tier2_equiv, featured: false, ctaLink: c.pricing_tier2_cta_link || defaultCtaLink });
     if (c.pricing_tier3_amount) tiers.push({ label: c.pricing_tier3_label, amount: c.pricing_tier3_amount, unit: c.pricing_tier3_unit, equiv: c.pricing_tier3_equiv, featured: c.pricing_tier3_featured === 'yes', ctaLink: c.pricing_tier3_cta_link || defaultCtaLink });
     if (c.pricing_tier4_amount) tiers.push({ label: c.pricing_tier4_label, amount: c.pricing_tier4_amount, unit: c.pricing_tier4_unit, equiv: c.pricing_tier4_equiv, featured: false, ctaLink: c.pricing_tier4_cta_link || defaultCtaLink });
@@ -81,7 +83,7 @@
 
     // Promo banner
     const promoOn = c.promo_enabled === 'yes';
-    const promoBadge = c.promo_badge || 'NEW';
+    const promoBadge = c.promo_badge || _t('home.promo.badge_new');
     const promoHeading = c.promo_heading || '';
     const promoText = c.promo_text || '';
 
@@ -91,7 +93,7 @@
 
     const ctaHeading = c.contact_heading    || '';
     const ctaSub     = c.contact_subheading || c.contact_sub || '';
-    const ctaBtn     = c.hero_cta           || 'Get Started';
+    const ctaBtn     = c.hero_cta           || _t('home.cta.get_started');
 
     /* Logo display */
     const logoImg    = lg.logo_primary || lg.logo_white || null;
@@ -146,7 +148,12 @@
     const fontUrl = _FM[fontFamily] || _FM['Inter'];
   %>
   <%- include('partials/seo-head') %>
+  <% const _lf = (typeof localFonts !== 'undefined' && localFonts) ? localFonts : {}; %>
+  <% if (_lf[fontFamily]) { /* self-hosted (see scripts/build-local-fonts.mjs) */ %>
+  <link rel="stylesheet" href="<%= _lf[fontFamily] %>">
+  <% } else { %>
   <link href="https://fonts.googleapis.com/css2?family=<%= fontUrl %>&display=swap" rel="stylesheet">
+  <% } %>
   <style>
     :root {
       --accent: <%= accent %>;
@@ -333,13 +340,13 @@
     <% if (showLogoText) { %><span class="nav-logo-text"><% if (logoPre) { %><span><%= logoPre %></span><% } %><%= logoPost %></span><% } %>
   </div>
   <div class="nav-links">
-    <% if (_vis.services !== false && features.length) { %><a href="#features">Services</a><% } %>
-    <% if (_vis.process !== false && steps.length) { %><a href="#how">How It Works</a><% } %>
-    <% if (_vis.portfolio && _portfolio.length) { %><a href="#portfolio">Work</a><% } %>
-    <% if (_vis.about && (c.about_quote || c.about_desc)) { %><a href="#about">About</a><% } %>
-    <% if (_vis.pricing && priceAmount) { %><a href="#pricing">Pricing</a><% } %>
-    <% if (_vis.blog && _posts.length) { %><a href="#blog">Blog</a><% } %>
-    <% if (_vis.contact) { %><a href="#contact" class="nav-cta">Contact</a>
+    <% if (_vis.services !== false && features.length) { %><a href="#features"><%= _t('home.nav.services') %></a><% } %>
+    <% if (_vis.process !== false && steps.length) { %><a href="#how"><%= _t('home.nav.how_it_works') %></a><% } %>
+    <% if (_vis.portfolio && _portfolio.length) { %><a href="#portfolio"><%= _t('home.nav.work') %></a><% } %>
+    <% if (_vis.about && (c.about_quote || c.about_desc)) { %><a href="#about"><%= _t('home.nav.about') %></a><% } %>
+    <% if (_vis.pricing && priceAmount) { %><a href="#pricing"><%= _t('home.nav.pricing') %></a><% } %>
+    <% if (_vis.blog && _posts.length) { %><a href="#blog"><%= _t('home.nav.blog') %></a><% } %>
+    <% if (_vis.contact) { %><a href="#contact" class="nav-cta"><%= _t('home.nav.contact') %></a>
     <% } else { %><a href="/start" class="nav-cta"><%= heroCta %></a><% } %>
   </div>
 </nav>
@@ -464,8 +471,8 @@
 <% if (_vis.portfolio && _portfolio.length) { %>
 <section id="portfolio" style="padding:80px 24px;">
   <div style="max-width:1000px;margin:0 auto;">
-    <div class="section-label">Our Work</div>
-    <div class="section-title">Portfolio</div>
+    <div class="section-label"><%= _t('home.portfolio.our_work') %></div>
+    <div class="section-title"><%= _t('home.portfolio.title') %></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;">
       <% _portfolio.forEach(p => { %>
       <% const _gc = (p.gallery && p.gallery.length) || (p.imageUrl ? 1 : 0); %>
@@ -498,7 +505,7 @@
 <% if (_vis.about && (c.about_quote || c.about_desc)) { %>
 <section id="about" style="padding:80px 24px;background:var(--card);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
   <div style="max-width:720px;margin:0 auto;text-align:center;">
-    <div class="section-label">About</div>
+    <div class="section-label"><%= _t('home.about.label') %></div>
     <% if (c.about_quote) { %><blockquote style="font-size:22px;font-weight:300;font-style:italic;color:#fff;line-height:1.6;margin:24px 0;border:none;padding:0;">"<%= c.about_quote %>"</blockquote><% } %>
     <% if (c.about_desc) { %><p style="font-size:14px;color:var(--subtle);line-height:1.8;margin-bottom:16px;"><%= c.about_desc %></p><% } %>
     <% if (c.about_sig) { %><p style="font-size:13px;font-weight:600;color:var(--accent);letter-spacing:0.5px;">— <%= c.about_sig %></p><% } %>
@@ -510,14 +517,14 @@
 <% if (_vis.reviews && _reviews && _reviews.reviews && _reviews.reviews.length) { %>
 <section id="reviews" style="padding:80px 24px;">
   <div style="max-width:1000px;margin:0 auto;">
-    <div class="section-label">Reviews</div>
-    <div class="section-title"><%= _reviews.rating ? _reviews.rating + ' ★' : 'What People Say' %></div>
+    <div class="section-label"><%= _t('home.reviews.label') %></div>
+    <div class="section-title"><%= _reviews.rating ? _reviews.rating + ' ★' : _t('home.reviews.what_people_say') %></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;">
       <% _reviews.reviews.slice(0,6).forEach(rv => { %>
       <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:24px;">
         <div style="color:var(--accent);font-size:14px;margin-bottom:10px;"><%= '★'.repeat(rv.rating || 5) %></div>
         <p style="font-size:13px;color:var(--subtle);line-height:1.6;margin-bottom:12px;"><%= rv.text ? rv.text.substring(0,180) : '' %><%= rv.text && rv.text.length > 180 ? '…' : '' %></p>
-        <div style="font-size:12px;font-weight:600;color:#fff;"><%= rv.author_name || 'Anonymous' %></div>
+        <div style="font-size:12px;font-weight:600;color:#fff;"><%= rv.author_name || _t('home.reviews.anonymous') %></div>
       </div>
       <% }) %>
     </div>
@@ -617,8 +624,8 @@
 <% if (_vis.blog && _posts.length) { %>
 <section id="blog" style="padding:80px 24px;">
   <div style="max-width:1000px;margin:0 auto;">
-    <div class="section-label">From The Blog</div>
-    <div class="section-title">Latest Insights</div>
+    <div class="section-label"><%= _t('home.blog.from_blog') %></div>
+    <div class="section-title"><%= _t('home.blog.latest') %> <%= _t('home.blog.latest_em') %></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;">
       <% _posts.forEach(bp => { %>
       <a href="/blog/<%= bp.slug %>" style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:border-color 0.3s;text-decoration:none;display:block;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
@@ -626,7 +633,7 @@
           <img src="<%= bp.featuredImageUrl %>" alt="<%= bp.title %>" loading="lazy" decoding="async" style="width:100%;height:180px;object-fit:cover;display:block;">
         <% } %>
         <div style="padding:24px;">
-          <div style="font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;"><%= bp.category || 'Blog' %></div>
+          <div style="font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;"><%= bp.category || _t('home.blog.category') %></div>
           <h3 style="font-size:16px;font-weight:600;color:#fff;margin-bottom:8px;line-height:1.4;"><%= bp.title %></h3>
           <% if (bp.excerpt) { %><p style="font-size:13px;color:var(--subtle);line-height:1.6;"><%= bp.excerpt.substring(0,120) %><%= bp.excerpt.length > 120 ? '…' : '' %></p><% } %>
         </div>
@@ -634,7 +641,7 @@
       <% }) %>
     </div>
     <div style="text-align:center;margin-top:32px;">
-      <a href="/blog" style="font-size:13px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--accent);border-bottom:1px solid var(--accent);padding-bottom:2px;">View All Posts</a>
+      <a href="/blog" style="font-size:13px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--accent);border-bottom:1px solid var(--accent);padding-bottom:2px;"><%= _t('home.blog.view_all_posts') %></a>
     </div>
   </div>
 </section>
@@ -652,27 +659,37 @@
 <% if (_vis.contact) { %>
 <section id="contact" style="padding:80px 24px;background:var(--card);border-top:1px solid var(--border);">
   <div style="max-width:600px;margin:0 auto;text-align:center;">
-    <div class="section-label"><%= c.contact_eyebrow || 'Get In Touch' %></div>
-    <div class="section-title"><%= c.contact_heading || "Let's Work" %> <em style="font-style:italic;color:var(--accent);"><%= c.contact_heading_em || 'Together' %></em></div>
+    <div class="section-label"><%= c.contact_eyebrow || _t('home.contact.eyebrow') %></div>
+    <div class="section-title"><%= c.contact_heading || _t('home.contact.heading') %> <em style="font-style:italic;color:var(--accent);"><%= c.contact_heading_em || _t('home.contact.heading_em') %></em></div>
     <% if (c.contact_sub) { %><p style="font-size:14px;color:var(--subtle);margin-bottom:32px;line-height:1.7;"><%= c.contact_sub %></p><% } %>
     <% if (typeof contacted !== 'undefined' && contacted) { %>
       <div style="padding:20px;background:rgba(76,175,80,0.15);border:1px solid rgba(76,175,80,0.4);border-radius:8px;color:#4caf50;font-size:14px;margin-bottom:16px;">
-        ✓ Message received! We'll be in touch within 1 business day.
+        ✓ <%= _t('home.contact.success') %>
       </div>
     <% } %>
     <form method="POST" action="/contact" style="text-align:left;display:grid;gap:16px;" data-captcha>
       <div aria-hidden="true" style="position:absolute;left:-5000px;width:1px;height:1px;overflow:hidden;"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
-      <input type="text" name="name" placeholder="Your Name" required style="padding:14px 16px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:#fff;font-family:inherit;font-size:14px;outline:none;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-      <input type="email" name="email" placeholder="Email Address" required style="padding:14px 16px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:#fff;font-family:inherit;font-size:14px;outline:none;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-      <textarea name="message" rows="4" placeholder="Tell us about your project…" required style="padding:14px 16px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:#fff;font-family:inherit;font-size:14px;outline:none;resize:vertical;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"></textarea>
-      <button type="submit" class="btn-lg btn-primary" style="border:none;cursor:pointer;width:100%;text-align:center;">Send Message</button>
+      <input type="text" name="name" placeholder="<%= _t('home.contact.name_placeholder') %>" required style="padding:14px 16px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:#fff;font-family:inherit;font-size:14px;outline:none;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      <input type="email" name="email" placeholder="<%= _t('home.contact.email_placeholder') %>" required style="padding:14px 16px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:#fff;font-family:inherit;font-size:14px;outline:none;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      <textarea name="message" rows="4" placeholder="<%= _t('home.contact.message_placeholder') %>" required style="padding:14px 16px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:#fff;font-family:inherit;font-size:14px;outline:none;resize:vertical;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      <%- '' /* Marketing opt-in — unticked by default; this business only, unsubscribe anytime. */ %>
+      <% if (c.contact_optin_hidden !== 'true') { %>
+      <div style="display:grid;gap:6px;">
+        <label class="consent-check" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+          <input type="checkbox" name="marketingOptIn" value="yes" style="width:16px;height:16px;margin:2px 0 0;flex:0 0 auto;accent-color:var(--accent);cursor:pointer;">
+          <span style="font-size:13px;color:var(--subtle);line-height:1.5;"><%= c.contact_optin_label || _t('home.contact.optin_label') %></span>
+        </label>
+        <p class="consent-terms" style="font-size:11px;color:var(--muted);line-height:1.6;margin:0 0 0 26px;"><%= c.contact_optin_terms || _t('home.contact.optin_terms') %></p>
+      </div>
+      <% } %>
+      <button type="submit" class="btn-lg btn-primary" style="border:none;cursor:pointer;width:100%;text-align:center;"><%= _t('home.contact.send') %></button>
     </form>
     <% const _loc = c.contact_location || brand?.location || ''; const _srv = c.contact_serving || brand?.serviceArea || ''; %>
     <% if (_loc || _srv) { %>
     <div style="margin-top:24px;font-size:12px;color:var(--muted);">
       <% if (_loc) { %><span><%= _loc %></span><% } %>
       <% if (_loc && _srv) { %> · <% } %>
-      <% if (_srv) { %><span>Serving <%= _srv %></span><% } %>
+      <% if (_srv) { %><span><%= _t('home.contact.serving_prefix') %> <%= _srv %></span><% } %>
     </div>
     <% } %>
   </div>
@@ -686,7 +703,7 @@
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0F1B30" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="14" y="14" width="2" height="2"/><rect x="20" y="14" width="2" height="2"/><rect x="14" y="20" width="2" height="2"/><rect x="20" y="20" width="2" height="2"/><rect x="17" y="17" width="2" height="2"/></svg>
   </button>
   <div id="qr-popup" style="display:none;position:absolute;bottom:60px;left:0;background:#fff;border:1px solid var(--border);border-radius:8px;padding:20px;box-shadow:0 8px 40px rgba(0,0,0,0.18);min-width:200px;text-align:center;transform:translateY(10px);opacity:0;transition:transform 0.25s ease,opacity 0.25s ease;">
-    <div style="font-family:var(--font-heading),serif;font-size:0.9rem;font-weight:600;color:#111;margin-bottom:12px;">Share This Page</div>
+    <div style="font-family:var(--font-heading),serif;font-size:0.9rem;font-weight:600;color:#111;margin-bottom:12px;"><%= _t('home.qr.share') %></div>
     <div id="qr-canvas" style="display:inline-block;padding:8px;background:#fff;border-radius:4px;"></div>
     <div style="font-size:0.68rem;color:#525252;margin-top:10px;font-weight:300;"><%= b.name || '' %></div>
   </div>

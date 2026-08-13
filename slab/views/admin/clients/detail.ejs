@@ -930,6 +930,13 @@
       .msg-time{font-size:0.68rem;color:var(--slate);margin-left:auto;}
       .msg-content{font-size:0.84rem;color:var(--on-surface);line-height:1.6;max-height:180px;overflow-y:auto;}
       .badge-source{font-size:0.55rem;padding:1px 5px;border-radius:2px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;}
+      /* Open / click tracking */
+      .trk{font-size:0.66rem;padding:1px 6px;border-radius:2px;font-weight:500;white-space:nowrap;cursor:help;}
+      .trk-open{background:rgba(21,128,61,0.12);color:#15803d;}
+      .trk-click{background:rgba(99,91,255,0.12);color:#635bff;}
+      .trk-none{background:rgba(107,115,128,0.10);color:var(--slate);}
+      .trk-links{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:0.7rem;color:var(--slate);line-height:1.7;}
+      .trk-links a{color:#635bff;word-break:break-all;}
     </style>
 
     <!-- Flash -->
@@ -1023,6 +1030,34 @@
       <% } %>
     </div>
 
+    <%
+      // ── Open / click state for one outbound message. null = nothing to show
+      // (inbound mail, or an email sent before tracking existed / with no
+      // tenant domain to host the pixel).
+      const TRK_HINT = 'Opens are counted by a tracking pixel — mail apps that block images (and Apple Mail Privacy Protection, which pre-loads them) can under- or over-count. Clicks are exact.';
+      function trkStamp(d) {
+        return d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+      }
+      function emailTrack(m) {
+        if (!m || m.direction !== 'outbound' || !m.tracked) return null;
+        const opens = m.openCount || 0;
+        const clicks = m.clickCount || 0;
+        const at = m.lastOpenAt || m.lastClickAt || null;
+        const t = { opens, clicks, opened: opens > 0 || clicks > 0, at, clickList: m.clicks || [] };
+        if (clicks) {
+          t.cls = 'trk-click';
+          t.label = `Clicked ${clicks}×` + (opens ? ` · opened ${opens}×` : '') + (at ? ` · ${trkStamp(at)}` : '');
+        } else if (opens) {
+          t.cls = 'trk-open';
+          t.label = `Opened ${opens}×` + (at ? ` · ${trkStamp(at)}` : '');
+        } else {
+          t.cls = 'trk-none';
+          t.label = 'Not opened yet';
+        }
+        return t;
+      }
+    %>
+
     <!-- Conversations -->
     <% if (!threads.length && !unthreaded.length) { %>
       <div class="card"><div style="text-align:center;padding:24px;color:var(--slate);font-size:0.85rem;"><%= showArchived ? 'No archived emails.' : 'No emails yet.' %></div></div>
@@ -1034,6 +1069,20 @@
         <div class="thread-head" onclick="if(!event.target.closest('.arch-btn'))this.parentElement.classList.toggle('open')">
           <% const hasReply = t.messages.some(m => m.direction === 'inbound'); %>
           <% if (hasReply) { %><span class="msg-badge msg-badge-in" style="flex-shrink:0;">Has Reply</span><% } %>
+          <%
+            const tTrack = t.messages.map(emailTrack).filter(Boolean);
+            const tClicks = tTrack.reduce((n, x) => n + x.clicks, 0);
+            const tOpened = tTrack.filter(x => x.opened);
+          %>
+          <% if (tClicks) { %>
+            <span class="trk trk-click" title="<%= TRK_HINT %>" style="flex-shrink:0;">Clicked <%= tClicks %>&times;</span>
+          <% } else if (tOpened.length) { %>
+            <span class="trk trk-open" title="<%= TRK_HINT %>" style="flex-shrink:0;">Opened</span>
+          <% } else if (tTrack.length) { %>
+            <span class="trk trk-none" title="<%= TRK_HINT %>" style="flex-shrink:0;">Unopened</span>
+          <% } %>
+          <% if (t.root.source === 'invoice') { %><span class="badge-source" style="background:rgba(21,128,61,0.1);color:#15803d;">Invoice</span><% } %>
+          <% if (t.root.source === 'campaign') { %><span class="badge-source" style="background:rgba(99,91,255,0.1);color:#635bff;">Campaign</span><% } %>
           <div class="thread-subject"><%= t.root.subject %></div>
           <% if (t.messages.length > 1) { %><span class="thread-count"><%= t.messages.length %></span><% } %>
           <span class="thread-meta"><%= new Date(t.lastAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) %></span>
@@ -1044,6 +1093,7 @@
         </div>
         <div class="thread-body">
           <% for (const msg of t.messages) { %>
+          <% const mt = emailTrack(msg); %>
           <div class="msg">
             <div class="msg-bar">
               <% if (msg.direction === 'inbound') { %>
@@ -1053,9 +1103,11 @@
                 <span class="msg-badge msg-badge-out">Sent</span>
                 <span class="msg-from">to <%= msg.to %><% if (msg.cc?.length) { %> &middot; cc: <%= msg.cc.join(', ') %><% } %></span>
               <% } %>
+              <%- include('../partials/_email-track-badge', { mt, TRK_HINT }) %>
               <span class="msg-time"><%= new Date(msg.sentAt).toLocaleDateString('en-US', {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) %></span>
             </div>
             <div class="msg-content"><%- msg.body %></div>
+            <%- include('../partials/_email-track-links', { mt, trkStamp }) %>
           </div>
           <% } %>
           <!-- Inline reply bar -->
@@ -1076,6 +1128,7 @@
 
       <!-- Unthreaded (standalone emails) -->
       <% for (const em of unthreaded) { %>
+      <% const mt = emailTrack(em); %>
       <div class="thread">
         <div class="thread-head" onclick="if(!event.target.closest('.arch-btn'))this.parentElement.classList.toggle('open')">
           <% if (em.direction === 'inbound') { %>
@@ -1083,6 +1136,8 @@
           <% } else { %>
             <span class="msg-badge msg-badge-out" style="flex-shrink:0;">Sent</span>
           <% } %>
+          <% if (mt) { %><span class="trk <%= mt.cls %>" title="<%= TRK_HINT %>" style="flex-shrink:0;"><%= mt.clicks ? 'Clicked ' + mt.clicks + '×' : (mt.opened ? 'Opened' : 'Unopened') %></span><% } %>
+          <% if (em.source === 'invoice') { %><span class="badge-source" style="background:rgba(21,128,61,0.1);color:#15803d;">Invoice</span><% } %>
           <% if (em.source === 'campaign') { %><span class="badge-source" style="background:rgba(99,91,255,0.1);color:#635bff;">Campaign</span><% } %>
           <div class="thread-subject"><%= em.subject %></div>
           <span class="thread-meta"><%= new Date(em.sentAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) %></span>
@@ -1101,9 +1156,11 @@
                 <span class="msg-badge msg-badge-out">Sent</span>
                 <span class="msg-from">to <%= em.to %><% if (em.cc?.length) { %> &middot; cc: <%= em.cc.join(', ') %><% } %></span>
               <% } %>
+              <%- include('../partials/_email-track-badge', { mt, TRK_HINT }) %>
               <span class="msg-time"><%= new Date(em.sentAt).toLocaleDateString('en-US', {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) %></span>
             </div>
             <div class="msg-content"><%- em.body %></div>
+            <%- include('../partials/_email-track-links', { mt, trkStamp }) %>
           </div>
           <!-- Reply bar for unthreaded emails -->
           <% if (!showArchived) { %>

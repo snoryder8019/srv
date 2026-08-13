@@ -24,8 +24,115 @@ async function fetchMedia(url) {
 
 // Is this media URL a video? Used to route each adapter to its video flow
 // (photo and video endpoints differ on every platform).
+//
+// The extension is only the FIRST guess. A URL with no extension, or one the
+// regex doesn't know, used to fall through to "image" silently — which is how a
+// video ends up published as a photo instead of erroring. resolveMediaKinds()
+// below settles those cases against the origin before publishing, and records
+// the verdict here so every adapter routes the same way.
 const VIDEO_EXT_RE = /\.(mp4|mov|m4v|webm|avi|mkv|m3u8)(\?|#|$)/i;
-function isVideoUrl(u) { return VIDEO_EXT_RE.test(String(u || '')); }
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|avif|heic|heif|svg)(\?|#|$)/i;
+const MEDIA_KIND = new Map();   // url → 'video' | 'image'
+const MEDIA_KIND_MAX = 500;     // bounded: url→kind never changes, so this is a pure cache
+
+function rememberKind(url, kind) {
+  if (MEDIA_KIND.size >= MEDIA_KIND_MAX) MEDIA_KIND.delete(MEDIA_KIND.keys().next().value);
+  MEDIA_KIND.set(url, kind);
+}
+
+export function isVideoUrl(u) {
+  const s = String(u || '');
+  const known = MEDIA_KIND.get(s);
+  if (known) return known === 'video';
+  return VIDEO_EXT_RE.test(s);
+}
+
+// ── Facebook Reels — the three-phase upload ──────────────────────────────────
+// start (get a video_id + upload_url) → upload (Meta pulls our CDN file via the
+// file_url header) → finish (video_state decides PUBLISHED vs DRAFT).
+//
+// DRAFT is the whole reason this path exists: Meta's licensed music catalogue is
+// not exposed by any API, so the only lawful way to score a reel is to hand the
+// draft to a human in the Facebook app / Business Suite.
+async function publishFacebookReel({ pageId, token, videoUrl, description, draft }) {
+  const G = 'https://graph.facebook.com/v21.0';
+
+  const sr = await fetch(`${G}/${pageId}/video_reels`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ upload_phase: 'start', access_token: token }),
+    signal: AbortSignal.timeout(30000),
+  });
+  const sj = await sr.json().catch(() => ({}));
+  if (!sr.ok || !sj.video_id) throw metaError(sj, sr.status, 'reel start');
+
+  // Prefer the upload_url Meta hands back — it already carries the right host
+  // and API version — and only synthesise one if the response omits it.
+  const uploadUrl = sj.upload_url || `https://rupload.facebook.com/video-upload/v21.0/${sj.video_id}`;
+  const ur = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: { Authorization: `OAuth ${token}`, file_url: videoUrl },
+    signal: AbortSignal.timeout(300000),      // Meta fetches the file itself; big clips take a while
+  });
+  const uj = await ur.json().catch(() => ({}));
+  if (!ur.ok || uj.success === false) throw metaError(uj, ur.status, 'reel upload');
+
+  const fr = await fetch(`${G}/${pageId}/video_reels`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      video_id: sj.video_id,
+      upload_phase: 'finish',
+      video_state: draft ? 'DRAFT' : 'PUBLISHED',
+      description,
+      access_token: token,
+    }),
+    signal: AbortSignal.timeout(60000),
+  });
+  const fj = await fr.json().catch(() => ({}));
+  if (!fr.ok || fj.success === false) throw metaError(fj, fr.status, 'reel finish');
+
+  return {
+    id: sj.video_id,
+    // A draft has no public permalink — send the tenant to Business Suite instead
+    // of a facebook.com URL that would 404 and read as a broken post.
+    url: draft ? 'https://business.facebook.com/latest/content' : `https://facebook.com/reel/${sj.video_id}`,
+    draft,
+    note: draft
+      ? 'Saved as a DRAFT reel — open the Facebook app or Business Suite to add music, then publish it there.'
+      : 'Published as a reel.',
+  };
+}
+
+// Settle the kind of every media URL on a post BEFORE any adapter runs.
+// Order: an explicit kind the composer recorded → file extension → ask the
+// origin over HTTP. Never throws; an unresolvable URL just keeps the old
+// extension-based behaviour.
+export async function resolveMediaKinds(post) {
+  const urls = (post?.mediaUrls || []).filter(Boolean).map(String);
+  // post.mediaKinds — optional { url: 'video'|'image' } captured at compose time.
+  const explicit = (post && post.mediaKinds && typeof post.mediaKinds === 'object') ? post.mediaKinds : null;
+  for (const u of urls) {
+    if (MEDIA_KIND.has(u)) continue;
+    const ex = explicit ? explicit[u] : null;
+    if (ex === 'video' || ex === 'image') { rememberKind(u, ex); continue; }
+    if (VIDEO_EXT_RE.test(u)) { rememberKind(u, 'video'); continue; }
+    if (IMAGE_EXT_RE.test(u)) { rememberKind(u, 'image'); continue; }
+    // Unknown extension — one cheap round-trip to the origin. Some CDNs refuse
+    // HEAD, so fall back to a single-byte ranged GET before giving up.
+    let ct = '';
+    try {
+      const r = await fetch(u, { method: 'HEAD', signal: AbortSignal.timeout(10000) });
+      if (r.ok) ct = (r.headers.get('content-type') || '').toLowerCase();
+    } catch { /* fall through to the ranged GET */ }
+    if (!ct) {
+      try {
+        const r = await fetch(u, { headers: { Range: 'bytes=0-0' }, signal: AbortSignal.timeout(10000) });
+        ct = (r.headers.get('content-type') || '').toLowerCase();
+      } catch { /* unresolvable — leave it to the extension fallback */ }
+    }
+    if (ct.startsWith('video/')) rememberKind(u, 'video');
+    else if (ct.startsWith('image/')) rememberKind(u, 'image');
+  }
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -482,7 +589,7 @@ export const PLATFORMS = {
     name: 'Facebook Page',
     icon: '📘',
     color: '#1877F2',
-    caps: { text: true, link: true, media: true },
+    caps: { text: true, link: true, media: true, reel: true },
     fields: [
       { key: 'pageId', label: 'Page ID', secret: false, placeholder: '1234567890' },
       { key: 'pageAccessToken', label: 'Page Access Token', secret: true, placeholder: 'long-lived page token' },
@@ -506,6 +613,19 @@ export const PLATFORMS = {
       const img = (post.mediaUrls || [])[0];
       const isVid = isVideoUrl(img);
       let r, j, stage;
+      // ── Reel ────────────────────────────────────────────────────────────────
+      // Reels are a separate three-phase endpoint, NOT /videos, and they're the
+      // only Facebook surface with an unpublished state. DRAFT exists because
+      // Meta's music library is unreachable from the API (licensing) — the reel
+      // lands in Business Suite so a human can add a track and publish it there.
+      if (post.format === 'reel') {
+        if (!img || !isVid) throw new Error('A reel needs a video — attach one first');
+        const draft = String(post.fbVideoState || '').toUpperCase() === 'DRAFT';
+        return await publishFacebookReel({
+          pageId: creds.pageId, token: creds.pageAccessToken,
+          videoUrl: img, description: msg, draft,
+        });
+      }
       if (img && isVid) {
         // Page video → /videos with a public file_url (Meta pulls it server-side).
         stage = 'video';
@@ -542,7 +662,9 @@ export const PLATFORMS = {
     name: 'Instagram',
     icon: '📷',
     color: '#E4405F',
-    caps: { text: true, link: false, media: true, carousel: true, story: true },
+    // `reel` needs no separate branch here — a single video already publishes as
+    // media_type=REELS below. Instagram has no draft state in the API, though.
+    caps: { text: true, link: false, media: true, carousel: true, story: true, reel: true },
     requiresMedia: true,
     fields: [
       { key: 'igUserId', label: 'IG User ID', secret: false, placeholder: '178414...' },
@@ -1265,6 +1387,7 @@ export function platformSupportsFormat(platformKey, format) {
   const caps = PLATFORMS[platformKey]?.caps || {};
   if (format === 'carousel') return !!caps.carousel;
   if (format === 'story') return !!caps.story;
+  if (format === 'reel') return !!caps.reel;
   return false;
 }
 
@@ -1287,8 +1410,19 @@ export async function publishToPlatform(platformKey, post, account) {
   }
   try {
     const creds = unpackCredentials(account);
+    // Settle image-vs-video for every attachment first — adapters pick their
+    // endpoint off this, and guessing wrong posts a video as a still.
+    await resolveMediaKinds(post);
     const result = await def.publish({ post, creds });
-    return { platform: platformKey, ok: true, id: result?.id || null, url: result?.url || null, at: new Date() };
+    return {
+      platform: platformKey, ok: true,
+      id: result?.id || null, url: result?.url || null,
+      // `draft` means it reached the platform but is NOT live — the caller must
+      // not report that as published.
+      ...(result?.draft ? { draft: true } : {}),
+      ...(result?.note ? { note: result.note } : {}),
+      at: new Date(),
+    };
   } catch (err) {
     return { platform: platformKey, ok: false, error: err.message || 'Publish failed', at: new Date() };
   }

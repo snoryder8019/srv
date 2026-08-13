@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <%- include('../partials/seo-head') %>
   <%
+    const _t = (typeof t === 'function') ? t : (k => k);
     const _sp = parseInt(design.nav_logo_split) || 0;
     const _brandPre = _sp > 0 ? (brand?.name||'').slice(0,_sp) : '';
     const _brandPost = _sp > 0 ? (brand?.name||'').slice(_sp) : (brand?.name||'');
@@ -41,7 +42,7 @@
     .reveal { opacity:0; transform:translateY(20px); transition:opacity 0.5s ease, transform 0.5s ease; }
     .reveal.visible { opacity:1; transform:translateY(0); }
     /* nav styles provided by partials/header.ejs */
-    .post-hero { padding:140px 52px 64px; background:var(--bg); }
+    .post-hero { padding:max(140px, var(--nav-clear)) 52px 64px; background:var(--bg); }
     .post-hero-inner { max-width:800px; margin:0 auto; }
     .back-link { font-size:0.75rem; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; color:var(--slate); text-decoration:none; display:inline-flex; align-items:center; gap:6px; margin-bottom:32px; }
     .back-link:hover { color:var(--primary); }
@@ -100,14 +101,14 @@
 
 <div class="post-hero reveal">
   <div class="post-hero-inner">
-    <a href="<%= _ct.base %>" class="back-link">← Back to <%= _ct.label %></a>
+    <a href="<%= _ct.base %>" class="back-link">← <%= _t('blog.back_to') %> <%= _ct.label %></a>
     <div class="post-meta">
       <% if (post.category) { %><span class="post-category"><%= post.category %></span><% } %>
       <span class="post-date"><%= new Date(post.publishedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) %></span>
       <% var _shareUrl = (typeof shareUrl !== 'undefined' && shareUrl) ? shareUrl : ''; %>
       <% if (_shareUrl) { %>
         <button type="button" class="post-share-btn"
-          onclick="openShareModal({ url: <%= JSON.stringify(_shareUrl) %>, title: <%= JSON.stringify(post.title) %>, text: <%= JSON.stringify(post.excerpt || '') %>, image: <%= JSON.stringify(post.featuredImageUrl || '') %> })">⤴ Share</button>
+          onclick="openShareModal({ url: <%= JSON.stringify(_shareUrl) %>, title: <%= JSON.stringify(post.title) %>, text: <%= JSON.stringify(post.excerpt || '') %>, image: <%= JSON.stringify(post.featuredImageUrl || '') %> })">⤴ <%= _t('blog.share') %></button>
       <% } %>
     </div>
     <h1 class="post-title"><%= post.title %></h1>
@@ -131,7 +132,7 @@
   <% if (_slides.length) { %>
     <% if ((post.slidesStyle || 'carousel') === 'grid') { %>
       <div class="post-slides reveal" style="padding-left:0;padding-right:0;">
-        <div class="slides-label">Gallery</div>
+        <div class="slides-label"><%= _t('blog.gallery') %></div>
         <div class="slides-grid">
           <% _slides.forEach(function(s){ %>
             <figure>
@@ -143,7 +144,7 @@
       </div>
     <% } else { %>
       <div class="post-slides reveal" id="postSlides" style="padding-left:0;padding-right:0;">
-        <div class="slides-label">Gallery</div>
+        <div class="slides-label"><%= _t('blog.gallery') %></div>
         <div class="slides-carousel">
           <div class="slides-track" id="slidesTrack">
             <% _slides.forEach(function(s){ %>
@@ -154,14 +155,14 @@
             <% }); %>
           </div>
           <% if (_slides.length > 1) { %>
-            <button type="button" class="slides-nav slides-prev" aria-label="Previous">‹</button>
-            <button type="button" class="slides-nav slides-next" aria-label="Next">›</button>
+            <button type="button" class="slides-nav slides-prev" aria-label="<%= _t('blog.prev') %>">‹</button>
+            <button type="button" class="slides-nav slides-next" aria-label="<%= _t('blog.next') %>">›</button>
           <% } %>
         </div>
         <% if (_slides.length > 1) { %>
           <div class="slides-dots" id="slidesDots">
             <% _slides.forEach(function(s, i){ %>
-              <button type="button" class="slides-dot <%= i === 0 ? 'active' : '' %>" data-idx="<%= i %>" aria-label="Slide <%= i+1 %>"></button>
+              <button type="button" class="slides-dot <%= i === 0 ? 'active' : '' %>" data-idx="<%= i %>" aria-label="<%= _t('blog.slide') %> <%= i+1 %>"></button>
             <% }); %>
           </div>
         <% } %>
@@ -188,21 +189,21 @@
   <% } %>
 
   <div class="post-footer">
-    <a href="<%= _ct.base %>" class="back-link">← All <%= _ct.label %></a>
-    <a href="/#contact" style="font-size:0.82rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--white);background:var(--primary);padding:12px 28px;border-radius:2px;text-decoration:none;">Work With Us</a>
+    <a href="<%= _ct.base %>" class="back-link">← <%= _t('blog.all') %> <%= _ct.label %></a>
+    <a href="/#contact" style="font-size:0.82rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--white);background:var(--primary);padding:12px 28px;border-radius:2px;text-decoration:none;"><%= _t('blog.work_with_us') %></a>
   </div>
 </div>
 
 <footer>
   <div class="footer-brand"><% if (_brandPre) { %><span style="color:var(--accent-light)"><%= _brandPre %></span><% } %><%- _brandPost %></div>
   <ul class="footer-links">
-    <li><a href="/">Home</a></li>
-    <li><a href="/#services">Services</a></li>
-    <li><a href="/blog">Blog</a></li>
-    <li><a href="/#contact">Contact</a></li>
+    <li><a href="/"><%= _t('blog.nav_home') %></a></li>
+    <li><a href="/#services"><%= _t('blog.nav_services') %></a></li>
+    <li><a href="/blog"><%= _t('blog.nav_blog') %></a></li>
+    <li><a href="/#contact"><%= _t('blog.nav_contact') %></a></li>
   </ul>
   <% if (typeof visibility === 'undefined' || !visibility || visibility.admin_link !== false) { %>
-  <div style="margin-top:16px;text-align:center;"><a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>" style="color:rgba(253,252,250,0.12);text-decoration:none;font-size:0.6rem;letter-spacing:0.04em;transition:color 0.2s;" onmouseover="this.style.color='rgba(253,252,250,0.3)'" onmouseout="this.style.color='rgba(253,252,250,0.12)'">Admin</a></div>
+  <div style="margin-top:16px;text-align:center;"><a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>" style="color:rgba(253,252,250,0.12);text-decoration:none;font-size:0.6rem;letter-spacing:0.04em;transition:color 0.2s;" onmouseover="this.style.color='rgba(253,252,250,0.3)'" onmouseout="this.style.color='rgba(253,252,250,0.12)'"><%= _t('blog.admin') %></a></div>
   <% } %>
 </footer>
 <%- include('../partials/_share-modal') %>

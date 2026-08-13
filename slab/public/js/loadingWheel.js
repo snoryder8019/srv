@@ -136,6 +136,17 @@
       .slab-flash-x { flex-shrink: 0; background: none; border: none; cursor: pointer;
         font-size: 1rem; line-height: 1; opacity: 0.5; padding: 2px; color: inherit; }
       .slab-flash-x:hover { opacity: 1; }
+      /* Optional action button (e.g. Undo). Wears the semantic accent so it reads
+         as the toast's one affordance without competing with the dismiss ×. */
+      .slab-flash-act { flex-shrink: 0; align-self: center; cursor: pointer;
+        background: none; border: 1px solid var(--slab-flash-accent, var(--navy, #1C2B4A));
+        color: var(--slab-flash-accent, var(--navy, #1C2B4A));
+        font-family: inherit; font-size: 0.7rem; font-weight: 700;
+        letter-spacing: 0.08em; text-transform: uppercase;
+        padding: 5px 10px; border-radius: var(--card-radius, 4px);
+        transition: background 0.15s, color 0.15s; }
+      .slab-flash-act:hover { background: var(--slab-flash-accent, var(--navy, #1C2B4A)); color: var(--surface, #FDFCFA); }
+      .slab-flash-act-ct { font-variant-numeric: tabular-nums; opacity: 0.75; }
       .slab-flash.success { --slab-flash-accent: var(--success, #15803D); }
       .slab-flash.error   { --slab-flash-accent: var(--danger,  #B91C1C); }
       .slab-flash.warn    { --slab-flash-accent: var(--warn,    #B45309); }
@@ -158,7 +169,14 @@
 
   const FLASH_ICONS = { success: '✓', error: '✕', warn: '⚠', info: 'ℹ' };
 
-  // flash(message, type='info', opts) — opts: { timeout (ms), sticky (bool) }
+  // flash(message, type='info', opts)
+  //   opts: { timeout (ms), sticky (bool),
+  //           action: { label, onClick, countdown (bool) } }
+  //
+  // `action` renders a single affordance inside the toast — built for "did a
+  // batch of things, here's your way out" flows (agent field-fills, bulk edits).
+  // With `countdown:true` the label shows the seconds left before auto-dismiss,
+  // so the window to act is visible rather than guessed at.
   function flash(message, type, opts) {
     if (!message) return { dismiss() {} };
     type = type || 'info';
@@ -172,21 +190,46 @@
     msg.className = 'slab-flash-msg'; msg.textContent = String(message);
     const x = document.createElement('button');
     x.className = 'slab-flash-x'; x.type = 'button'; x.setAttribute('aria-label', 'Dismiss'); x.textContent = '×';
-    el.appendChild(ic); el.appendChild(msg); el.appendChild(x);
+    el.appendChild(ic); el.appendChild(msg);
+
+    const ms = opts.timeout || (type === 'error' ? 7000 : 4500);
+    let tick = null;
+    if (opts.action && typeof opts.action.onClick === 'function') {
+      const act = document.createElement('button');
+      act.className = 'slab-flash-act'; act.type = 'button';
+      const baseLabel = opts.action.label || 'Undo';
+      act.textContent = baseLabel;
+      if (opts.action.countdown && !opts.sticky) {
+        const ct = document.createElement('span');
+        ct.className = 'slab-flash-act-ct';
+        act.textContent = baseLabel + ' ';
+        act.appendChild(ct);
+        let left = Math.ceil(ms / 1000);
+        ct.textContent = left + 's';
+        tick = setInterval(() => {
+          left -= 1;
+          if (left <= 0) { clearInterval(tick); return; }
+          ct.textContent = left + 's';
+        }, 1000);
+      }
+      act.addEventListener('click', () => {
+        try { opts.action.onClick(); } finally { dismiss(); }
+      });
+      el.appendChild(act);
+    }
+    el.appendChild(x);
     flashWrap().appendChild(el);
     let timer = null;
     function dismiss() {
       if (el._gone) return; el._gone = true;
       if (timer) clearTimeout(timer);
+      if (tick) clearInterval(tick);
       el.classList.add('leaving');
       el.addEventListener('animationend', () => el.remove(), { once: true });
       setTimeout(() => el.remove(), 300);
     }
     x.addEventListener('click', dismiss);
-    if (!opts.sticky) {
-      const ms = opts.timeout || (type === 'error' ? 7000 : 4500);
-      timer = setTimeout(dismiss, ms);
-    }
+    if (!opts.sticky) timer = setTimeout(dismiss, ms);
     return { dismiss, el };
   }
 
@@ -220,6 +263,18 @@
     form._slabSubmitting = true;
     const controls = form.querySelectorAll('button[type=submit], input[type=submit], button:not([type])');
     const btn = submitter || form.querySelector('button[type=submit]');
+    // A named submit button (e.g. <button name="action" value="autoslot">) normally
+    // contributes its name/value to the POST. But we're about to DISABLE it for the
+    // double-click guard, and a submitter disabled during the submit event is dropped
+    // from the payload by the browser — so the server would never see which button
+    // was pressed. Preserve it as a hidden field first. (Only for a real navigating
+    // submit; AJAX forms don't route through here.)
+    if (btn && btn.name && !form._slabSubmitPreserved) {
+      const keep = document.createElement('input');
+      keep.type = 'hidden'; keep.name = btn.name; keep.value = btn.value;
+      form.appendChild(keep);
+      form._slabSubmitPreserved = true;
+    }
     controls.forEach(c => { if (c !== btn) c.disabled = true; });
     if (btn) button(btn, true, btn.dataset.loadingLabel || null);
     // data-guard="button" → spin the button only (for tiny inline forms);

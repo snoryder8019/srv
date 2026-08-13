@@ -1,5 +1,27 @@
+<% const _t = (typeof t === 'function') ? t : (k => k); %>
+<%
+  /* ── Skin dispatch ── A template may carry a visual "skin". Whitelisted skins
+     render through their own full-page partial (own CSS/markup/JS), driven by the
+     same block model so canvas editing still works. Anything else = built-in
+     'classic' renderer below (unchanged). */
+  const _SKIN_WL = ['classic','lowlight','terminal','arena','gallery'];
+  const _skin = (typeof tpl !== 'undefined' && tpl && tpl.skin) ? String(tpl.skin) : 'classic';
+%>
+<% if (_SKIN_WL.indexOf(_skin) >= 0) { %>
+<%- include('partials/skins/' + _skin, {
+      blocks: (typeof blocks !== 'undefined' ? blocks : []),
+      design: design,
+      brand: (typeof brand !== 'undefined' ? brand : {}),
+      logos: (typeof logos !== 'undefined' ? logos : {}),
+      navLinks: (typeof navLinks !== 'undefined' ? navLinks : []),
+      visibility: (typeof visibility !== 'undefined' ? visibility : {}),
+      centralAuthUrl: (typeof centralAuthUrl !== 'undefined' ? centralAuthUrl : ''),
+      latestPosts: (typeof latestPosts !== 'undefined' ? latestPosts : []),
+      tpl: (typeof tpl !== 'undefined' ? tpl : {})
+    }) %>
+<% } else { %>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<%= typeof htmlLang !== 'undefined' ? htmlLang : 'en' %>">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -7,6 +29,7 @@
 <meta property="og:description" content="<%= brand?.tagline || brand?.description || '' %>" />
 <title><%= brand?.name || 'Home' %><%= brand?.location ? ' | ' + brand.location : '' %></title>
 <%- include('partials/font-vars') %>
+<%- include('partials/_tokens', { design: (typeof design !== 'undefined' && design) ? design : {}, bare: true }) %>
 <style>
 :root {
   --navy: <%= design.color_primary %>;
@@ -23,6 +46,11 @@
   --nav-logo-size: <%= design.nav_logo_size || '40' %>px;
   --nav-logo-overlap-x: <%= design.nav_logo_overlap_x || '0' %>px;
   --nav-logo-overlap-y: <%= design.nav_logo_overlap_y || '0' %>px;
+  /* Server-side estimate of the fixed nav's height; the script at the end of the
+     page replaces it with the measured value once the logo/fonts have laid out. */
+  --nav-h: <%= Math.max(60, 20 + Math.max(
+      (design.nav_logo_display === 'image' || design.nav_logo_display === 'both') ? (parseInt(design.nav_logo_size) || 40) : 0,
+      24)) %>px;
   --font-heading: '<%= design.font_heading %>', serif;
   --font-body: '<%= design.font_body %>', sans-serif;
   --on-navy: <%= design._on_primary || '#FDFCFA' %>;
@@ -52,6 +80,14 @@ a { color:var(--gold); }
 
 /* ── Nav ── */
 .tl-nav { position:fixed;top:0;left:0;right:0;z-index:100;background:var(--navy-deep);padding:10px 32px;min-height:60px;display:flex;align-items:center;justify-content:space-between; }
+/* The nav is fixed, so it is out of flow and nothing below reserves its height.
+   A tenant can push it well past 60px with nav_logo_size, so whatever element
+   leads the page clears --nav-clear (measured height + breathing room). max()
+   keeps each block's own design padding whenever it is already tall enough. */
+.tl-nav + * { --nav-clear: calc(var(--nav-h, 60px) + 32px); }
+.tl-nav + section { padding-top: max(100px, var(--nav-clear)); }
+.tl-nav + .lb-hero { padding-top: max(120px, var(--nav-clear)); }
+.tl-nav + .marquee-bar { margin-top: var(--nav-h, 60px); }
 .tl-nav-brand { font-family:var(--font-heading);font-size:1.2rem;font-weight:600;color:var(--on-navy-deep);text-decoration:none;display:flex;align-items:center;line-height:1; }
 .tl-nav-brand img { height:var(--nav-logo-size, 40px);width:auto;object-fit:contain;flex-shrink:0; }
 .tl-nav-brand .tl-brand-text { display:flex;flex-direction:column;line-height:1; }
@@ -189,10 +225,10 @@ a { color:var(--gold); }
     <% } %>
   </a>
   <div class="tl-nav-links">
-    <a href="/#services">Services</a>
-    <a href="/#about">About</a>
-    <a href="/#contact">Contact</a>
-    <% if (_vis.blog) { %><a href="/blog">Blog</a><% } %>
+    <a href="/#services"><%= _t('home.nav.services') %></a>
+    <a href="/#about"><%= _t('home.nav.about') %></a>
+    <a href="/#contact"><%= _t('home.nav.contact') %></a>
+    <% if (_vis.blog) { %><a href="/blog"><%= _t('home.nav.blog') %></a><% } %>
     <% _headerLinks.forEach(function(l) { %>
       <a href="<%= l.url %>"<% if (l.target === '_blank') { %> target="_blank" rel="noopener"<% } %>><%= l.label %></a>
     <% }); %>
@@ -432,16 +468,16 @@ a { color:var(--gold); }
 <footer class="tl-footer">
   <div class="tl-footer-brand"><%= brand?.name || '' %></div>
   <div class="tl-footer-links">
-    <a href="/">Home</a>
-    <a href="/#services">Services</a>
-    <% if (_vis.blog) { %><a href="/blog">Blog</a><% } %>
-    <a href="/#contact">Contact</a>
+    <a href="/"><%= _t('home.nav.home') %></a>
+    <a href="/#services"><%= _t('home.nav.services') %></a>
+    <% if (_vis.blog) { %><a href="/blog"><%= _t('home.nav.blog') %></a><% } %>
+    <a href="/#contact"><%= _t('home.nav.contact') %></a>
     <% _footerLinks.forEach(function(l) { %>
       <a href="<%= l.url %>"<% if (l.target === '_blank') { %> target="_blank" rel="noopener"<% } %>><%= l.label %></a>
     <% }); %>
   </div>
   <% if (_vis.admin_link !== false) { %>
-  <div class="tl-footer-admin"><a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>">Admin</a></div>
+  <div class="tl-footer-admin"><a href="<%= typeof centralAuthUrl !== 'undefined' && centralAuthUrl ? centralAuthUrl : '/admin/login' %>"><%= _t('home.footer.admin') %></a></div>
   <% } %>
 </footer>
 <% } %>
@@ -450,6 +486,19 @@ a { color:var(--gold); }
 document.querySelectorAll('.lb-faq-q').forEach(q => {
   q.addEventListener('click', () => q.closest('.lb-faq-item').classList.toggle('open'));
 });
+/* Publish the fixed nav's real height so the leading block can clear it — the CSS
+   above only has a server-side estimate until the logo and web fonts land. */
+(function(){
+  var n = document.querySelector('.tl-nav');
+  if (!n) return;
+  function sync(){ document.documentElement.style.setProperty('--nav-h', n.offsetHeight + 'px'); }
+  sync();
+  window.addEventListener('resize', sync);
+  window.addEventListener('load', sync);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(sync);
+  if (window.ResizeObserver) { try { new ResizeObserver(sync).observe(n); } catch(e) {} }
+})();
 </script>
 </body>
 </html>
+<% } %>

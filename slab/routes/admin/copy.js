@@ -4,7 +4,13 @@ import { config } from '../../config/config.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import { webSearch, callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
 import { agentLLMOpts } from '../../plugins/agentRegistry.js';
+import { SUPPORTED_LOCALES, DEFAULT_LOCALE, isSupportedLocale } from '../../plugins/i18n.js';
+import { localeKey, isLocaleKey, baseKeyOf } from '../../plugins/copyLocale.js';
 const router = express.Router();
+
+// Non-text copy fields — URLs, numbers, toggles — that shouldn't be translated.
+const NON_TEXT_SUFFIX = ['_link', '_image', '_amount', '_unit', '_num', '_featured', '_equiv', '_enabled'];
+const isTranslatableKey = (key) => !NON_TEXT_SUFFIX.some(s => key.endsWith(s));
 
 const SECTIONS = {
   hero: ['hero_eyebrow', 'hero_heading', 'hero_heading_em', 'hero_sub', 'hero_badge',
@@ -47,7 +53,8 @@ const SECTIONS = {
            'contact_company_label', 'contact_company_placeholder',
            'contact_service_label', 'contact_service_placeholder',
            'contact_message_label', 'contact_message_placeholder',
-           'contact_service_fallback', 'contact_service_extra'],
+           'contact_service_fallback', 'contact_service_extra',
+           'contact_optin_label', 'contact_optin_terms'],
   cookie: ['cookie_title', 'cookie_message',
            'cookie_accept_label', 'cookie_reject_label', 'cookie_save_label',
            'cookie_settings_label',
@@ -151,6 +158,77 @@ const COPY_DEFAULTS = {
 };
 
 router.get('/', (req, res) => res.redirect('/admin/design'));
+
+// ── Translations panel ───────────────────────────────────────────────────────
+// Lists the tenant's AUTHORED copy (English) with a Spanish field per key. Saves
+// siblings as `<key>__es`. English base stays the source of truth; empty Spanish
+// falls back to English at render time (see plugins/copyLocale.js).
+router.get('/translate', async (req, res) => {
+  try {
+    const db = req.db;
+    const rows = await db.collection('copy').find({}).toArray();
+    const base = {}, byLocale = {};
+    for (const r of rows) {
+      if (isLocaleKey(r.key)) { byLocale[r.key] = r.value; }
+      else { base[r.key] = r.value; }
+    }
+    // Target locales = every supported non-default locale (currently just 'es').
+    const locales = SUPPORTED_LOCALES.filter(l => l.code !== DEFAULT_LOCALE);
+    // Build section groups from the known key set, keeping only authored, text keys.
+    const groups = [];
+    for (const [section, keys] of Object.entries(SECTIONS)) {
+      const fields = [];
+      for (const key of keys) {
+        if (!isTranslatableKey(key)) continue;
+        const en = (base[key] ?? '').toString();
+        if (en.trim() === '') continue;            // only translate what's actually written
+        const translations = {};
+        for (const l of locales) translations[l.code] = (byLocale[localeKey(key, l.code)] ?? '').toString();
+        const isLong = en.length > 80 || /content$|_message$|_about$|_desc$/.test(key);
+        fields.push({ key, en, translations, isLong });
+      }
+      if (fields.length) groups.push({ section, fields });
+    }
+    res.render('admin/copy-translate', {
+      page: 'design',
+      user: req.adminUser,
+      groups,
+      locales,
+      multilangOn: String(req.tenant?.public?.multilang ?? 'false') === 'true',
+      saved: req.query.saved === '1',
+      error: req.query.error === '1',
+    });
+  } catch (err) {
+    console.error('[copy/translate]', err);
+    res.redirect('/admin/design?error=1');
+  }
+});
+
+router.post('/translate', async (req, res) => {
+  try {
+    const db = req.db;
+    const ops = [];
+    for (const [key, value] of Object.entries(req.body)) {
+      if (key.startsWith('_')) continue;
+      // Only accept locale-suffixed keys whose base is a known copy field.
+      if (!isLocaleKey(key)) continue;
+      const known = Object.values(SECTIONS).flat().includes(baseKeyOf(key));
+      if (!known) continue;
+      ops.push(
+        db.collection('copy').updateOne(
+          { key },
+          { $set: { key, value: value?.toString().trim() ?? '', updatedAt: new Date() } },
+          { upsert: true }
+        )
+      );
+    }
+    await Promise.all(ops);
+    res.redirect('/admin/copy/translate?saved=1');
+  } catch (err) {
+    console.error('[copy/translate save]', err);
+    res.redirect('/admin/copy/translate?error=1');
+  }
+});
 
 router.post('/', async (req, res) => {
   try {

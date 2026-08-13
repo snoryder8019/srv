@@ -233,9 +233,26 @@ function startPolling() {
   pollAllServers(); // initial poll
 }
 
+// On a Linode-only host the per-game gs-* users are absent and nothing runs
+// locally, so skip local status polling for games whose user doesn't exist —
+// otherwise getStatus() -> `sudo -u gs-<game>` spams sudo "unknown user".
+let _localGsUsers = null;
+function _hasLocalUser(game) {
+  if (_localGsUsers === null) {
+    try {
+      const pw = require('fs').readFileSync('/etc/passwd', 'utf8');
+      _localGsUsers = new Set(
+        pw.split('\n').map(l => l.split(':')[0]).filter(u => u.startsWith('gs-'))
+      );
+    } catch { _localGsUsers = new Set(); }
+  }
+  return _localGsUsers.has('gs-' + game);
+}
+
 async function pollAllServers() {
   const games = ['rust', 'valheim', 'l4d2', '7dtd', 'se', 'palworld', 'windrose'];
   for (const game of games) {
+    if (!_hasLocalUser(game)) continue;
     try {
       const lib = require(`./${game === '7dtd' ? '7dtd' : game}`);
       const status = await lib.getStatus();

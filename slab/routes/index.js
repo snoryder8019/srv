@@ -7,6 +7,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { getDb } from '../plugins/mongo.js';
+import { localizeCopyMap } from '../plugins/copyLocale.js';
 import { getReviews } from '../plugins/reviews.js';
 import { shareTargetPath, shareUrlFor, mintShareToken } from '../plugins/shareLink.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
@@ -193,7 +194,66 @@ const COPY_DEFAULTS = {
   contact_message_placeholder: 'A quick idea of your needs — what are you trying to achieve?',
   contact_service_fallback: 'General Inquiry',
   contact_service_extra: 'Full Package',
+  contact_optin_label: 'Yes, email me news and offers.',
+  contact_optin_terms: 'Emails come from us only — we never share or sell your address, and you can unsubscribe at any time.',
 };
+
+// When a template is active, seed its block fields from the tenant's OWN copy so
+// activating a template never "loses" the content they wrote on the standard layout —
+// the block preview/live render consumes their current copy instead of blank defaults.
+// `tc` must be the tenant's AUTHORED copy only (COPY_DEFAULTS excluded) so generic
+// placeholder copy never clobbers a template's curated fields. Precedence at the call
+// site is: template default < tenant copy (here) < per-block override.
+function seedBlockFromCopy(type, tc) {
+  const out = {};
+  const put = (field, val) => { if (val != null && val !== '') out[field] = val; };
+  const join = (a, b) => {
+    const s = [a, b].filter(v => v != null && v !== '').join(' ');
+    return s || undefined;
+  };
+  switch (type) {
+    case 'hero':
+      put('heading', join(tc.hero_heading, tc.hero_heading_em));
+      put('subheading', tc.hero_sub);
+      put('eyebrow', tc.hero_eyebrow);
+      put('badge', tc.hero_badge);
+      put('cta_text', tc.hero_cta_primary);
+      put('cta_link', tc.hero_cta_primary_link);
+      put('cta2_text', tc.hero_cta_secondary);
+      put('cta2_link', tc.hero_cta_secondary_link);
+      break;
+    case 'cards':
+      put('heading', join(tc.services_heading, tc.services_heading_em));
+      put('subtext', tc.services_sub);
+      for (let n = 1; n <= 4; n++) {
+        put('card' + n + '_title', tc['service' + n + '_title']);
+        put('card' + n + '_body', tc['service' + n + '_desc']);
+      }
+      break;
+    case 'cta':
+      put('heading', join(tc.contact_heading, tc.contact_heading_em));
+      put('subtext', tc.contact_sub);
+      put('btn_text', tc.contact_btn);
+      break;
+    case 'stats':
+      for (let n = 1; n <= 4; n++) {
+        put('stat' + n + '_num', tc['about_stat' + n + '_num']);
+        put('stat' + n + '_label', tc['about_stat' + n + '_label']);
+      }
+      break;
+    case 'text':
+    case 'split':
+      put('body', tc.about_desc);
+      break;
+    case 'pricing':
+      for (let n = 1; n <= 3; n++) {
+        put('tier' + n + '_name', tc['pricing_tier' + n + '_label']);
+        put('tier' + n + '_price', tc['pricing_tier' + n + '_amount']);
+      }
+      break;
+  }
+  return out;
+}
 
 async function getDesign(db) {
   const rawDesign = await db.collection('design').find({}).toArray();
@@ -834,11 +894,27 @@ router.post('/contact', async (req, res) => {
 
     // Collect any custom fields the tenant added via the admin contact form builder.
     // These come in alongside the stock keys but use tenant-chosen names; preserve them.
-    const STOCK_KEYS = new Set(['name', 'firstName', 'lastName', 'email', 'company', 'service', 'message']);
+    const STOCK_KEYS = new Set(['name', 'firstName', 'lastName', 'email', 'company', 'service', 'message', 'marketingOptIn']);
     const customFields = {};
     for (const [k, v] of Object.entries(req.body)) {
       if (STOCK_KEYS.has(k) || k.startsWith('_')) continue;
       if (typeof v === 'string' && v.trim()) customFields[k] = v.trim().slice(0, 2000);
+    }
+
+    // Marketing opt-in — an unticked box is NOT consent, so the checkbox has to
+    // come back with a value for us to treat it as one. The consent text is read
+    // from the tenant's own copy (not a posted hidden field) so the stored proof
+    // is what the site actually renders, and can't be spoofed by the submitter.
+    const optedIn = ['yes', 'on', 'true', '1'].includes(String(req.body.marketingOptIn || '').toLowerCase());
+    let consentText = '';
+    if (optedIn) {
+      const copyRows = await db.collection('copy')
+        .find({ key: { $in: ['contact_optin_label', 'contact_optin_terms'] } }).toArray().catch(() => []);
+      const byKey = Object.fromEntries(copyRows.map(r => [r.key, r.value]));
+      consentText = [
+        byKey.contact_optin_label || COPY_DEFAULTS.contact_optin_label,
+        byKey.contact_optin_terms || COPY_DEFAULTS.contact_optin_terms,
+      ].filter(Boolean).join(' ');
     }
 
     const inquiry = {
@@ -848,9 +924,11 @@ router.post('/contact', async (req, res) => {
       service: service?.trim() || '',
       message: message?.trim() || '',
       customFields,
+      marketingOptIn: optedIn,
       tenantDomain: req.tenant?.domain || '',
       createdAt: new Date(),
     };
+    if (optedIn) inquiry.marketingConsent = { text: consentText, ip: req.ip, at: new Date() };
     if (globalFlag.hit) {
       inquiry.status = 'spam';
       inquiry.spamFiltered = { scope: 'global', type: globalFlag.type, key: globalFlag.key, at: new Date() };
@@ -863,6 +941,22 @@ router.post('/contact', async (req, res) => {
     // Spam-tagged submissions (global filter or honeypot) land in the Spam tab
     // silently — don't ping the admin or forward to the tenant mailbox.
     if (globalFlag.hit || honeypotTripped) return res.redirect('/?contacted=1#contact');
+
+    // Opted in → add to THIS tenant's marketing list only (contacts is a
+    // per-tenant collection, so a tick here never leaks the address to another
+    // tenant or to the platform). Single opt-in: the visitor ticked an explicit
+    // box on a form they submitted themselves, and the consent text + IP are
+    // stored as proof. Unsubscribing is one click from every marketing send
+    // (plugins/mailer.js injects /t/unsubscribe). Best-effort — a list failure
+    // must never lose the inquiry itself.
+    if (optedIn) {
+      captureLead({
+        db, tenant: req.tenant, email: inquiry.email, name: inquiry.name,
+        funnel: 'lead', tags: ['contact-form'], source: 'contact-form',
+        optIn: 'single',
+        consent: { text: consentText, ip: req.ip, userAgent: req.get('user-agent') || '' },
+      }).catch(err => console.warn('[contact] opt-in capture failed:', err.message));
+    }
 
     // Notify admin + forward to tenant email if configured
     const brand = res.locals.brand || {};
@@ -912,6 +1006,7 @@ router.post('/contact', async (req, res) => {
                   `<tr><td style="padding:6px;color:#666;text-transform:capitalize">${k.replace(/[_-]/g, ' ')}</td><td style="padding:6px">${v}</td></tr>`
                 ).join('')}
                 <tr><td style="padding:6px;color:#666;vertical-align:top">Message</td><td style="padding:6px">${inquiry.message || '—'}</td></tr>
+                <tr><td style="padding:6px;color:#666">Email opt-in</td><td style="padding:6px">${inquiry.marketingOptIn ? '✓ Yes — added to your marketing list' : 'No — reply only, do not add to marketing'}</td></tr>
               </table>
               ${!useTenantMailer ? `<p style="margin-top:18px;font-size:11px;color:#999">Sent via the MadLadsLab platform mailer. Connect Zoho in <a href="https://${req.tenant?.domain || ''}/admin/settings">Settings</a> to send these from your own domain.</p>` : ''}
             </div>`,
@@ -1085,8 +1180,9 @@ router.get('/', async (req, res) => {
         getBrandModels(db),
         db.collection('copy').find({}).toArray(),
       ]);
-      const copy = { ...COPY_DEFAULTS };
-      for (const item of rawCopy) copy[item.key] = item.value;
+      const _copyMap = { ...COPY_DEFAULTS };
+      for (const item of rawCopy) _copyMap[item.key] = item.value;
+      const copy = localizeCopyMap(_copyMap, res.locals.locale);
       await applyPipes({ db, tenant: req.tenant, design, copy });
 
       // Auto-feed latest uploads from the tenant's YouTube channel (keyless RSS).
@@ -1118,22 +1214,46 @@ router.get('/', async (req, res) => {
       if (activeTemplate) {
         const tpl = await db.collection('templates').findOne({ _id: activeTemplate.templateId });
         if (tpl) {
-          const [design, logos, brandModels, rawCopy, navLinks] = await Promise.all([
+          const [baseDesign, logos, brandModels, rawCopy, navLinks] = await Promise.all([
             getDesign(db),
             getBrandLogos(db),
             getBrandModels(db),
             db.collection('copy').find({}).toArray(),
             db.collection('nav_links').find({}).sort({ order: 1, createdAt: 1 }).toArray(),
           ]);
-          const copy = { ...COPY_DEFAULTS };
-          for (const item of rawCopy) copy[item.key] = item.value;
+          // Each template carries its own designSnapshot (the palette + fonts it was
+          // built with). Apply it over the tenant base so every template renders in
+          // its OWN look — otherwise all templates collapse to one tenant palette and
+          // look identical. Re-enrich so contrast vars (_on_*) match the new colors.
+          const design = (tpl.designSnapshot && Object.keys(tpl.designSnapshot).length)
+            ? enrichDesignContrast({ ...baseDesign, ...tpl.designSnapshot })
+            : baseDesign;
+          const _copyMap = { ...COPY_DEFAULTS };
+          const tenantCopy = {}; // authored copy only — seeds template blocks (no defaults)
+          for (const item of rawCopy) {
+            _copyMap[item.key] = item.value;
+            if (item.value != null && item.value !== '') tenantCopy[item.key] = item.value;
+          }
+          const copy = localizeCopyMap(_copyMap, res.locals.locale);
           const blocks = (tpl.blocks || []).map(b => {
             const overrides = activeTemplate.contentOverrides?.[b.id] || {};
-            return { ...b, fields: { ...b.fields, ...overrides } };
+            const seeded = seedBlockFromCopy(b.type, tenantCopy);
+            // template default < tenant's own copy < per-block override
+            return { ...b, fields: { ...b.fields, ...seeded, ...overrides } };
           });
           await applyPipes({ db, tenant: req.tenant, design, copy, nodes: [blocks] });
+          // blog blocks render the newest published posts (same query as the
+          // standard layout's home blog section)
+          let latestPosts = [];
+          const blogBlock = blocks.find(b => b && b.type === 'blog');
+          if (blogBlock) {
+            const n = Math.min(6, Math.max(1, parseInt(blogBlock.fields?.count, 10) || 3));
+            latestPosts = await db.collection('blog')
+              .find({ status: 'published', contentType: { $in: ['blog', null] } })
+              .sort({ publishedAt: -1 }).limit(n).toArray();
+          }
           return res.render('template-live', {
-            design, blocks, tpl, logos, brandModels, copy, navLinks,
+            design, blocks, tpl, logos, brandModels, copy, navLinks, latestPosts,
             brand: res.locals.brand || {},
             visibility: buildVisibility(design),
             centralAuthUrl: config.DOMAIN + '/auth/login',
@@ -1154,8 +1274,9 @@ router.get('/', async (req, res) => {
       db.collection('booking_settings').findOne({ key: 'config' }),
     ]);
     const bookingEnabled = bookingSettingsDoc?.value?.enabled === true;
-    const copy = { ...COPY_DEFAULTS };
-    for (const item of rawCopy) copy[item.key] = item.value;
+    const _copyMap = { ...COPY_DEFAULTS };
+    for (const item of rawCopy) _copyMap[item.key] = item.value;
+    const copy = localizeCopyMap(_copyMap, res.locals.locale);
     const media = {};
     const mediaAlts = {};
     const mediaCaptions = {};
@@ -1243,8 +1364,9 @@ function contentArchiveHandler(ct) {
         getBrandLogos(db),
         getBrandModels(db),
       ]);
-      const copy = { ...COPY_DEFAULTS };
-      for (const item of rawCopy) copy[item.key] = item.value;
+      const _copyMap = { ...COPY_DEFAULTS };
+      for (const item of rawCopy) _copyMap[item.key] = item.value;
+      const copy = localizeCopyMap(_copyMap, res.locals.locale);
       const brandName = req.tenant?.brand?.name || 'Home';
       const base = absBase(req, ct);
       res.setSeo?.({
@@ -1290,8 +1412,9 @@ function contentPermalinkHandler(ct) {
       ]);
       // No matching item — fall through to the app-level 404 handler (no 404 view exists).
       if (!post) return next();
-      const copy = { ...COPY_DEFAULTS };
-      for (const item of rawCopy) copy[item.key] = item.value;
+      const _copyMap = { ...COPY_DEFAULTS };
+      for (const item of rawCopy) _copyMap[item.key] = item.value;
+      const copy = localizeCopyMap(_copyMap, res.locals.locale);
       // Resolve {{ }} content pipes in the post body (e.g. {{youtube "…"}} embeds).
       await applyPipes({ db, tenant: req.tenant, design, copy, nodes: [post] });
       const brandName = req.tenant?.brand?.name || '';

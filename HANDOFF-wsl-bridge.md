@@ -1,5 +1,9 @@
 # Handoff — WSL2-as-server bridge: headless survival test (Greeley box)
 
+> ✅ **COMPLETED (2026-07).** The bridge passed and the real `/srv` lift-and-shift (§9) was carried out:
+> all services now run as systemd units (`srv-<name>`) on this WSL2 / Greeley box. Retained as the migration
+> record; the "canary only / do NOT migrate /srv" scope note below is historical.
+
 **Goal:** prove WSL2 can run an **always-on Linux service that survives user-switch,
 logoff of every human user, and a full reboot — with nobody logged in.** This is the
 de-risk step before lifting `/srv` (Apache + node apps + cron) off the Linode VPS onto

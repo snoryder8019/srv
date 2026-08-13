@@ -49,6 +49,31 @@ export function decodeTrackingToken(str) {
   return JSON.parse(Buffer.from(str, 'base64url').toString());
 }
 
+/* ── 1:1 client mail (Emails tab) events ──
+ * Counters live on the client_emails row itself so the tab renders open/click
+ * state without a second query per message. `$min` seeds first*At on the first
+ * hit (it sets the field when it's missing). */
+function recordClientEmailEvent(db, emailId, type, { url = null, at = new Date() } = {}) {
+  // Never let a mangled token throw — on the click path that would cost the
+  // recipient their redirect.
+  let _id;
+  try { _id = new ObjectId(emailId); } catch { return; }
+  if (!db) return;
+  const update = type === 'click'
+    ? {
+        $inc: { clickCount: 1 },
+        $set: { lastClickAt: at, lastClickUrl: url },
+        $min: { firstClickAt: at },
+        $push: { clicks: { $each: [{ url, at }], $slice: -25 } },
+      }
+    : {
+        $inc: { openCount: 1 },
+        $set: { lastOpenAt: at },
+        $min: { firstOpenAt: at },
+      };
+  return db.collection('client_emails').updateOne({ _id }, update).catch(() => {});
+}
+
 // ── Open tracking pixel ──
 router.get('/o/:token', async (req, res) => {
   // Respond immediately with pixel
@@ -59,6 +84,7 @@ router.get('/o/:token', async (req, res) => {
   try {
     const data = decodeTrackingToken(req.params.token);
     const db = req.db;
+    if (data.e) return void recordClientEmailEvent(db, data.e, 'open');
     db.collection('campaign_events').insertOne({
       campaignId: new ObjectId(data.c),
       contactId: new ObjectId(data.r),
@@ -78,15 +104,19 @@ router.get('/c/:token', async (req, res) => {
 
     // Record click in background
     const db = req.db;
-    db.collection('campaign_events').insertOne({
-      campaignId: new ObjectId(data.c),
-      contactId: new ObjectId(data.r),
-      type: 'click',
-      url,
-      ip: req.ip,
-      userAgent: req.get('user-agent') || null,
-      createdAt: new Date(),
-    }).catch(() => {});
+    if (data.e) {
+      recordClientEmailEvent(db, data.e, 'click', { url });
+    } else {
+      db.collection('campaign_events').insertOne({
+        campaignId: new ObjectId(data.c),
+        contactId: new ObjectId(data.r),
+        type: 'click',
+        url,
+        ip: req.ip,
+        userAgent: req.get('user-agent') || null,
+        createdAt: new Date(),
+      }).catch(() => {});
+    }
 
     const fallback = req.tenant?.domain ? `https://${req.tenant.domain}` : '/';
     res.redirect(302, url || fallback);
@@ -116,7 +146,10 @@ ${done ? `<div class="ok">Unsubscribed</div><h1>You've been removed</h1><p>You w
 // ── Unsubscribe POST handler ──
 router.post('/unsubscribe', async (req, res) => {
   try {
-    const email = (req.body.email || '').toLowerCase().trim();
+    // Query fallback: RFC 8058 one-click unsubscribe (Gmail/Outlook "unsubscribe"
+    // button) POSTs to the List-Unsubscribe URL with its own body, so the address
+    // only survives in the query string.
+    const email = (req.body.email || req.query.email || '').toLowerCase().trim();
     if (!email) return res.redirect('/t/unsubscribe');
 
     const db = req.db;

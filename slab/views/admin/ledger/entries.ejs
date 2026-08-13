@@ -94,12 +94,15 @@
                 onclick="openStmtModal('<%= b.statementId %>')" title="View all lines charged from this statement">
                 statement <span class="stmt-badge-count"><%= b.entries.length %></span>
               </button>
+            <% } else if (e.source === 'scan' || e.postedFromReceipt) { %>
+              <span class="badge badge-featured" style="font-size:0.6rem;" title="A receipt posted as its own ledger item — it did not come from a bank statement">receipt&nbsp;&rarr;&nbsp;entry</span>
             <% } else { %>
               <span class="badge <%= e.source === 'invoice' ? 'badge-paid' : 'badge-draft' %>" style="font-size:0.6rem;"><%= e.source %></span>
             <% } %>
           </td>
-          <td>
-            <% if (e.receiptKey) { %><a href="/admin/ledger/entries/<%= e._id %>/receipt" target="_blank" class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;">Receipt</a><% } %>
+          <td style="white-space:nowrap;">
+            <% if (e.receiptKey) { %><a href="/admin/ledger/entries/<%= e._id %>/receipt" target="_blank" class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;"><%= e.source === 'statement' ? 'PDF' : 'Receipt' %></a><% } %>
+            <% if (e.receiptRef && e.receiptRef.key) { %><a href="/admin/ledger/entries/<%= e._id %>/receipt-ref" target="_blank" class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;color:var(--success);" title="Receipt cross-referenced to this line<%= e.receiptRef.matchedBy ? ' by ' + e.receiptRef.matchedBy : '' %>">&#128279; Receipt</a><% } %>
           </td>
           <td>
             <form data-guard="button" method="POST" action="/admin/ledger/entries/<%= e._id %>/delete" onsubmit="return confirm('Delete this entry?')" style="margin:0;">

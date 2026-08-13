@@ -43,6 +43,21 @@ export function generateEngagementToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+/**
+ * JSON safe to drop into a <script> block with <%- %>.
+ * Catalog copy is full of quotes and ampersands ("API's", 'Communications &
+ * Insights') — inlined raw they truncate the host attribute or close the script,
+ * and the surface silently goes dead.
+ */
+export function safeJson(value) {
+  return JSON.stringify(value ?? null)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 /** Human timeframe label: "14 days from receipt of requirements" */
 export function timeframeLabel(tf) {
   if (!tf || !tf.value) return tf?.unit === 'ongoing' ? 'Ongoing' : '';

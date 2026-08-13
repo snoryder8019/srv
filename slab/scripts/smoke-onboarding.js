@@ -149,17 +149,16 @@ async function fullSignupCheck() {
   let dbHost = 'atlas'; // real cluster is read from the tenant doc below
 
   try {
+    // Mirrors what the shortened one-step form actually sends: the four
+    // essentials only, and a password with no uppercase or digit.
     await check('POST /start/signup provisions a preview tenant', async () => {
       const r = await req('/start/signup', {
         method: 'POST',
         body: {
           subdomain: slug,
           brandName: 'Smoke Test Co',
-          brandLocation: 'Denver, CO',
           email,
-          password: 'SmokeTest123',
-          design: 'classic',
-          tagline: 'automated smoke test',
+          password: 'smoketestpassword',
         },
       });
       assert(r.status === 200 && r.json && r.json.ok, `bad response ${r.status}: ${r.text.slice(0, 200)}`);
@@ -182,15 +181,18 @@ async function fullSignupCheck() {
       return `db ${t.db} on ${dbHost}`;
     });
 
-    await check('Tenant DB is seeded (owner user + design)', async () => {
+    await check('Tenant DB is seeded (owner user)', async () => {
       const tdb = getTenantDb(dbName, dbHost);
       const owner = await tdb.collection('users').findOne({ email: email.toLowerCase() })
         || await tdb.collection('users').findOne({ email });
       assert(owner, 'owner user not seeded in tenant DB');
       assert(owner.isAdmin && owner.isOwner, 'owner missing admin/owner flags');
+      // Design is deliberately sparse — a fresh tenant stores no design rows and
+      // falls back to config/schema.js defaults, so an empty collection is correct.
       const designCount = await tdb.collection('design').countDocuments();
-      assert(designCount > 0, 'design collection empty');
-      return `owner ok, ${designCount} design keys`;
+      const collCount = (await tdb.listCollections().toArray()).length;
+      assert(collCount > 0, 'tenant DB has no collections');
+      return `owner ok, ${collCount} collections, ${designCount} design overrides`;
     });
 
     await check('Signup is recorded in the funnel', async () => {

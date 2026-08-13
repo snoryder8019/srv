@@ -16,12 +16,12 @@ import { refreshAccount, applyRefresh } from '../../../plugins/socialTokens.js';
 import { fetchEngagement, postReply, allEngageCaps, engageCaps } from '../../../plugins/socialEngage.js';
 import { encrypt, decrypt } from '../../../plugins/crypto.js';
 import { getSlabDb } from '../../../plugins/mongo.js';
-import { generateForTenant, generateSpotlight, publishWithRetry, renderLayersToPng, uploadPng } from '../../../plugins/autoSocial.js';
+import { generateForTenant, generateSpotlight, publishWithRetry, renderLayersToPng, uploadPng, sliceSeamlessForPublish } from '../../../plugins/autoSocial.js';
 import { uploadBuffer } from '../../../plugins/s3.js';
 import { getVoice, saveVoice, synthesizeProfile, recordCorrection, buildVoiceBlock, VOICE_QUESTIONS } from '../../../plugins/socialVoice.js';
 import { enqueueJob, getJob, listJobs } from '../../../plugins/socialJobs.js';
 import { recordDesignFeedback, listDesignFeedback, removeDesignFeedback, getDesignPrefs, describePrefs } from '../../../plugins/socialDesign.js';
-import { suggestSlots, staggerByPlatform } from '../../../plugins/socialSchedule.js';
+import { suggestSlots, staggerByPlatform, newGroupId } from '../../../plugins/socialSchedule.js';
 import { fetchAllFollows, followsAction } from '../../../plugins/socialFollows.js';
 import {
   AUTO_TOKEN_PLATFORMS, tryAutoUpgrade, linkInstagramFromFacebook,
@@ -73,48 +73,132 @@ router.post('/posts', async (req, res) => {
   try {
     const { body, link, media, action } = req.body;
     const format = parseFormat(req.body.format);
-    const mediaUrls = parseMedia(media, format === 'single' ? 4 : 10);
+    // Reels only. DRAFT hands the reel to Facebook unpublished so a human can add
+    // licensed music in the app — Meta's catalogue has no API. Ignored elsewhere.
+    const fbVideoState = (format === 'reel' && req.body.fbVideoState === 'DRAFT') ? 'DRAFT' : 'PUBLISHED';
+    let mediaUrls = parseMedia(media, format === 'single' ? 4 : 10);
     // Carousel/story only go to platforms that support the format — no coercing
     // the rest into a degraded single post.
     let platforms = parsePlatforms(req.body.platforms);
     if (format !== 'single') platforms = platforms.filter(p => platformSupportsFormat(p, format));
 
+    const editId = (req.body.editId || '').trim();
+
+    // Load the post being edited up front — "Save Changes" needs its current
+    // status to avoid silently un-publishing or un-scheduling it, and the carousel
+    // guard below needs to know whether this is a seamless (panorama) carousel.
+    let existing = null;
+    if (editId) {
+      try { existing = await db.collection('social_posts').findOne({ _id: new ObjectId(editId) }); } catch { /* invalid id → handled below */ }
+    }
+
     if (!body && !mediaUrls.length) return res.redirect('/admin/social?tab=compose&error=Write+something+to+post');
-    if (format === 'carousel' && mediaUrls.length < 2) return res.redirect('/admin/social?tab=compose&error=A+carousel+needs+at+least+2+images');
+    // A seamless carousel legitimately carries a single wide panorama preview in
+    // mediaUrls; it's sliced into real tiles at schedule/publish time (below), so
+    // don't reject it here for being "under 2 images".
+    if (format === 'carousel' && mediaUrls.length < 2 && !existing?.seamless) return res.redirect('/admin/social?tab=compose&error=A+carousel+needs+at+least+2+images');
     if (format === 'story' && !mediaUrls.length) return res.redirect('/admin/social?tab=compose&error=A+story+needs+at+least+one+image+or+video');
+    // A reel is one video — catching it here beats a Meta error three phases in.
+    if (format === 'reel' && !mediaUrls.length) return res.redirect('/admin/social?tab=compose&error=' + encodeURIComponent('A reel needs a video — attach one first'));
     if (!platforms.length) return res.redirect(`/admin/social?tab=compose&error=${encodeURIComponent(format === 'single' ? 'Pick at least one platform' : `No selected platform supports ${format} posts`)}`);
 
-    const editId = (req.body.editId || '').trim();
+    // The datetime field is the schedule. Parse it once; a value that's a valid
+    // future time means "this post is scheduled" regardless of which save button
+    // was pressed. This is the fix for edited posts vanishing from the calendar:
+    // "Save Changes" used to hard-reset status→draft / scheduledAt→null, which
+    // unscheduled the post and threw away any new time the user had just typed.
+    const wantAt = req.body.scheduledAt ? new Date(req.body.scheduledAt) : null;
+    const hasFutureSlot = !!(wantAt && !isNaN(wantAt) && wantAt.getTime() >= Date.now() - 60000);
 
     let scheduledAt = null;
     let status = 'draft';
     if (action === 'schedule') {
-      scheduledAt = req.body.scheduledAt ? new Date(req.body.scheduledAt) : null;
-      if (!scheduledAt || isNaN(scheduledAt) || scheduledAt.getTime() < Date.now() - 60000) {
+      if (!hasFutureSlot) {
         return res.redirect('/admin/social?tab=compose&error=Pick+a+future+date+%26+time');
       }
+      scheduledAt = wantAt;
       status = 'scheduled';
     } else if (action === 'autoslot') {
-      // Auto-slot picks well-spaced calendar times. A brand-new multi-platform
-      // post is STAGGERED — one scheduled post per network, each at its own slot
-      // — so the networks don't all fire at the same single time. Editing an
-      // existing post keeps the single-doc behavior (one slot).
-      const slots = await suggestSlots(db, Math.max(1, platforms.length));
+      // Auto-slot builds a cadence: ONE post per selected network, each on its own
+      // DAY (maxPerDay:1) so the brand keeps a steady daily presence instead of
+      // firing every network at once. Works the same whether composing a new post
+      // or auto-slotting an existing draft. A single network → one slot.
+      const slots = await suggestSlots(db, Math.max(1, platforms.length), { maxPerDay: 1 });
       if (!slots.length) return res.redirect('/admin/social?tab=compose&error=No+open+calendar+slot+found');
-      if (!editId && platforms.length > 1) {
+      if (platforms.length > 1) {
+        // A seamless carousel carries one wide preview → slice it once so every
+        // network doc schedules the real tiles. Best-effort; falls through on error.
+        let distMedia = mediaUrls;
+        if (existing?.seamless && !existing.seamlessMaterialized) {
+          try {
+            const tiles = await sliceSeamlessForPublish(req.tenant, db, existing);
+            if (tiles.length >= 2) {
+              distMedia = tiles;
+              await db.collection('social_posts').updateOne(
+                { _id: existing._id },
+                { $set: { seamlessMaterialized: true, previewUrl: existing.previewUrl || existing.mediaUrls?.[0] || null } },
+              );
+            }
+          } catch (e) { console.error('[social] seamless slice failed:', e.message); }
+        }
+        // One groupId spans the whole run so the Calendar reads the spread as a
+        // single staggered post (not N duplicate chips).
+        const groupId = newGroupId();
         const base = {
-          body: (body || '').trim(), link: (link || '').trim(), mediaUrls, format,
+          body: (body || '').trim(), link: (link || '').trim(), mediaUrls: distMedia, format, fbVideoState,
           publishedAt: null, results: [], suggestion: false,
-          createdBy: req.adminUser?.email || null, createdAt: new Date(), updatedAt: new Date(),
+          createdBy: req.adminUser?.email || existing?.createdBy || null,
+          createdAt: existing?.createdAt || new Date(), updatedAt: new Date(),
         };
-        const docs = staggerByPlatform(base, platforms, slots);
-        await db.collection('social_posts').insertMany(docs);
-        return res.redirect(`/admin/social?tab=calendar&success=${encodeURIComponent(`Scheduled ${docs.length} posts, staggered across the calendar`)}`);
+        if (editId && existing) {
+          // Reuse the edited doc as the first network; clone the rest onto later days.
+          await db.collection('social_posts').updateOne(
+            { _id: existing._id },
+            { $set: { ...base, platforms: [platforms[0]], status: 'scheduled', scheduledAt: slots[0], groupId } },
+          );
+          const extra = staggerByPlatform(base, platforms.slice(1), slots.slice(1), { groupId });
+          if (extra.length) await db.collection('social_posts').insertMany(extra);
+        } else {
+          const docs = staggerByPlatform(base, platforms, slots, { groupId });
+          await db.collection('social_posts').insertMany(docs);
+        }
+        return res.redirect(`/admin/social?tab=calendar&success=${encodeURIComponent(`Scheduled ${platforms.length} posts — one per network across ${platforms.length} days`)}`);
       }
       scheduledAt = slots[0];
       status = 'scheduled';
     } else if (action === 'publish') {
       status = 'publishing';
+    } else {
+      // 'draft' / "Save Changes" — honor the schedule field instead of wiping it.
+      //  • a future time in the field  → keep (or make) the post scheduled at it
+      //  • field empty, editing a live post → leave it published (just save edits)
+      //  • otherwise                    → a plain draft
+      if (hasFutureSlot) {
+        scheduledAt = wantAt;
+        status = 'scheduled';
+      } else if (existing && existing.status === 'published') {
+        status = 'published';
+      } else {
+        status = 'draft';
+      }
+    }
+
+    // Seamless carousel → slice the panorama into real tiles the moment it leaves
+    // the draft state, so the scheduler/publisher posts a true multi-image carousel
+    // (mirrors the review-queue auto-slot path). Draft-saves keep the single preview
+    // so the panorama stays re-editable. Never throws — on failure it falls through
+    // with whatever mediaUrls it had rather than blocking the save.
+    if (existing?.seamless && !existing.seamlessMaterialized && (status === 'scheduled' || status === 'publishing')) {
+      try {
+        const tiles = await sliceSeamlessForPublish(req.tenant, db, existing);
+        if (tiles.length >= 2) {
+          mediaUrls = tiles;
+          await db.collection('social_posts').updateOne(
+            { _id: existing._id },
+            { $set: { seamlessMaterialized: true, previewUrl: existing.previewUrl || existing.mediaUrls?.[0] || null } },
+          );
+        }
+      } catch (e) { console.error('[social] seamless slice failed:', e.message); }
     }
 
     // Edit mode: update the existing post in place instead of inserting a new one.
@@ -123,7 +207,7 @@ router.post('/posts', async (req, res) => {
       const _id = new ObjectId(editId);
       const set = {
         body: (body || '').trim(), link: (link || '').trim(),
-        mediaUrls, platforms, format, status, scheduledAt, updatedAt: new Date(),
+        mediaUrls, platforms, format, fbVideoState, status, scheduledAt, updatedAt: new Date(),
       };
       // Republishing an edited post clears the old results so stale failures don't linger.
       if (action === 'publish') set.results = [];
@@ -137,6 +221,7 @@ router.post('/posts', async (req, res) => {
         mediaUrls,
         platforms,
         format,
+        fbVideoState,
         status,
         scheduledAt,
         publishedAt: null,
@@ -163,8 +248,12 @@ router.post('/posts', async (req, res) => {
       return res.redirect(`/admin/social?tab=scheduled&success=${encodeURIComponent(msg)}`);
     }
 
-    const where = status === 'scheduled' ? 'scheduled' : 'compose';
-    res.redirect(`/admin/social?tab=${where}&success=${encodeURIComponent(status === 'scheduled' ? 'Post scheduled' : 'Draft saved')}`);
+    // Land on the tab that matches what the post actually became, with an honest
+    // message — a rescheduled edit goes to the calendar, a saved live post says so.
+    let where = 'compose', msg = 'Draft saved';
+    if (status === 'scheduled') { where = 'scheduled'; msg = editId ? 'Schedule updated' : 'Post scheduled'; }
+    else if (status === 'published') { where = 'scheduled'; msg = 'Changes saved'; }
+    res.redirect(`/admin/social?tab=${where}&success=${encodeURIComponent(msg)}`);
   } catch (err) {
     console.error('[social] create post error:', err);
     res.redirect('/admin/social?tab=compose&error=' + encodeURIComponent(err.message || 'Failed'));

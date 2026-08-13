@@ -129,10 +129,30 @@ const DOCS_DIR = join(process.cwd(), 'docs');
 const CATEGORIES = [
   { key: 'getting-started', label: 'Getting Started', files: ['platform/overview', 'platform/admin-panel'] },
   { key: 'platform',        label: 'Platform',        files: ['platform/settings', 'platform/advanced-settings', 'platform/ai-agents'] },
-  { key: 'modules',         label: 'Modules',         files: [
-    'modules/blog', 'modules/copy', 'modules/design', 'modules/portfolio',
-    'modules/pages', 'modules/sections', 'modules/clients', 'modules/bookkeeping',
-    'modules/email-marketing', 'modules/meetings', 'modules/assets', 'modules/users',
+  // Module docs are grouped to mirror the admin sidebar sections
+  // (see NAV_SECTIONS in plugins/featureRegistry.js) so the docs nav reads in
+  // the same order as the menu the tenant is looking at.
+  { key: 'content',      label: 'Content',       files: [
+    'modules/pages', 'modules/blog', 'modules/portfolio', 'modules/marketplace',
+    'modules/design', 'modules/copy', 'modules/sections', 'modules/assets',
+    'modules/careers',
+  ]},
+  { key: 'crm',          label: 'Clients & CRM', files: [
+    'modules/inquiries', 'modules/clients', 'modules/onboarding',
+    'modules/tickets', 'modules/field',
+  ]},
+  { key: 'meetings',     label: 'Meetings',      files: [
+    'modules/meetings', 'modules/notes',
+  ]},
+  { key: 'marketing',    label: 'Marketing',     files: [
+    'modules/email-marketing', 'modules/social', 'modules/live-studio',
+    'modules/qr-codes', 'modules/print-studio',
+  ]},
+  { key: 'finance',      label: 'Finance',       files: [
+    'modules/bookkeeping', 'modules/ledger', 'modules/calculators', 'modules/analytics',
+  ]},
+  { key: 'admin',        label: 'Admin',         files: [
+    'modules/users',
   ]},
 ];
 

@@ -1,5 +1,12 @@
 # MadLabs Lab - Quick Start Guide
 
+> ⚠️ **Updated for systemd / WSL (2026-07).** `/srv` moved off tmux on the Linode to systemd on the WSL2
+> Greeley box. Use `systemctl` / `journalctl`, not the tmux commands still shown in the body below.
+> Translations: `tmux ls` → `systemctl list-units --type=service 'srv-*'`; `tmux capture-pane -t <svc> -p | tail`
+> → `journalctl -u srv-<svc> -n 100 --no-pager`; `tmux kill-session/new-session` → `systemctl restart srv-<svc>`;
+> `/srv/start-all-services.sh` → per-unit restarts. `.claude-context.json` (below) is current; the
+> servers.madladslab.com dashboard and the `madladslab`/`acm` services are retired. Rest of this guide is legacy.
+
 ## 🎯 Context Files
 
 When working on MadLabs Lab services, **always reference these files first**:
@@ -262,7 +269,7 @@ jq '.crossModuleFeatures.serviceMonitoring.implementations' /srv/.claude-context
 
 ---
 
-**Last Updated**: 2025-10-22
+**Last Updated**: 2026-07-20 (systemd/WSL migration)
 **Version**: 1.0.0
 
 For more details, see the full context in `.claude-context.json`

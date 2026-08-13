@@ -1,127 +1,71 @@
-# Meeting Module — W2 Marketing
+# Meetings
 
-Real-time video meetings with WebRTC, AI-powered notetaking, and collaborative notes/assets.
+Run video meetings from your browser at `/admin/meetings`.
 
-## Architecture
+Meetings are hosted on your own site — there is nothing for you or your guests to install, and no third-party meeting account to sign up for. You create a meeting, share the link, and guests join from any browser.
 
-```
-public/
-  css/meeting.css          # All meeting UI styles (extracted from meeting.ejs)
-  js/meeting-rtc.js        # WebRTC peer connections, media controls, speech recognition
-  js/meeting-ui.js         # Share panel, notes/assets sidebar, notetaker controls
-plugins/
-  socketio.js              # Socket.io namespace /meetings — signaling, notes, transcription
-  meetingNotetaker.js       # LLM-powered transcript summarization (TLDR)
-routes/
-  meetings.js              # Public routes: join, QR, invite, upload, data
-  admin/meetings.js         # Admin CRUD: create, list, detail, close, destroy, tags
-views/
-  meeting.ejs              # Meeting room (thin HTML shell, loads external CSS/JS)
-  meeting-error.ejs        # Error page (invalid/expired/closed links)
-  admin/meetings/index.ejs # Admin meeting list + create modal
-  admin/meetings/detail.ejs # Meeting archive viewer (notes, assets, participants, tags)
-```
+## Creating a Meeting
 
-## Data Model
+1. Go to `/admin/meetings` and click **New Meeting**.
+2. Give it a title — guests see this in the room and in the invite email.
+3. Set how long the link stays valid.
+4. Optionally cap how many times the link can be used.
+5. Optionally tag clients or team members so the meeting files under their records.
 
-**Collection:** `w2_meetings`
+You get a share link and a QR code. Anyone with the link can join — treat it like a key.
 
-| Field | Type | Description |
-|---|---|---|
-| `title` | String | Meeting title |
-| `token` | String | Unique 48-char hex token (URL identifier) |
-| `status` | String | `active`, `expired`, `closed` |
-| `createdBy` | ObjectId | Admin user who created it |
-| `createdAt` | Date | Creation timestamp |
-| `expiresAt` | Date | Auto-expiry time |
-| `maxUses` | Number | Max join count (0 = unlimited) |
-| `useCount` | Number | Current join count |
-| `participants` | Array | `[{ name, joinedAt }]` |
-| `notes` | Array | `[{ _noteId, author, text, isAI, createdAt, replies }]` |
-| `notes.replies` | Array | `[{ author, text, createdAt }]` — threaded replies on user notes |
-| `assets` | Array | `[{ name, url, size, uploadedBy }]` |
-| `tags` | Object | `{ clients: [ObjectId], users: [ObjectId] }` — auto/manual tagging |
+## Sharing the Link
 
-## Socket.io Events
+| Method | Where |
+|---|---|
+| Copy link | Share panel inside the room |
+| Email invite | Sends a branded invite from your business address |
+| QR code | Scan to join from a phone |
 
-**Namespace:** `/meetings`
+Email invites require your email settings to be configured — see Settings & Integrations.
 
-### Client → Server
-| Event | Payload | Description |
-|---|---|---|
-| `join-room` | `{ token, displayName }` | Join meeting room |
-| `webrtc-offer` | `{ targetPeerId, sdp }` | WebRTC SDP offer relay |
-| `webrtc-answer` | `{ targetPeerId, sdp }` | WebRTC SDP answer relay |
-| `webrtc-ice` | `{ targetPeerId, candidate }` | ICE candidate relay |
-| `media-toggle` | `{ kind, enabled }` | Mic/camera state broadcast |
-| `meeting-note` | `{ text }` | Create a new note |
-| `meeting-note-edit` | `{ noteId, text, createdAt }` | Edit an AI note |
-| `meeting-note-reply` | `{ noteId, text }` | Reply to a user note |
-| `meeting-asset-uploaded` | `{ asset }` | Notify peers of uploaded file |
-| `transcript-line` | `{ text, isFinal }` | Live speech transcript line |
-| `transcription-chunk` | `{ transcript }` | Buffered transcript → AI summarization |
+## In the Meeting
 
-### Server → Client
-| Event | Payload | Description |
-|---|---|---|
-| `room-joined` | `{ peers, title }` | Successful join, existing peers list |
-| `room-peer-joined` | `{ peerId, displayName, isHost }` | New peer entered |
-| `room-peer-left` | `{ peerId }` | Peer disconnected |
-| `room-error` | `{ message }` | Join/validation error |
-| `webrtc-offer/answer/ice` | SDP/candidate relay | WebRTC signaling |
-| `media-toggled` | `{ peerId, kind, enabled }` | Peer toggled mic/cam |
-| `meeting-note-added` | Note object | New note created (human or AI) |
-| `meeting-note-edited` | `{ noteId, text, editedBy }` | Note text updated |
-| `meeting-note-reply-added` | `{ noteId, reply }` | Reply added to a note |
-| `meeting-asset-added` | Asset object | File shared by a peer |
-| `transcript-line` | `{ speaker, text, isFinal }` | Remote peer's transcript |
-| `notetaker-status` | `{ status }` | `listening` or `summarizing` |
+- **Camera and microphone** — toggle either at any time. The mic button shows a ring when it picks up sound, so you can confirm you're being heard.
+- **Backdrop** — replace or blur your background.
+- **Screen share** — present a window or your whole screen.
+- **Record** — capture the meeting or just the shared screen. Recordings save to your Assets library and count toward your storage.
+- **Notes & files** — a side panel where anyone in the room can write notes or share a file.
+- **Fullscreen** — expand any participant's video.
 
-## Key Features
+Guests are asked to confirm before their camera and mic turn on.
 
-### Audio Level Indicator
-The mic button shows a green ring when audio input is detected (Web Audio API AnalyserNode). Helps users confirm their mic is working.
+## AI Notetaker
 
-### AI Notetaker
-1. Uses Web Speech API for continuous speech-to-text
-2. Buffers transcript, flushes every 2 minutes or on "TLDR Now" click
-3. Server sends chunk to LLM (Ollama qwen2.5:7b) for summarization
-4. AI summary saved as a note with `isAI: true`, auto-opens notes sidebar
+Switch on the notetaker and the meeting is transcribed live, then summarized for you.
 
-### Notes System
-- **AI notes:** Editable (inline textarea → save persists via socket)
-- **User notes:** Threaded replies (tree-like reply chain under each note)
-- Notes persist in MongoDB, loaded on page open via `GET /meeting/:token/data`
+- Summaries are written automatically as the meeting goes, or on demand with **TLDR Now**.
+- The summary pulls out key points, decisions, and action items rather than a raw transcript.
+- Saying things like *"take note"*, *"action item"*, *"let's go with"*, *"put a pin in it"* or *"deadline"* flags that moment so it always lands in the summary.
+- AI notes are editable afterwards — fix a name it misheard and the correction sticks.
 
-### Pull-to-Refresh Protection
-`beforeunload` prompt + CSS `overscroll-behavior: none` prevents accidental page reload on mobile during active calls.
+The live transcript uses your browser's built-in speech recognition, which today means **Chrome or Edge**. In other browsers the meeting works normally; only the transcript and AI summary are unavailable.
 
-### Stale Peer Cleanup
-Peers that don't establish a WebRTC connection within 15 seconds are removed (handles reload race conditions).
+## After the Meeting
 
-## HTTP Routes
+Open any past meeting from the list to review what happened.
 
-### Public (`/meeting`)
-| Method | Path | Description |
-|---|---|---|
-| GET | `/:token` | Render meeting room |
-| GET | `/:token/qr` | QR code as data URL |
-| GET | `/:token/data` | JSON: notes + assets |
-| POST | `/:token/invite` | Send email invite |
-| POST | `/:token/upload` | Upload file asset |
+| Kept | Detail |
+|---|---|
+| Notes | Everything written during the call, AI notes included, with replies |
+| Files | Anything shared in the room |
+| Participants | Who joined and when |
+| Tags | The clients and team members the meeting was filed under |
 
-### Admin (`/admin/meetings`)
-| Method | Path | Description |
-|---|---|---|
-| GET | `/` | List meetings (active + history) |
-| POST | `/` | Create new meeting |
-| GET | `/:id` | Detail view |
-| DELETE | `/:id` | Close meeting |
-| DELETE | `/:id/destroy` | Permanent delete |
-| PUT | `/:id/tags` | Update client/user tags |
+Tagging a meeting to a client makes it visible from that client's record.
 
-## Constraints
-- Max 5 participants per room
-- Max file upload: 20 MB
-- Speech recognition: Chrome/Edge only (Web Speech API)
-- Token format: 24 random bytes → 48 hex chars
+## Closing and Deleting
+
+- **Close** ends the meeting and stops the link working, but keeps the notes, files, and history.
+- **Delete** removes the meeting and its record permanently. This cannot be undone.
+
+Links also stop working on their own once they expire or hit their use limit.
+
+## Booking
+
+To let people request a time instead of sending links yourself, use **Booking** at `/admin/meetings/booking`, which publishes a public scheduling page.

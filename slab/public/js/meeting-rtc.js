@@ -21,6 +21,9 @@
   var inCall = false;
   var consentAgreed = false;
   var consentAgreedAt = null;
+  // Stable across socket reconnects and tab reloads so the server can tell a
+  // rejoin from a genuinely new participant (and not burn a link use on it).
+  var sessionId = null;
 
   // --- Audio level monitoring ---
   var audioContext = null;
@@ -41,6 +44,15 @@
   function init(meetingToken, dbName) {
     token = meetingToken;
     tenantDb = dbName || '';
+    sessionId = resolveSessionId(meetingToken);
+
+    // TURN relay, when the tenant has one configured. Mobile carriers sit
+    // behind symmetric NAT/CGNAT where STUN alone often can't hole-punch, so
+    // without a relay some 5G users simply never connect.
+    try {
+      var extra = JSON.parse(document.body.dataset.iceServers || '[]');
+      if (extra.length) iceConfig.iceServers = iceConfig.iceServers.concat(extra);
+    } catch (e) {}
 
     // DOM
     prejoin = document.getElementById('prejoin');
@@ -91,6 +103,28 @@
 
     // Start preview
     startPreview();
+  }
+
+  function resolveSessionId(meetingToken) {
+    var key = 'slab_meeting_session_' + meetingToken;
+    var id = null;
+    try { id = sessionStorage.getItem(key); } catch (e) {}
+    if (!id) {
+      id = 'sess-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+      try { sessionStorage.setItem(key, id); } catch (e) {}
+    }
+    return id;
+  }
+
+  // Scoped to this meeting's path so it never leaks to other pages. Max-age is
+  // generous (the meeting may run for hours) — freshness is enforced server-side
+  // by the live-session check, not by cookie expiry.
+  function markJoinedCookie() {
+    if (!token || !sessionId) return;
+    try {
+      document.cookie = 'slab_mtg_' + token + '=' + sessionId +
+        '; path=/meeting/' + token + '; max-age=21600; SameSite=Lax';
+    } catch (e) {}
   }
 
   // ==================== PREVIEW ====================
@@ -262,38 +296,61 @@
       localStream.getVideoTracks().forEach(function (t) { t.enabled = videoEnabled; });
     }
 
-    // Connect socket
-    socket = io('/meetings');
+    // Connect socket. Socket.io retries forever on its own; we just have to
+    // make the rejoin idempotent on both ends.
+    socket = io('/meetings', { reconnection: true, reconnectionDelayMax: 10000 });
 
     socket.on('connect', function () {
+      // A reconnect gets a brand-new socket id, so every peer connection we
+      // held is addressed to an id the server no longer knows. Drop them and
+      // rebuild from the fresh peer list.
+      if (inCall) {
+        Object.keys(peers).forEach(removePeer);
+        updateCallStatus();
+      }
       socket.emit('join-room', {
         token: token, displayName: name, db: tenantDb,
-        consentAgreedAt: consentAgreedAt
+        consentAgreedAt: consentAgreedAt,
+        sessionId: sessionId
       });
     });
 
     socket.on('room-joined', function (data) {
+      var isRejoin = inCall;
       inCall = true;
 
-      // Transition to in-call UI
-      if (prejoin) prejoin.style.display = 'none';
-      if (incall) incall.style.display = 'flex';
+      // Leave a breadcrumb the page-load route can read: it lets a maxed-out
+      // link still readmit someone already in the meeting when they reload or
+      // the tab is restored. The server cross-checks it against live session
+      // state, so a stale cookie can't sneak a new person past the cap.
+      markJoinedCookie();
 
-      // Show local video
-      if (localStream && localVideo) {
-        localVideo.srcObject = localStream;
-        if (videoEnabled) {
-          localPip.style.display = 'block';
+      if (!isRejoin) {
+        // Transition to in-call UI
+        if (prejoin) prejoin.style.display = 'none';
+        if (incall) incall.style.display = 'flex';
+
+        // Show local video
+        if (localStream && localVideo) {
+          localVideo.srcObject = localStream;
+          if (videoEnabled) {
+            localPip.style.display = 'block';
+          }
         }
+
+        // Update button states
+        if (ctrlMic) ctrlMic.classList.toggle('muted', audioMuted);
+        if (ctrlCam) ctrlCam.classList.toggle('active', videoEnabled);
+
+        startCallTimer();   // keeps running across reconnects
+        startAudioMonitor();
+        watchLocalTracks();
+      } else {
+        // Media may have died while we were offline.
+        kickRecovery();
       }
 
-      // Update button states
-      if (ctrlMic) ctrlMic.classList.toggle('muted', audioMuted);
-      if (ctrlCam) ctrlCam.classList.toggle('active', videoEnabled);
-
-      if (callStatus) callStatus.textContent = 'connected';
-      startCallTimer();
-      startAudioMonitor();
+      updateCallStatus();
 
       // Add existing peers (we wait for their offers)
       data.peers.forEach(function (p) {
@@ -341,12 +398,20 @@
       joinBtn.textContent = 'Join Meeting';
     });
 
+    // Signaling loss is not call loss — existing peer connections keep running.
+    // Say "reconnecting" and let socket.io retry.
     socket.on('disconnect', function () {
-      if (callStatus) callStatus.textContent = 'disconnected';
+      if (callStatus) callStatus.textContent = inCall ? 'reconnecting…' : 'disconnected';
     });
   }
 
   // ==================== PEER CONNECTION ====================
+
+  // Mobile clients drop off constantly — 5G/Wi-Fi handoff, backgrounding, the OS
+  // yanking the camera. None of that should end the call, so a peer that goes
+  // sideways gets an ICE-restart ladder before we give up on it.
+  var ICE_GRACE_MS = 4000;     // 'disconnected' is usually transient — wait it out
+  var MAX_ICE_RESTARTS = 4;
 
   function setupPeerConnection(peerId) {
     var pc = new RTCPeerConnection(iceConfig);
@@ -355,6 +420,31 @@
       if (event.candidate && socket) {
         socket.emit('webrtc-ice', { targetPeerId: peerId, candidate: event.candidate });
       }
+    };
+
+    // Perfect negotiation: recovery makes both sides renegotiate at once, so
+    // glare is routine here rather than rare. Tie-break on peer id — the
+    // "impolite" side keeps its offer, the polite side rolls back.
+    pc.onnegotiationneeded = function () {
+      var peer = peers[peerId];
+      if (!peer || !socket) return;
+      if (pc.signalingState !== 'stable') return;   // an offer is already in flight
+
+      peer.makingOffer = true;
+      // Argument-less setLocalDescription() is the modern perfect-negotiation
+      // form; older Safari still needs the explicit createOffer round-trip.
+      var offering = pc.setLocalDescription
+        ? Promise.resolve(pc.setLocalDescription()).catch(function () {
+            return pc.createOffer().then(function (o) { return pc.setLocalDescription(o); });
+          })
+        : pc.createOffer().then(function (o) { return pc.setLocalDescription(o); });
+
+      offering
+        .then(function () {
+          socket.emit('webrtc-offer', { targetPeerId: peerId, sdp: pc.localDescription });
+        })
+        .catch(function (err) { console.warn('[meeting] negotiation failed for ' + peerId + ':', err); })
+        .then(function () { peer.makingOffer = false; });
     };
 
     pc.ontrack = function (event) {
@@ -376,11 +466,34 @@
     };
 
     pc.onconnectionstatechange = function () {
-      if (pc.connectionState === 'connected') {
-        if (callStatus) callStatus.textContent = 'connected';
+      var peer = peers[peerId];
+      if (!peer) return;
+      var state = pc.connectionState;
+
+      if (state === 'connected') {
+        peer.everConnected = true;
+        peer.iceRestarts = 0;
+        clearRecovery(peer);
+        updateCallStatus();
+        return;
       }
-      if (pc.connectionState === 'failed') {
-        removePeer(peerId);
+
+      if (state === 'disconnected') {
+        // Often heals on its own (brief handoff). Give it a grace window,
+        // then escalate to an ICE restart if it hasn't come back.
+        updateCallStatus();
+        if (!peer.recoveryTimer) {
+          peer.recoveryTimer = setTimeout(function () {
+            peer.recoveryTimer = null;
+            if (peers[peerId] && pc.connectionState !== 'connected') attemptIceRestart(peerId);
+          }, ICE_GRACE_MS);
+        }
+        return;
+      }
+
+      if (state === 'failed') {
+        updateCallStatus();
+        attemptIceRestart(peerId);
       }
     };
 
@@ -392,6 +505,67 @@
     }
 
     return pc;
+  }
+
+  // ==================== CONNECTION RECOVERY ====================
+
+  function clearRecovery(peer) {
+    if (peer && peer.recoveryTimer) {
+      clearTimeout(peer.recoveryTimer);
+      peer.recoveryTimer = null;
+    }
+  }
+
+  function attemptIceRestart(peerId) {
+    var peer = peers[peerId];
+    if (!peer || !peer.pc) return;
+    if (peer.pc.connectionState === 'connected') return;
+
+    if (peer.iceRestarts >= MAX_ICE_RESTARTS) {
+      console.warn('[meeting] giving up on ' + peerId + ' after ' + peer.iceRestarts + ' ICE restarts');
+      removePeer(peerId);
+      updateCallStatus();
+      return;
+    }
+
+    peer.iceRestarts++;
+    console.warn('[meeting] ICE restart ' + peer.iceRestarts + '/' + MAX_ICE_RESTARTS + ' for ' + peerId);
+
+    // restartIce() fires onnegotiationneeded, which drives the offer through
+    // the perfect-negotiation path above. Older browsers need the manual offer.
+    if (typeof peer.pc.restartIce === 'function') {
+      try { peer.pc.restartIce(); } catch (e) {}
+    } else {
+      peer.pc.createOffer({ iceRestart: true })
+        .then(function (offer) { return peer.pc.setLocalDescription(offer); })
+        .then(function () {
+          if (socket) socket.emit('webrtc-offer', { targetPeerId: peerId, sdp: peer.pc.localDescription });
+        })
+        .catch(function () {});
+    }
+
+    // Escalate again if this restart doesn't land.
+    clearRecovery(peer);
+    peer.recoveryTimer = setTimeout(function () {
+      peer.recoveryTimer = null;
+      if (peers[peerId] && peer.pc.connectionState !== 'connected') attemptIceRestart(peerId);
+    }, ICE_GRACE_MS * 2);
+  }
+
+  // Status line reflects the worst peer state so a struggling connection is
+  // visible instead of the call silently going dead.
+  function updateCallStatus() {
+    if (!callStatus || !inCall) return;
+    if (socket && socket.disconnected) { callStatus.textContent = 'reconnecting…'; return; }
+
+    var ids = Object.keys(peers);
+    if (!ids.length) { callStatus.textContent = 'connected'; return; }
+
+    var recovering = ids.some(function (id) {
+      var s = peers[id].pc && peers[id].pc.connectionState;
+      return s === 'disconnected' || s === 'failed';
+    });
+    callStatus.textContent = recovering ? 'reconnecting…' : 'connected';
   }
 
   // ==================== PEER TILE DOM ====================
@@ -491,43 +665,48 @@
   function addPeer(peerId, displayName, isHost, shouldOffer) {
     if (peers[peerId]) return;
 
-    var pc = setupPeerConnection(peerId);
     var tileEl = createPeerTile(peerId, displayName, isHost);
 
+    // Register state BEFORE creating the connection — adding local tracks fires
+    // onnegotiationneeded synchronously, and that handler reads peers[peerId].
     peers[peerId] = {
-      pc: pc,
+      pc: null,
       remoteStream: null,
       displayName: displayName,
       isHost: isHost,
-      tileEl: tileEl
+      tileEl: tileEl,
+      // Perfect-negotiation bookkeeping
+      polite: !!(socket && socket.id && String(socket.id) < String(peerId)),
+      makingOffer: false,
+      ignoreOffer: false,
+      // Recovery bookkeeping
+      everConnected: false,
+      iceRestarts: 0,
+      recoveryTimer: null
     };
 
-    if (shouldOffer) {
-      pc.createOffer().then(function (offer) {
-        return pc.setLocalDescription(offer);
-      }).then(function () {
-        socket.emit('webrtc-offer', {
-          targetPeerId: peerId,
-          sdp: pc.localDescription
-        });
-      }).catch(function (err) {
-        console.error('Offer to ' + peerId + ' failed:', err);
-      });
-    }
+    // Attaching local tracks fires onnegotiationneeded, which sends the offer.
+    // Both sides may do this at once; the polite/impolite tie-break above
+    // settles the collision, so shouldOffer is no longer consulted.
+    peers[peerId].pc = setupPeerConnection(peerId);
 
-    // Clean up stale peers that never connect (e.g. from reload race)
+    // Give up on peers that never get off the ground. Mobile handshakes over
+    // 5G can be slow, so this is a long backstop, not a fast timeout — and it
+    // keys off everConnected rather than sampling connectionState, which a
+    // renegotiation rollback can briefly reset to 'new' on a healthy peer.
     setTimeout(function () {
       var peer = peers[peerId];
-      if (peer && peer.pc && (peer.pc.connectionState === 'new' || peer.pc.connectionState === 'connecting')) {
+      if (peer && !peer.everConnected) {
         console.warn('[meeting] Removing stale peer ' + peerId + ' (never connected)');
         removePeer(peerId);
       }
-    }, 15000);
+    }, 30000);
   }
 
   function removePeer(peerId) {
     var peer = peers[peerId];
     if (!peer) return;
+    clearRecovery(peer);
     if (peer.pc) { try { peer.pc.close(); } catch (e) {} }
     removePeerTile(peerId);
     delete peers[peerId];
@@ -538,12 +717,27 @@
   function handleOffer(fromPeerId, sdp) {
     var peer = peers[fromPeerId];
     if (!peer || !peer.pc) return;
-    peer.pc.setRemoteDescription(new RTCSessionDescription(sdp)).then(function () {
-      return peer.pc.createAnswer();
+    var pc = peer.pc;
+
+    // Collision: we have an offer of our own in flight. The impolite side
+    // ignores the incoming one; the polite side rolls back and yields.
+    var collision = peer.makingOffer || pc.signalingState !== 'stable';
+    peer.ignoreOffer = !peer.polite && collision;
+    if (peer.ignoreOffer) return;
+
+    var ready = (collision && peer.polite)
+      ? Promise.all([
+          pc.setLocalDescription({ type: 'rollback' }).catch(function () {}),
+          pc.setRemoteDescription(new RTCSessionDescription(sdp))
+        ])
+      : pc.setRemoteDescription(new RTCSessionDescription(sdp));
+
+    ready.then(function () {
+      return pc.createAnswer();
     }).then(function (answer) {
-      return peer.pc.setLocalDescription(answer);
+      return pc.setLocalDescription(answer);
     }).then(function () {
-      socket.emit('webrtc-answer', { targetPeerId: fromPeerId, sdp: peer.pc.localDescription });
+      socket.emit('webrtc-answer', { targetPeerId: fromPeerId, sdp: pc.localDescription });
     }).catch(function (err) {
       console.error('Answer to ' + fromPeerId + ' failed:', err);
     });
@@ -552,16 +746,116 @@
   function handleAnswer(fromPeerId, sdp) {
     var peer = peers[fromPeerId];
     if (!peer || !peer.pc) return;
+    // A late answer to an offer we already rolled back arrives in the wrong
+    // state — harmless during recovery churn, so don't shout about it.
+    if (peer.pc.signalingState !== 'have-local-offer') return;
     peer.pc.setRemoteDescription(new RTCSessionDescription(sdp))
-      .catch(function (err) { console.error('Set remote desc failed:', err); });
+      .catch(function (err) { console.warn('Set remote desc failed:', err); });
   }
 
   function handleIceCandidate(fromPeerId, candidate) {
     var peer = peers[fromPeerId];
     if (peer && peer.pc && candidate) {
-      peer.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(function () {});
+      peer.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(function (err) {
+        if (!peer.ignoreOffer) console.warn('[meeting] ICE candidate rejected:', err);
+      });
     }
   }
+
+  // ==================== LOCAL MEDIA RECOVERY ====================
+  // On mobile the OS ends tracks out from under us — another app grabs the
+  // camera, the tab is backgrounded, the user switches cameras at the OS level.
+  // The track dies but the peer connection stays up, so the fix is to
+  // re-acquire and replaceTrack rather than tear anything down.
+
+  var recoveringMedia = { audio: false, video: false };
+
+  function watchLocalTracks() {
+    if (!localStream) return;
+    localStream.getTracks().forEach(function (track) {
+      if (track._slabWatched) return;
+      track._slabWatched = true;
+      track.addEventListener('ended', function () {
+        console.warn('[meeting] local ' + track.kind + ' track ended — recovering');
+        recoverLocalTrack(track.kind);
+      });
+    });
+  }
+
+  function recoverLocalTrack(kind) {
+    if (!inCall || recoveringMedia[kind]) return;
+    // Nothing to recover if the user deliberately turned the camera off, and
+    // screen share owns the video sender while it's active.
+    if (kind === 'video' && (!videoEnabled || screenSharing)) return;
+    if (!localStream) return;
+
+    recoveringMedia[kind] = true;
+    var constraints = kind === 'video'
+      ? { video: { width: { ideal: 320 }, height: { ideal: 240 } } }
+      : { audio: true };
+
+    navigator.mediaDevices.getUserMedia(constraints)
+      .then(function (fresh) {
+        var newTrack = fresh.getTracks()[0];
+        if (!newTrack) return;
+
+        // Swap into the local stream
+        localStream.getTracks().forEach(function (t) {
+          if (t.kind === kind && t.readyState === 'ended') {
+            try { localStream.removeTrack(t); } catch (e) {}
+          }
+        });
+        localStream.addTrack(newTrack);
+        newTrack.enabled = kind === 'audio' ? !audioMuted : videoEnabled;
+
+        // Swap into every peer without renegotiating
+        var outbound = kind === 'video' ? (getActiveCamTrack() || newTrack) : newTrack;
+        Object.keys(peers).forEach(function (pid) {
+          var pc = peers[pid].pc;
+          if (!pc) return;
+          var sender = pc.getSenders().find(function (s) { return s.track && s.track.kind === kind; });
+          if (sender) sender.replaceTrack(outbound).catch(function () {});
+          else pc.addTrack(outbound, localStream);
+        });
+
+        if (kind === 'video' && localVideo) localVideo.srcObject = backdropOutputStream || localStream;
+        watchLocalTracks();
+        console.info('[meeting] recovered local ' + kind + ' track');
+      })
+      .catch(function (err) {
+        console.warn('[meeting] could not recover ' + kind + ':', err && err.name);
+      })
+      .then(function () { recoveringMedia[kind] = false; });
+  }
+
+  // Coming back to the foreground (or back onto the network) is the moment to
+  // re-check everything at once: dead tracks and stalled peer connections.
+  function kickRecovery() {
+    if (!inCall) return;
+
+    if (localStream) {
+      localStream.getTracks().forEach(function (t) {
+        if (t.readyState === 'ended') recoverLocalTrack(t.kind);
+      });
+    }
+
+    Object.keys(peers).forEach(function (pid) {
+      var pc = peers[pid].pc;
+      if (!pc) return;
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        attemptIceRestart(pid);
+      }
+    });
+
+    if (socket && socket.disconnected) socket.connect();
+    updateCallStatus();
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') kickRecovery();
+  });
+  window.addEventListener('online', kickRecovery);
+  window.addEventListener('pageshow', function (e) { if (e.persisted) kickRecovery(); });
 
   // ==================== MEDIA CONTROLS ====================
 
@@ -589,16 +883,12 @@
           localStream.addTrack(vidTrack);
           Object.keys(peers).forEach(function (pid) {
             var peer = peers[pid];
-            if (peer.pc) {
-              peer.pc.addTrack(vidTrack, localStream);
-              peer.pc.createOffer().then(function (offer) {
-                return peer.pc.setLocalDescription(offer);
-              }).then(function () {
-                socket.emit('webrtc-offer', { targetPeerId: pid, sdp: peer.pc.localDescription });
-              });
-            }
+            // addTrack fires onnegotiationneeded, which sends the offer —
+            // creating one here too would race it into a glare loop.
+            if (peer.pc) peer.pc.addTrack(vidTrack, localStream);
           });
           videoEnabled = true;
+          watchLocalTracks();
           if (localVideo) { localVideo.srcObject = localStream; localVideo.style.display = 'block'; }
           if (localPip) localPip.style.display = 'block';
           if (ctrlCam) ctrlCam.classList.add('active');
@@ -625,12 +915,8 @@
         if (sender) {
           sender.replaceTrack(screenTrack);
         } else {
+          // onnegotiationneeded carries the offer from here.
           peer.pc.addTrack(screenTrack, localStream || screenStream);
-          peer.pc.createOffer().then(function (offer) {
-            return peer.pc.setLocalDescription(offer);
-          }).then(function () {
-            socket.emit('webrtc-offer', { targetPeerId: pid, sdp: peer.pc.localDescription });
-          });
         }
       });
 
@@ -1003,8 +1289,13 @@
       currentBackdropUrl = null;
     }
 
+    // Deliberate exit — retire the session id so a later join counts as new.
+    try { sessionStorage.removeItem('slab_meeting_session_' + token); } catch (e) {}
+    try { document.cookie = 'slab_mtg_' + token + '=; path=/meeting/' + token + '; max-age=0'; } catch (e) {}
+
     Object.keys(peers).forEach(function (pid) {
       var peer = peers[pid];
+      clearRecovery(peer);
       if (peer.pc) { try { peer.pc.close(); } catch (e) {} }
     });
     peers = {};

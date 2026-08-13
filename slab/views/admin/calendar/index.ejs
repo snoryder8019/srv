@@ -1,0 +1,893 @@
+<%- include('../partials/head', { title: 'Calendar' }) %>
+<%- include('../partials/sidebar', { page: 'calendar', user: user }) %>
+
+<%
+  // ── View helpers (kept here so the route stays about data, not formatting) ──
+  const evTime = (d) => new Date(d).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const srcColor = (key) => (sourceMap[key] && sourceMap[key].color) || '#6B7380';
+  const srcIcon  = (key) => (sourceMap[key] && sourceMap[key].icon) || '&#9679;';
+  const srcLabel = (key) => (sourceMap[key] && sourceMap[key].label) || key;
+  const dayEvents = (key) => (byDay.get(key) || []);
+  // A multi-day event is drawn ONCE as a bar across the row, so it must not
+  // also appear as a chip on each day it covers.
+  const isSpan = (ev) => !!(ev.endAt && ev.endAt.getTime && (
+    ev.endAt.getFullYear() !== ev.at.getFullYear() ||
+    ev.endAt.getMonth() !== ev.at.getMonth() ||
+    ev.endAt.getDate() !== ev.at.getDate()));
+  const pointEvents = (key) => dayEvents(key).filter((ev) => !isSpan(ev));
+  const fmtDay = (d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  // Preserve view + filters on every internal link.
+  const qsWith = (over) => {
+    const p = new URLSearchParams();
+    p.set('view', over.view || view);
+    if (over.date) p.set('date', over.date);
+    else if (anchorParam) p.set('date', anchorParam);
+    const src = over.src !== undefined ? over.src : active.join(',');
+    if (src !== null) p.set('src', src);
+    // Scope survives navigation — walking months inside a project filter must
+    // stay inside that project.
+    const pj = over.project !== undefined ? over.project : projectId;
+    const cl = over.client !== undefined ? over.client : clientId;
+    if (pj) p.set('project', pj);
+    if (cl) p.set('client', cl);
+    return '/admin/calendar?' + p.toString();
+  };
+  const MONTH_CHIP_CAP = 4;
+%>
+
+<style>
+  /* ═══════════════════════════════════════════════════════════════════════════
+     CALENDAR DESIGN FRAMEWORK
+     One token set drives every view. Source colour arrives per-chip as --ev, so
+     a new registry entry needs no CSS. Tones (plan/done/warn/muted) modulate
+     that colour rather than replacing it, which keeps the palette coherent as
+     sources multiply.
+     ═══════════════════════════════════════════════════════════════════════════ */
+    /* width:100% + min-width:0 are load-bearing: .main is a flex container, so a
+     bare max-width block sizes to its MAX-CONTENT (1400px) and a phone ends up
+     with five of the seven month columns clipped out of view. */
+  .cal-wrap      { padding:16px 20px 90px; width:100%; max-width:1400px; min-width:0; margin:0 auto; box-sizing:border-box; }
+
+  /* — Header — */
+  .cal-top       { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
+  .cal-title     { font-size:1.4rem; font-weight:700; color:var(--on-surface); display:flex; align-items:center; gap:10px; margin:0; }
+  .cal-range     { font-size:0.82rem; color:var(--slate); margin:4px 0 0; }
+  .cal-nav       { display:flex; align-items:center; gap:6px; }
+  .cal-btn       { display:inline-flex; align-items:center; gap:6px; padding:7px 13px; border-radius:4px; border:1px solid var(--border);
+                   background:var(--surface); color:var(--on-surface); font-size:0.78rem; font-weight:600; cursor:pointer; text-decoration:none; }
+  .cal-btn:hover { border-color:var(--gold,#C9A848); }
+  .cal-btn.solid { background:var(--navy,#1C2B4A); color:var(--on-navy,#FDFCFA); border-color:transparent; }
+  .cal-views     { display:inline-flex; border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+  .cal-views a   { padding:7px 14px; font-size:0.75rem; font-weight:600; letter-spacing:0.04em; text-transform:uppercase;
+                   color:var(--slate); text-decoration:none; background:var(--surface); border-right:1px solid var(--border); }
+  .cal-views a:last-child { border-right:none; }
+  .cal-views a.on { background:var(--navy,#1C2B4A); color:var(--on-navy,#FDFCFA); }
+
+  /* — Filter rail — */
+  .cal-filters   { display:flex; flex-wrap:wrap; gap:7px; align-items:center; margin:0 0 14px; padding:11px 13px;
+                   background:var(--surface); border:1px solid var(--border); border-radius:8px; }
+  .cal-fgroup    { font-size:0.6rem; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--slate);
+                   margin-right:2px; padding-right:6px; border-right:1px solid var(--border); }
+  .cal-chip      { display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border-radius:14px; font-size:0.72rem; font-weight:600;
+                   border:1px solid var(--border); background:var(--surface); color:var(--slate); text-decoration:none; }
+  .cal-chip .dot { width:8px; height:8px; border-radius:50%; background:var(--ev,#6B7380); flex-shrink:0; }
+  .cal-chip .n   { font-size:0.66rem; opacity:0.75; font-variant-numeric:tabular-nums; }
+  .cal-chip.on   { color:var(--on-surface); border-color:var(--ev,#6B7380); background:color-mix(in srgb, var(--ev,#6B7380) 10%, transparent); }
+  .cal-chip.off .dot { background:transparent; border:1px solid var(--slate); }
+  .cal-chip:hover{ border-color:var(--ev,#6B7380); }
+  .cal-fsep      { flex:1; }
+
+  /* — Event chip: the shared atom across all four views —
+     Every level declares min-width:0. Without it the flex/grid default of
+     min-width:auto lets a long title push its column wider instead of
+     ellipsing, which is what widened the month cells. */
+  .cal-ev        { position:relative; display:block; width:100%; max-width:100%; min-width:0; text-align:left;
+                   border:none; background:none; padding:0; margin:0 0 3px; }
+  .cal-ev-face   { display:flex; align-items:center; gap:5px; padding:3px 6px; border-radius:3px; cursor:pointer;
+                   border-left:3px solid var(--ev,#6B7380); background:color-mix(in srgb, var(--ev,#6B7380) 11%, transparent);
+                   font-size:0.7rem; line-height:1.35; color:var(--on-surface); min-width:0; max-width:100%; overflow:hidden; }
+  .cal-ev-face:hover { background:color-mix(in srgb, var(--ev,#6B7380) 20%, transparent); }
+  .cal-ev-t      { font-variant-numeric:tabular-nums; font-size:0.63rem; color:var(--slate); flex-shrink:0; }
+  .cal-ev-x      { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; }
+  .cal-ev.tone-done  .cal-ev-face { opacity:0.72; }
+  .cal-ev.tone-done  .cal-ev-x    { text-decoration:line-through; text-decoration-thickness:1px; }
+  .cal-ev.tone-warn  .cal-ev-face { background:color-mix(in srgb, var(--danger,#B91C1C) 13%, transparent); border-left-color:var(--danger,#B91C1C); }
+  .cal-ev.tone-muted .cal-ev-face { background:transparent; border-left-style:dashed; color:var(--slate); }
+
+  /* Action menu — every calendar object exposes its module's actions in place.
+     position:fixed (JS-placed) rather than absolute: the month grid clips its
+     children for its rounded corners, which would cut a menu off at the edge
+     cells. Fixed escapes every ancestor's overflow. */
+  .cal-menu      { display:none; position:fixed; z-index:600; min-width:190px; max-width:min(280px, 92vw);
+                   background:var(--surface); border:1px solid var(--border); border-radius:6px; box-shadow:0 8px 26px rgba(0,0,0,0.18); padding:6px; }
+  .cal-ev.open .cal-menu { display:block; }
+  .cal-menu-h    { font-size:0.68rem; font-weight:700; color:var(--on-surface); padding:5px 7px 3px; line-height:1.35;
+                   overflow-wrap:anywhere; }
+  .cal-menu-s    { font-size:0.62rem; color:var(--slate); padding:0 7px 6px; border-bottom:1px solid var(--border);
+                   margin-bottom:5px; overflow-wrap:anywhere; }
+  .cal-menu a, .cal-menu button { display:block; width:100%; text-align:left; padding:6px 8px; border-radius:3px; border:none; background:none;
+                   font-size:0.73rem; color:var(--on-surface); text-decoration:none; cursor:pointer; font-family:inherit; }
+  .cal-menu a:hover, .cal-menu button:hover { background:color-mix(in srgb, var(--navy,#1C2B4A) 8%, transparent); }
+  .cal-menu form { margin:0; }
+
+  /* — Month grid —
+     minmax(0,1fr), not 1fr: a 1fr track floors at its content's intrinsic
+     width, so one long chip stretched that column and squeezed the rest. */
+  .cal-grid      { width:100%; max-width:100%; border:1px solid var(--border); border-radius:8px; overflow:hidden;
+                   background:var(--surface); table-layout:fixed; }
+  .cal-dow       { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); background:color-mix(in srgb, var(--navy,#1C2B4A) 5%, transparent); }
+  .cal-dow span  { padding:8px 6px; font-size:0.62rem; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--slate); text-align:center; }
+  .cal-week      { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); border-top:1px solid var(--border); }
+  .cal-cell      { min-height:118px; min-width:0; max-width:100%; padding:5px 6px 7px;
+                   border-right:1px solid var(--border); position:relative; }
+  .cal-cell:last-child { border-right:none; }
+  .cal-cell.pad  { background:color-mix(in srgb, var(--slate,#6B7380) 4%, transparent); }
+  .cal-cell.today{ background:color-mix(in srgb, var(--gold,#C9A848) 9%, transparent); }
+  .cal-dnum      { font-size:0.72rem; font-weight:700; color:var(--slate); margin-bottom:4px; display:flex; align-items:center; justify-content:space-between; }
+  .cal-cell.today .cal-dnum { color:var(--on-surface); }
+  .cal-dnum a    { color:inherit; text-decoration:none; }
+  .cal-dnum .add { opacity:0; font-weight:400; font-size:0.85rem; color:var(--slate); text-decoration:none; }
+  .cal-cell:hover .cal-dnum .add { opacity:1; }
+  .cal-evs       { min-width:0; max-width:100%; }
+  .cal-more      { font-size:0.64rem; color:var(--slate); text-decoration:none; display:inline-block; margin-top:2px; }
+  .cal-more:hover{ color:var(--on-surface); }
+
+  /* — Week (7-day columns) — */
+  .cal-cols      { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:0; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface); }
+  .cal-col       { border-right:1px solid var(--border); min-height:320px; min-width:0; max-width:100%; padding:0 0 10px; }
+  .cal-col:last-child { border-right:none; }
+  .cal-colh      { padding:8px 8px 7px; border-bottom:1px solid var(--border); background:color-mix(in srgb, var(--navy,#1C2B4A) 4%, transparent); }
+  .cal-colh.today{ background:color-mix(in srgb, var(--gold,#C9A848) 12%, transparent); }
+  .cal-colh .dw  { font-size:0.6rem; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--slate); }
+  .cal-colh .dd  { font-size:1rem; font-weight:700; color:var(--on-surface); }
+  .cal-colb      { padding:7px 6px; min-width:0; max-width:100%; }
+
+  /* — Day (single column agenda) — */
+  .cal-agenda    { border:1px solid var(--border); border-radius:8px; background:var(--surface); overflow:hidden; }
+  .cal-arow      { display:grid; grid-template-columns:76px minmax(0,1fr); border-top:1px solid var(--border); }
+  .cal-arow:first-child { border-top:none; }
+  .cal-ahour     { padding:9px 10px; font-size:0.68rem; font-variant-numeric:tabular-nums; color:var(--slate);
+                   background:color-mix(in srgb, var(--navy,#1C2B4A) 3%, transparent); border-right:1px solid var(--border); }
+  .cal-abody     { padding:7px 9px; min-height:38px; min-width:0; max-width:100%; }
+  .cal-allday    { padding:9px 10px; border-bottom:1px solid var(--border); background:color-mix(in srgb, var(--gold,#C9A848) 7%, transparent); }
+  .cal-allday-h  { font-size:0.6rem; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--slate); margin-bottom:5px; }
+
+  /* — Year (12 mini months + density) — */
+  .cal-year      { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:14px; }
+  /* Flex column + margin-top:auto on the bar pins every month's density track
+     to the bottom of its card, so the bars line up across a row regardless of
+     how many week rows that month needs (28 vs 31 days = 5 vs 6 rows). */
+  .cal-mini      { border:1px solid var(--border); border-radius:8px; background:var(--surface); padding:10px 11px 12px;
+                   display:flex; flex-direction:column; }
+  .cal-mini h3   { margin:0 0 7px; font-size:0.82rem; font-weight:700; color:var(--on-surface); display:flex; justify-content:space-between; align-items:baseline; }
+  .cal-mini h3 a { color:inherit; text-decoration:none; }
+  .cal-mini h3 .tot { font-size:0.63rem; font-weight:600; color:var(--slate); }
+  .cal-mini table{ width:100%; border-collapse:collapse; }
+  .cal-mini th   { font-size:0.53rem; font-weight:700; color:var(--slate); padding:2px 0; text-transform:uppercase; }
+  .cal-mini td   { text-align:center; padding:1px 0; }
+  .cal-mini td a { display:block; font-size:0.64rem; line-height:1.7; color:var(--on-surface); text-decoration:none; border-radius:3px; position:relative; }
+  .cal-mini td a.has { font-weight:700; background:color-mix(in srgb, var(--navy,#1C2B4A) 9%, transparent); }
+  .cal-mini td a.today { outline:1.5px solid var(--gold,#C9A848); }
+  .cal-mini table{ margin-bottom:9px; }
+  /* flex-basis pins the track's height even against a stray global rule — the
+     first cut named this state `.empty`, which collided with the admin
+     stylesheet's `.empty { padding:64px 24px }` and blew the bar to 128px,
+     dragging its whole grid row taller. Hence `is-blank` + an explicit basis. */
+  .cal-mini .bars{ display:flex; gap:2px; margin-top:auto; height:5px; min-height:5px; flex:0 0 5px;
+                   border-radius:3px; overflow:hidden; box-sizing:border-box; padding:0;
+                   background:color-mix(in srgb, var(--slate,#6B7380) 12%, transparent); }
+  .cal-mini .bars.is-blank { opacity:0.45; }
+  .cal-mini .bars i { display:block; height:100%; }
+
+  /* — Side panel: quick-add task / block — */
+  .cal-side      { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:18px; }
+  @media (max-width:820px){ .cal-side { grid-template-columns:1fr; } }
+  .cal-card      { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:14px 15px 16px; }
+  .cal-card h2   { margin:0 0 3px; font-size:0.9rem; font-weight:700; color:var(--on-surface); }
+  .cal-card .hint{ margin:0 0 12px; font-size:0.73rem; color:var(--slate); line-height:1.45; }
+  .cal-f         { display:flex; flex-direction:column; gap:8px; }
+  .cal-f label   { font-size:0.63rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--slate); }
+  .cal-f input, .cal-f select, .cal-f textarea {
+                   width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:4px; background:var(--surface);
+                   color:var(--on-surface); font-family:inherit; font-size:0.83rem; box-sizing:border-box; }
+  .cal-f .row    { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .cal-who-hint  { font-size:0.63rem; color:var(--slate); margin-top:3px; }
+  .cal-flash     { padding:9px 13px; border-radius:4px; font-size:0.83rem; margin-bottom:14px; }
+  .cal-flash.ok  { background:rgba(20,83,45,0.12); color:#14532D; }
+  .cal-flash.err { background:rgba(220,38,38,0.1); color:#B91C1C; }
+  .cal-empty     { padding:26px 14px; text-align:center; font-size:0.8rem; color:var(--slate); }
+
+  /* — Multi-day span bars —
+     A range is ONE element laid across the row's columns, not a chip repeated
+     per day. The bars live in an absolutely-positioned grid over the week; the
+     cells reserve --lanes worth of room so single-day chips never collide. */
+  .cal-week      { position:relative; }
+  .cal-spans     { position:absolute; top:24px; left:0; right:0; z-index:3;
+                   display:grid; grid-template-columns:repeat(7,minmax(0,1fr));
+                   grid-auto-rows:17px; gap:2px 2px; padding:0 3px; pointer-events:none; }
+  .cal-spans .cal-ev { pointer-events:auto; margin:0; }
+  .cal-span .cal-ev-face { border-radius:3px; padding:2px 7px; height:15px; overflow:hidden;
+                           background:color-mix(in srgb, var(--ev,#6B7380) 24%, transparent);
+                           border-left:3px solid var(--ev,#6B7380); }
+  .cal-span .cal-ev-x    { font-size:0.66rem; font-weight:600; }
+  /* A bar that runs off the row is squared on that edge, so it reads as
+     "continues" rather than "ends here". */
+  .cal-span.clip-l .cal-ev-face { border-left:none; border-top-left-radius:0; border-bottom-left-radius:0;
+                                  box-shadow:inset 3px 0 0 color-mix(in srgb, var(--ev,#6B7380) 55%, transparent); }
+  .cal-span.clip-r .cal-ev-face { border-top-right-radius:0; border-bottom-right-radius:0; }
+  .cal-span.tone-done .cal-ev-face { opacity:0.6; }
+  .cal-span.tone-warn .cal-ev-face { background:color-mix(in srgb, var(--danger,#B91C1C) 20%, transparent);
+                                     border-left-color:var(--danger,#B91C1C); }
+  .cal-cell .cal-evs { margin-top:calc(var(--lanes,0) * 19px); }
+
+  /* Week view: the same band, sitting above the day columns. */
+  .cal-spanband  { position:relative; border:1px solid var(--border); border-bottom:none;
+                   border-radius:8px 8px 0 0; background:var(--surface);
+                   height:calc(9px + var(--lanes,0) * 19px); }
+  .cal-spanband .cal-spans { top:5px; }
+  .cal-spanband + .cal-cols { border-radius:0 0 8px 8px; }
+
+  /* Year view: too dense for bars, so a span underlines the days it covers. */
+  .cal-mini td a.spanned { box-shadow:inset 0 -2px 0 var(--ev,#6B7380); }
+
+  /* — Task edit modal — */
+  .cal-modal     { position:fixed; inset:0; z-index:900; background:rgba(15,27,48,0.5);
+                   display:flex; align-items:center; justify-content:center; padding:20px; }
+  .cal-modal[hidden] { display:none; }
+  .cal-modal-card{ background:var(--surface); border-radius:10px; width:min(520px,100%);
+                   max-height:88vh; overflow-y:auto; box-shadow:0 18px 60px rgba(0,0,0,0.35); }
+  .cal-modal-head{ display:flex; align-items:center; justify-content:space-between;
+                   padding:14px 18px; border-bottom:1px solid var(--border); position:sticky; top:0;
+                   background:var(--surface); border-radius:10px 10px 0 0; }
+  .cal-modal-head h2 { margin:0; font-size:1rem; font-weight:700; color:var(--on-surface); }
+  .cal-modal-x   { background:none; border:none; font-size:1.4rem; line-height:1; color:var(--slate);
+                   cursor:pointer; padding:2px 8px; }
+  .cal-modal-card .cal-f { padding:16px 18px 20px; }
+  .cal-span-hint { font-size:0.7rem; color:var(--slate); font-style:italic; }
+  .cal-edit-btn  { font-weight:600; }
+
+  /* — Scope rail (client / project) — */
+  .cal-scope     { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 14px; }
+  .cal-scope-f   { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .cal-scope-f label { font-size:0.6rem; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--slate); }
+  .cal-scope-f select { padding:6px 9px; border:1px solid var(--border); border-radius:4px; background:var(--surface);
+                   color:var(--on-surface); font-family:inherit; font-size:0.78rem; max-width:230px; }
+  .cal-scope-on  { font-size:0.74rem; color:var(--slate); }
+  .cal-scope-on strong { color:var(--on-surface); margin:0 3px; }
+  .cal-scope-on a { color:var(--navy,#1C2B4A); margin-left:6px; }
+
+  /* — Project list under the builder — */
+  .cal-plist     { margin-top:14px; border-top:1px solid var(--border); padding-top:10px; }
+  .cal-plist-h   { font-size:0.6rem; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--slate); margin-bottom:6px; }
+  .cal-prow      { display:flex; align-items:baseline; justify-content:space-between; gap:10px; padding:5px 0; border-top:1px solid var(--border); }
+  .cal-prow:first-of-type { border-top:none; }
+  .cal-prow.done { opacity:0.55; }
+  .cal-pname     { font-size:0.8rem; color:var(--on-surface); text-decoration:none; font-weight:600; min-width:0;
+                   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cal-pname:hover { color:var(--navy,#1C2B4A); text-decoration:underline; }
+  .cal-pmeta     { font-size:0.68rem; color:var(--slate); flex-shrink:0; }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     PHONE
+     A 7-column month grid at 375px gives ~48px per day — far too narrow for a
+     text chip. Rather than shrink text into unreadability, chips COLLAPSE TO
+     DOTS: same markup, same action menu on tap, but the day cell becomes a
+     density read and the day number is the way into the detail (day view).
+     Week view stacks to one day per row, and every control gets a 44px target.
+     ═══════════════════════════════════════════════════════════════════════════ */
+  @media (max-width:820px){
+    .cal-cols    { grid-template-columns:1fr; }
+    .cal-col     { border-right:none; border-bottom:1px solid var(--border); min-height:0; }
+    .cal-side    { grid-template-columns:1fr; }
+  }
+
+  @media (max-width:640px){
+    .cal-wrap    { padding:12px 12px 90px; }
+    .cal-title   { font-size:1.2rem; }
+
+    /* Header controls: full-width rows with real tap targets. */
+    .cal-top     { gap:10px; }
+    .cal-nav     { width:100%; display:grid; grid-template-columns:auto 1fr 1fr 1fr; gap:6px; }
+    .cal-views   { grid-column:1 / -1; display:grid; grid-template-columns:repeat(4,1fr); }
+    .cal-views a { text-align:center; padding:14px 4px; }
+    .cal-btn     { justify-content:center; min-height:42px; }
+
+    /* Filter rail scrolls sideways instead of stacking into a wall of chips. */
+    .cal-filters { flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch;
+                   scrollbar-width:none; padding:9px 11px; }
+    .cal-filters::-webkit-scrollbar { display:none; }
+    .cal-chip    { flex:0 0 auto; padding:8px 12px; }
+    .cal-fsep    { display:none; }
+    .cal-scope-f { width:100%; }
+    .cal-scope-f select { flex:1; max-width:none; min-height:42px; }
+
+    /* Month: chips → dots. The cell becomes a density read; the day number is
+       the tap target into the day view. */
+    .cal-cell        { min-height:64px; padding:4px 3px 5px; display:flex; flex-direction:column; }
+    .cal-dnum        { font-size:0.8rem; margin-bottom:3px; }
+    .cal-dnum a      { padding:2px 4px; }
+    .cal-dnum .add   { display:none; }
+    .cal-cell .cal-ev      { display:inline-block; width:auto; margin:0 2px 2px 0; }
+    .cal-cell .cal-ev-face { width:9px; height:9px; padding:0; border-radius:50%; border-left:none;
+                             background:var(--ev,#6B7380); overflow:visible; }
+    .cal-cell .cal-ev-x,
+    .cal-cell .cal-ev-t    { display:none; }
+    /* Bars keep their label — a range with no text is unreadable, and it has the
+       horizontal room a single-day chip doesn't. */
+    .cal-spans             { top:21px; grid-auto-rows:15px; padding:0 2px; }
+    .cal-span .cal-ev-face { height:13px; padding:1px 4px; }
+    .cal-span .cal-ev-x    { display:inline; font-size:0.56rem; }
+    .cal-cell .cal-evs     { margin-top:calc(var(--lanes,0) * 17px); }
+    .cal-cell .cal-evs     { display:flex; flex-wrap:wrap; align-content:flex-start; }
+    .cal-cell.today .cal-dnum { color:var(--navy,#1C2B4A); }
+    .cal-more        { font-size:0.58rem; margin-top:auto; }
+    .cal-dow span    { padding:7px 2px; font-size:0.55rem; letter-spacing:0.04em; }
+
+    /* Week + day keep full chips — they have the width for it. */
+    .cal-col .cal-ev-face,
+    .cal-abody .cal-ev-face { padding:7px 8px; font-size:0.76rem; }
+
+    .cal-ahour   { padding:8px 6px; font-size:0.62rem; }
+    .cal-arow    { grid-template-columns:56px minmax(0,1fr); }
+
+    .cal-year    { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    .cal-mini    { padding:8px 8px 10px; }
+    .cal-mini h3 { font-size:0.76rem; }
+    .cal-mini td a { line-height:2; font-size:0.6rem; }
+
+    .cal-menu    { min-width:0; width:min(300px, calc(100vw - 24px)); }
+    .cal-menu a, .cal-menu button { padding:10px 9px; font-size:0.8rem; }
+
+    .cal-f input, .cal-f select, .cal-f textarea { font-size:16px; min-height:42px; }  /* 16px stops iOS zoom-on-focus */
+    .cal-f .row  { grid-template-columns:1fr; }
+  }
+</style>
+
+<div class="cal-wrap">
+
+  <% if (typeof loadError !== 'undefined' && loadError) { %>
+    <div class="cal-flash err">Calendar could not load: <%= loadError %></div>
+  <% } %>
+  <% if (qs && qs.success) { %><div class="cal-flash ok"><%= qs.success %></div><% } %>
+  <% if (qs && qs.error) { %><div class="cal-flash err"><%= qs.error %></div><% } %>
+  <% if (failed && failed.length) { %>
+    <div class="cal-flash err">Some sources didn't load: <%= failed.map(f => srcLabel(f)).join(', ') %>. Everything else is shown.</div>
+  <% } %>
+
+  <div class="cal-top">
+    <div>
+      <h1 class="cal-title">&#128197; Calendar</h1>
+      <p class="cal-range"><%= range.label %> · <%= Object.values(counts).reduce((a,b)=>a+b,0) %> items across <%= active.length %> source<%= active.length === 1 ? '' : 's' %></p>
+    </div>
+    <div class="cal-nav">
+      <div class="cal-views">
+        <% views.forEach(function(v){ %>
+          <a href="<%= qsWith({ view: v }) %>" class="<%= v === view ? 'on' : '' %>"><%= v %></a>
+        <% }); %>
+      </div>
+      <a class="cal-btn" href="<%= qsWith({ date: prevParam }) %>">&larr;</a>
+      <a class="cal-btn" href="<%= qsWith({ date: todayParam }) %>">Today</a>
+      <a class="cal-btn" href="<%= qsWith({ date: nextParam }) %>">&rarr;</a>
+    </div>
+  </div>
+
+  <!-- ═══ FILTERS — one chip per registered source, grouped by domain ═══ -->
+  <div class="cal-filters">
+    <% let lastGroup = null; %>
+    <% sources.forEach(function(s){ %>
+      <% if (s.group !== lastGroup) { lastGroup = s.group; %>
+        <span class="cal-fgroup"><%= s.group %></span>
+      <% } %>
+      <%
+        const on = active.indexOf(s.key) !== -1;
+        const nextSrc = on ? active.filter(k => k !== s.key) : active.concat([s.key]);
+      %>
+      <a class="cal-chip <%= on ? 'on' : 'off' %>" style="--ev:<%= s.color %>"
+         href="<%= qsWith({ src: nextSrc.join(',') }) %>"
+         title="<%= on ? 'Hide' : 'Show' %> <%= s.label %>">
+        <span class="dot"></span><%- s.icon %> <%= s.label %>
+        <% if (counts[s.key]) { %><span class="n"><%= counts[s.key] %></span><% } %>
+      </a>
+    <% }); %>
+    <span class="cal-fsep"></span>
+    <a class="cal-chip" href="<%= qsWith({ src: sources.map(s=>s.key).join(',') }) %>">All</a>
+    <a class="cal-chip" href="<%= qsWith({ src: '' }) %>">None</a>
+  </div>
+
+  <!-- ═══ SCOPE — narrow the whole calendar to one client or one project ═══ -->
+  <div class="cal-scope">
+    <form method="GET" action="/admin/calendar" class="cal-scope-f">
+      <input type="hidden" name="view" value="<%= view %>">
+      <input type="hidden" name="date" value="<%= anchorParam %>">
+      <input type="hidden" name="src" value="<%= active.join(',') %>">
+      <label for="scopeClient">Client</label>
+      <select id="scopeClient" name="client" onchange="this.form.submit()">
+        <option value="">Everyone</option>
+        <% clientOptions.forEach(function(c){ %>
+          <option value="<%= c.id %>" <%= clientId === c.id ? 'selected' : '' %>><%= c.label %></option>
+        <% }); %>
+      </select>
+      <label for="scopeProject">Project</label>
+      <select id="scopeProject" name="project" onchange="this.form.submit()">
+        <option value="">All work</option>
+        <% projects.forEach(function(p){ %>
+          <option value="<%= p._id %>" <%= projectId === String(p._id) ? 'selected' : '' %>>
+            <%= p.name %><%= p.clientName ? ' · ' + p.clientName : '' %><%= p.status === 'complete' ? ' (done)' : '' %>
+          </option>
+        <% }); %>
+      </select>
+      <noscript><button type="submit" class="cal-btn">Apply</button></noscript>
+    </form>
+    <% if (activeProject || activeClient) { %>
+      <div class="cal-scope-on">
+        Scoped to
+        <% if (activeClient) { %><strong><%= activeClient.label %></strong><% } %>
+        <% if (activeProject) { %><strong><%= activeProject.name %></strong><% } %>
+        <a href="<%= qsWith({ project: '', client: '' }) %>">clear</a>
+      </div>
+    <% } %>
+  </div>
+
+  <%
+    // ── The event chip partial, inlined as a function so all four views render
+    // the identical atom (face + in-place action menu) with no duplication. ──
+  %>
+  <%
+    // ONE atom for every view. `opts.span` turns the chip into a bar laid across
+    // the row's column grid — same markup, same action menu, so a range and a
+    // point event behave identically when clicked.
+  %>
+  <% function chip(ev, opts) { opts = opts || {}; const sp = opts.span || null; %>
+    <div class="cal-ev <%= sp ? 'cal-span' : '' %> tone-<%= ev.tone || 'plan' %> <%= sp && sp.clipLeft ? 'clip-l' : '' %> <%= sp && sp.clipRight ? 'clip-r' : '' %>"
+         style="--ev:<%= srcColor(ev.source) %><% if (sp) { %>;grid-column:<%= sp.colStart + 1 %> / <%= sp.colEnd + 2 %>;grid-row:<%= sp.lane + 1 %><% } %>"
+         data-cal-ev>
+      <div class="cal-ev-face" role="button" tabindex="0"
+           <% if (sp) { %>title="<%= ev.title %> — <%= fmtDay(ev.at) %> → <%= fmtDay(ev.endAt) %>"<% } %>>
+        <% if (!ev.allDay && !opts.hideTime && !sp) { %><span class="cal-ev-t"><%= evTime(ev.at) %></span><% } %>
+        <span class="cal-ev-x"><%- srcIcon(ev.source) %> <%= ev.title %></span>
+      </div>
+      <div class="cal-menu">
+        <div class="cal-menu-h"><%= ev.title %></div>
+        <div class="cal-menu-s">
+          <%= srcLabel(ev.source) %><% if (ev.status) { %> · <%= ev.status %><% } %>
+          <% if (ev.endAt && isSpan(ev)) { %> · <%= fmtDay(ev.at) %> → <%= fmtDay(ev.endAt) %><% } %>
+          <% if (!ev.allDay) { %> · <%= evTime(ev.at) %><% } %>
+          <% if (ev.meta && ev.meta.amount) { %> · $<%= Number(ev.meta.amount).toFixed(2) %><% } %>
+          <% if (ev.meta && ev.meta.platforms) { %> · <%= ev.meta.platforms %><% } %>
+          <% if (ev.meta && ev.meta.who) { %> · <%= ev.meta.who %><% } %>
+          <% if (ev.meta && ev.meta.address) { %> · <%= ev.meta.address %><% } %>
+          <% if (ev.meta && ev.meta.assignee) { %> · <%= ev.meta.assignee %><% } %>
+        </div>
+        <% (ev.actions || []).forEach(function(a){ %>
+          <% if (a.edit && ev.edit) { %>
+            <%# Opens the edit modal from the payload already on the page — no fetch. %>
+            <%# EJS's own escaping is what makes this attribute safe — hand-escaping the
+                quotes on top of it double-encodes them and JSON.parse then throws. %>
+            <button type="button" class="cal-edit-btn" data-cal-edit="<%= JSON.stringify(ev.edit) %>"><%= a.label %></button>
+          <% } else if (a.method === 'post') { %>
+            <form method="POST" action="<%= a.url %>">
+              <input type="hidden" name="view" value="<%= view %>">
+              <input type="hidden" name="date" value="<%= anchorParam %>">
+              <input type="hidden" name="src" value="<%= active.join(',') %>">
+              <input type="hidden" name="project" value="<%= projectId || '' %>">
+              <input type="hidden" name="client" value="<%= clientId || '' %>">
+              <button type="submit"><%= a.label %></button>
+            </form>
+          <% } else if (a.url) { %>
+            <a href="<%= a.url %>"><%= a.label %></a>
+          <% } %>
+        <% }); %>
+      </div>
+    </div>
+  <% } %>
+
+  <!-- ═══════════════ MONTH ═══════════════ -->
+  <% if (view === 'month') { %>
+    <div class="cal-grid">
+      <div class="cal-dow"><% ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(function(d){ %><span><%= d %></span><% }); %></div>
+      <% (weeks || []).forEach(function(week){ %>
+        <div class="cal-week" style="--lanes:<%= week.laneCount %>">
+          <%# Bars sit in their own absolutely-positioned grid over the row, so a
+              range is ONE continuous element rather than a chip per day. The
+              cells reserve --lanes worth of room beneath the date number. %>
+          <% if (week.spans.length) { %>
+            <div class="cal-spans">
+              <% week.spans.forEach(function(sp){ chip(sp.ev, { span: sp }); }); %>
+            </div>
+          <% } %>
+          <% week.cells.forEach(function(cell){ %>
+            <% if (!cell) { %>
+              <div class="cal-cell pad"></div>
+            <% } else { const evs = pointEvents(cell.key); %>
+              <div class="cal-cell <%= cell.key === todayKey ? 'today' : '' %>">
+                <div class="cal-dnum">
+                  <a href="<%= qsWith({ view: 'day', date: cell.key }) %>"><%= cell.day %></a>
+                  <a class="add" href="#calTask" title="Add a task on this day"
+                     onclick="window.CalBoard&&CalBoard.seedTask('<%= cell.key %>')">+</a>
+                </div>
+                <%# Wrapper so the phone breakpoint can lay the collapsed dots out
+                    as a wrapping row without touching the chip markup itself. %>
+                <div class="cal-evs">
+                  <% evs.slice(0, MONTH_CHIP_CAP).forEach(function(ev){ chip(ev); }); %>
+                </div>
+                <% if (evs.length > MONTH_CHIP_CAP) { %>
+                  <a class="cal-more" href="<%= qsWith({ view: 'day', date: cell.key }) %>">+<%= evs.length - MONTH_CHIP_CAP %> more</a>
+                <% } %>
+              </div>
+            <% } %>
+          <% }); %>
+        </div>
+      <% }); %>
+    </div>
+  <% } %>
+
+  <!-- ═══════════════ WEEK (7 day) ═══════════════ -->
+  <% if (view === 'week') { %>
+    <% if (weekSpans && weekSpans.items.length) { %>
+      <div class="cal-spanband" style="--lanes:<%= weekSpans.laneCount %>">
+        <div class="cal-spans">
+          <% weekSpans.items.forEach(function(sp){ chip(sp.ev, { span: sp }); }); %>
+        </div>
+      </div>
+    <% } %>
+    <div class="cal-cols">
+      <% (days || []).forEach(function(d){ const evs = pointEvents(d.key); %>
+        <div class="cal-col">
+          <div class="cal-colh <%= d.key === todayKey ? 'today' : '' %>">
+            <div class="dw"><%= d.date.toLocaleDateString('en-US', { weekday: 'short' }) %></div>
+            <div class="dd"><a href="<%= qsWith({ view: 'day', date: d.key }) %>" style="color:inherit;text-decoration:none;"><%= d.date.getDate() %></a></div>
+          </div>
+          <div class="cal-colb">
+            <% if (!evs.length) { %><div style="font-size:0.68rem;color:var(--slate);padding:6px 2px;">—</div><% } %>
+            <% evs.forEach(function(ev){ chip(ev); }); %>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+  <% } %>
+
+  <!-- ═══════════════ DAY ═══════════════ -->
+  <% if (view === 'day') {
+       const key = days[0].key;
+       const evs = dayEvents(key);
+       const allDay = evs.filter(e => e.allDay);
+       const timed = evs.filter(e => !e.allDay);
+       const hours = [];
+       for (let h = 6; h <= 21; h++) hours.push(h);
+       const beforeSix = timed.filter(e => new Date(e.at).getHours() < 6);
+       const afterNine = timed.filter(e => new Date(e.at).getHours() > 21);
+  %>
+    <div class="cal-agenda">
+      <div class="cal-allday">
+        <div class="cal-allday-h">All day · <%= allDay.length %></div>
+        <% if (!allDay.length) { %><div style="font-size:0.72rem;color:var(--slate);">Nothing all-day.</div><% } %>
+        <% allDay.forEach(function(ev){ chip(ev, { hideTime: true }); }); %>
+      </div>
+      <% if (beforeSix.length) { %>
+        <div class="cal-arow"><div class="cal-ahour">early</div><div class="cal-abody">
+          <% beforeSix.forEach(function(ev){ chip(ev); }); %>
+        </div></div>
+      <% } %>
+      <% hours.forEach(function(h){ const inHour = timed.filter(e => new Date(e.at).getHours() === h); %>
+        <div class="cal-arow">
+          <div class="cal-ahour"><%= new Date(2000,0,1,h).toLocaleTimeString('en-US',{hour:'numeric'}) %></div>
+          <div class="cal-abody"><% inHour.forEach(function(ev){ chip(ev); }); %></div>
+        </div>
+      <% }); %>
+      <% if (afterNine.length) { %>
+        <div class="cal-arow"><div class="cal-ahour">late</div><div class="cal-abody">
+          <% afterNine.forEach(function(ev){ chip(ev); }); %>
+        </div></div>
+      <% } %>
+    </div>
+  <% } %>
+
+  <!-- ═══════════════ YEAR ═══════════════ -->
+  <% if (view === 'year') { %>
+    <div class="cal-year">
+      <% (months || []).forEach(function(mo){ %>
+        <div class="cal-mini">
+          <h3>
+            <a href="<%= qsWith({ view: 'month', date: mo.anchor }) %>"><%= mo.label %></a>
+            <span class="tot"><%= mo.total %></span>
+          </h3>
+          <table>
+            <tr><% ['S','M','T','W','T','F','S'].forEach(function(d){ %><th><%= d %></th><% }); %></tr>
+            <% mo.weeks.forEach(function(week){ %>
+              <tr>
+                <% week.forEach(function(cell){ %>
+                  <td>
+                    <% if (!cell) { %>&nbsp;<% } else {
+                         const n = dayEvents(cell.key).length;
+                         const tint = spanTint && spanTint[cell.key]; %>
+                      <%# A year grid is too dense for bars, so a multi-day range
+                          reads as an underline running through the days it covers. %>
+                      <a href="<%= qsWith({ view: 'day', date: cell.key }) %>"
+                         class="<%= n ? 'has' : '' %> <%= cell.key === todayKey ? 'today' : '' %> <%= tint ? 'spanned' : '' %>"
+                         <% if (tint) { %>style="--ev:<%= srcColor(tint) %>"<% } %>
+                         title="<%= n %> item<%= n === 1 ? '' : 's' %>"><%= cell.day %></a>
+                    <% } %>
+                  </td>
+                <% }); %>
+              </tr>
+            <% }); %>
+          </table>
+          <div class="bars <%= mo.total ? '' : 'is-blank' %>"
+               title="<%= mo.total ? 'Mix of sources this month' : 'Nothing scheduled' %>">
+            <% Object.keys(mo.bySource).forEach(function(k){ %>
+              <i style="background:<%= srcColor(k) %>;flex:<%= mo.bySource[k] %>"></i>
+            <% }); %>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+  <% } %>
+
+  <!-- ═══════════════ WORKFLOW: tasks + blocked time ═══════════════ -->
+  <div class="cal-side">
+    <div class="cal-card" id="calTask">
+      <h2>&#9745; Add a task</h2>
+      <p class="hint">Project workflow lives on the calendar. Tasks are the calendar's own objects — they aren't tied to a module, so use them for the work that falls between them.</p>
+      <form method="POST" action="/admin/calendar/tasks" class="cal-f">
+        <input type="hidden" name="view" value="<%= view %>">
+        <input type="hidden" name="date" value="<%= anchorParam %>">
+        <input type="hidden" name="src" value="<%= active.join(',') %>">
+        <input type="hidden" name="project" value="<%= projectId || '' %>">
+        <input type="hidden" name="client" value="<%= clientId || '' %>">
+        <div>
+          <label for="taskTitle">Task</label>
+          <input id="taskTitle" name="title" required maxlength="200" placeholder="Follow up on the Henderson quote">
+        </div>
+        <%# Start and end. Leave the end blank for a one-day task; set it later
+            and the task stretches into a bar across the calendar. %>
+        <div class="row">
+          <div>
+            <label for="taskStart">Starts</label>
+            <input id="taskStart" type="date" name="startDate" required value="<%= todayParam %>">
+          </div>
+          <div>
+            <label for="taskStartTime">Start time</label>
+            <input id="taskStartTime" type="time" name="startTime">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="taskDue">Ends</label>
+            <input id="taskDue" type="date" name="dueDate" placeholder="same day">
+          </div>
+          <div>
+            <label for="taskTime">End time</label>
+            <input id="taskTime" type="time" name="dueTime">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="taskClient">Client</label>
+            <select id="taskClient" name="clientId">
+              <option value="">— none —</option>
+              <% clientOptions.forEach(function(c){ %>
+                <option value="<%= c.id %>" <%= clientId === c.id ? 'selected' : '' %>><%= c.label %></option>
+              <% }); %>
+            </select>
+          </div>
+          <div>
+            <label for="taskProject">Project</label>
+            <select id="taskProject" name="projectId">
+              <option value="">— none —</option>
+              <% projects.filter(function(p){ return p.status !== 'complete'; }).forEach(function(p){ %>
+                <option value="<%= p._id %>" data-client="<%= p.clientId || '' %>" <%= projectId === String(p._id) ? 'selected' : '' %>>
+                  <%= p.name %><%= p.clientName ? ' · ' + p.clientName : '' %>
+                </option>
+              <% }); %>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label for="taskWho">Assignee</label>
+          <%# A datalist, not a <select>: platform users are one keystroke away,
+              but the field still accepts anyone — a sub, a client contact, a
+              name that has no login. Free text must never be the harder path. %>
+          <input id="taskWho" name="assignee" maxlength="120" list="calAssignees"
+                 placeholder="<%= assigneeOptions.length ? 'Pick a user or type any name' : 'Name or email' %>"
+                 autocomplete="off">
+          <datalist id="calAssignees">
+            <% assigneeOptions.forEach(function(a){ %>
+              <option value="<%= a.value %>"><%= a.label %></option>
+            <% }); %>
+          </datalist>
+          <% if (assigneeOptions.length) { %>
+            <div class="cal-who-hint"><%= assigneeOptions.length %> platform user<%= assigneeOptions.length === 1 ? '' : 's' %> available — or type any name</div>
+          <% } %>
+        </div>
+        <div>
+          <label for="taskNotes">Notes</label>
+          <textarea id="taskNotes" name="notes" rows="2" maxlength="2000"></textarea>
+        </div>
+        <div><button type="submit" class="cal-btn solid">Add task</button></div>
+      </form>
+    </div>
+
+    <div class="cal-card" id="calProject">
+      <h2>&#9634; New project</h2>
+      <p class="hint">A project is a named body of work owned by a client. Tasks attach to it, and its kickoff + due dates show on the calendar as milestones. Deleting a project detaches its tasks rather than losing them.</p>
+      <form method="POST" action="/admin/calendar/projects" class="cal-f">
+        <input type="hidden" name="view" value="<%= view %>">
+        <input type="hidden" name="date" value="<%= anchorParam %>">
+        <input type="hidden" name="src" value="<%= active.join(',') %>">
+        <div>
+          <label for="pjName">Project name</label>
+          <input id="pjName" name="name" required maxlength="160" placeholder="Henderson site rebuild">
+        </div>
+        <div>
+          <label for="pjClient">Client</label>
+          <select id="pjClient" name="clientId">
+            <option value="">— none —</option>
+            <% clientOptions.forEach(function(c){ %>
+              <option value="<%= c.id %>" <%= clientId === c.id ? 'selected' : '' %>><%= c.label %></option>
+            <% }); %>
+          </select>
+        </div>
+        <div class="row">
+          <div>
+            <label for="pjStart">Kickoff</label>
+            <input id="pjStart" type="date" name="startDate">
+          </div>
+          <div>
+            <label for="pjDue">Due</label>
+            <input id="pjDue" type="date" name="dueDate">
+          </div>
+        </div>
+        <div>
+          <label for="pjNotes">Notes</label>
+          <textarea id="pjNotes" name="notes" rows="2" maxlength="2000"></textarea>
+        </div>
+        <div><button type="submit" class="cal-btn solid">Create project</button></div>
+      </form>
+
+      <% if (projects.length) { %>
+        <div class="cal-plist">
+          <div class="cal-plist-h"><%= projects.length %> project<%= projects.length === 1 ? '' : 's' %></div>
+          <% projects.slice(0, 8).forEach(function(p){ %>
+            <div class="cal-prow <%= p.status === 'complete' ? 'done' : '' %>">
+              <a href="<%= qsWith({ project: String(p._id) }) %>" class="cal-pname"><%= p.name %></a>
+              <span class="cal-pmeta"><%= p.clientName || 'No client' %></span>
+            </div>
+          <% }); %>
+        </div>
+      <% } %>
+    </div>
+
+    <div class="cal-card">
+      <h2>&#127796; Block time off</h2>
+      <p class="hint">Out-of-office, a closure, or just protected time. Blocks span whole days and show on every day they cover, so scheduling around them is obvious.</p>
+      <form method="POST" action="/admin/calendar/blocks" class="cal-f">
+        <input type="hidden" name="view" value="<%= view %>">
+        <input type="hidden" name="date" value="<%= anchorParam %>">
+        <input type="hidden" name="src" value="<%= active.join(',') %>">
+        <input type="hidden" name="project" value="<%= projectId || '' %>">
+        <input type="hidden" name="client" value="<%= clientId || '' %>">
+        <div>
+          <label for="blkTitle">Label</label>
+          <input id="blkTitle" name="title" maxlength="200" placeholder="Out of office — conference">
+        </div>
+        <div class="row">
+          <div>
+            <label for="blkStart">From</label>
+            <input id="blkStart" type="date" name="startDate" required value="<%= todayParam %>">
+          </div>
+          <div>
+            <label for="blkEnd">To</label>
+            <input id="blkEnd" type="date" name="endDate" value="<%= todayParam %>">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="blkKind">Type</label>
+            <select id="blkKind" name="kind">
+              <option value="ooo">Out of office</option>
+              <option value="holiday">Closed / holiday</option>
+              <option value="busy">Busy — no bookings</option>
+            </select>
+          </div>
+          <div>
+            <label for="blkWho">Who</label>
+            <input id="blkWho" name="who" maxlength="120" placeholder="Everyone">
+          </div>
+        </div>
+        <div><button type="submit" class="cal-btn solid">Block time</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ TASK EDIT MODAL ═══════════════
+     Clicking a task chip → ⋯ menu → Edit opens this, pre-filled from the payload
+     already embedded in the chip. No fetch, no second page: editing a task is a
+     click away from seeing it, which is the whole point of putting it on a
+     calendar. Posts to /admin/calendar/tasks/:id and returns to this view. -->
+<div id="calEditWrap" class="cal-modal" hidden>
+  <div class="cal-modal-card" role="dialog" aria-modal="true" aria-labelledby="calEditH">
+    <div class="cal-modal-head">
+      <h2 id="calEditH">Edit task</h2>
+      <button type="button" class="cal-modal-x" id="calEditClose" aria-label="Close">&times;</button>
+    </div>
+    <form method="POST" id="calEditForm" class="cal-f">
+      <input type="hidden" name="view" value="<%= view %>">
+      <input type="hidden" name="date" value="<%= anchorParam %>">
+      <input type="hidden" name="src" value="<%= active.join(',') %>">
+      <input type="hidden" name="project" value="<%= projectId || '' %>">
+      <input type="hidden" name="client" value="<%= clientId || '' %>">
+      <div>
+        <label for="edTitle">Task</label>
+        <input id="edTitle" name="title" required maxlength="200">
+      </div>
+      <div class="row">
+        <div><label for="edStart">Starts</label><input id="edStart" type="date" name="startDate" required></div>
+        <div><label for="edStartT">Start time</label><input id="edStartT" type="time" name="startTime"></div>
+      </div>
+      <div class="row">
+        <div><label for="edDue">Ends</label><input id="edDue" type="date" name="dueDate" required></div>
+        <div><label for="edDueT">End time</label><input id="edDueT" type="time" name="dueTime"></div>
+      </div>
+      <div class="cal-span-hint" id="edSpanHint"></div>
+      <div class="row">
+        <div>
+          <label for="edClient">Client</label>
+          <select id="edClient" name="clientId">
+            <option value="">— none —</option>
+            <% clientOptions.forEach(function(c){ %><option value="<%= c.id %>"><%= c.label %></option><% }); %>
+          </select>
+        </div>
+        <div>
+          <label for="edProject">Project</label>
+          <select id="edProject" name="projectId">
+            <option value="">— none —</option>
+            <% projects.forEach(function(p){ %>
+              <option value="<%= p._id %>" data-client="<%= p.clientId || '' %>"><%= p.name %><%= p.clientName ? ' · ' + p.clientName : '' %></option>
+            <% }); %>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="edWho">Assignee</label>
+          <input id="edWho" name="assignee" maxlength="120" list="calAssignees" autocomplete="off">
+        </div>
+        <div>
+          <label for="edStatus">Status</label>
+          <select id="edStatus" name="status">
+            <option value="open">Open</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label for="edNotes">Notes</label>
+        <textarea id="edNotes" name="notes" rows="3" maxlength="2000"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button type="submit" class="cal-btn solid">Save task</button>
+        <button type="button" class="cal-btn" id="calEditCancel">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+// Picking a project fills in its client, mirroring the server-side rule that a
+// task inherits its project's client — so the form can never show a pairing the
+// server would then silently overwrite.
+(function () {
+  var pj = document.getElementById('taskProject');
+  var cl = document.getElementById('taskClient');
+  if (!pj || !cl) return;
+  pj.addEventListener('change', function () {
+    var opt = pj.options[pj.selectedIndex];
+    var owner = opt && opt.getAttribute('data-client');
+    if (owner) cl.value = owner;
+  });
+})();
+</script>
+<script src="/js/calendarBoard.js"></script>
+
+</div></div></body></html>

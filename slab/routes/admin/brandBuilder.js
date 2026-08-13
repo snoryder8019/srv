@@ -182,6 +182,27 @@ router.post('/save', express.json({ limit: '500kb' }), async (req, res) => {
   }
 });
 
+// ── POST /skip — bail out of the wizard and go straight to the dashboard ───
+// The wizard is long; nothing in it is required to run the platform. Skipping
+// records the choice so the owner isn't bounced back here on every /admin hit.
+router.post('/skip', async (req, res) => {
+  try {
+    const tenant = req.tenant;
+    if (!tenant) return res.status(400).json({ error: 'No tenant context' });
+
+    await getSlabDb().collection('tenants').updateOne(
+      { _id: tenant._id },
+      { $set: { 'meta.brandSetupSkipped': true, updatedAt: new Date() } },
+    );
+
+    bustTenantCache(tenant.domain);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[brand-builder] Skip error:', err);
+    res.status(500).json({ error: 'Failed to skip setup' });
+  }
+});
+
 // ── POST /preset — apply an industry preset (design + copy + sections) ─────
 router.post('/preset', express.json(), async (req, res) => {
   try {

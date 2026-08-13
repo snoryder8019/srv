@@ -3,7 +3,7 @@ import { config } from '../config/config.js';
 
 let client;        // Atlas shared cluster — slab registry + legacy tenant DBs
 let slabDb;
-let tenantClient;  // Self-hosted GPU-box mongod (via SSH reverse tunnel), optional
+let tenantClient;  // Self-hosted GPU-box mongod, optional
 let tenantConnecting = false;   // in-flight connect guard
 let tenantRetryTimer = null;    // background retry interval (stops once connected)
 const TENANT_RETRY_MS = 30000;
@@ -12,6 +12,22 @@ const TENANT_RETRY_MS = 30000;
 // defaults to 'atlas'. This lets the ~80 existing getTenantDb(tenant.db) call
 // sites route to the correct cluster WITHOUT passing a host argument.
 const tenantHostMap = new Map();
+
+/**
+ * host:port of the tenant cluster, credentials stripped — for error messages.
+ * Derived from TENANT_DB_URL rather than hardcoded: an earlier version of the
+ * error below named a tunnel on 127.0.0.1:27117 that no longer exists, which
+ * sent whoever was on call chasing a phantom. Read it from config so it cannot
+ * go stale again.
+ */
+function tenantTargetLabel() {
+  try {
+    const u = new URL(config.TENANT_DB_URL);
+    return u.host || 'unknown host';
+  } catch {
+    return 'the host in TENANT_DB_URL';
+  }
+}
 
 /** Record (or update) which cluster a tenant DB lives on. */
 export function registerTenantHost(dbName, host) {
@@ -110,7 +126,8 @@ export function getTenantDb(dbName, host) {
       connectTenantCluster().catch(() => {});
       throw new Error(
         `Tenant DB "${dbName}" is on the self-hosted (gpu) cluster but its connection is unavailable. ` +
-        `Check the OllamaClusterTunnel (127.0.0.1:27117) and TENANT_DB_URL.`,
+        `Cannot reach the tenant mongod at ${tenantTargetLabel()} (TENANT_DB_URL). ` +
+        `Verify that host is up and accepting connections; a background retry runs every 30s.`,
       );
     }
     return tenantClient.db(dbName);

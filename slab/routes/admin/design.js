@@ -7,6 +7,7 @@ import { getDb } from '../../plugins/mongo.js';
 import { brandUpload, modelUpload } from '../../middleware/upload.js';
 import { callLLM, tryParseAgentResponse, webSearch } from '../../plugins/agentMcp.js';
 import { agentLLMOpts } from '../../plugins/agentRegistry.js';
+import { recordAgentFeedback } from '../../plugins/observe.js';
 import { loadBrandContext } from '../../plugins/brandContext.js';
 import { enrichDesignContrast } from '../../plugins/colorContrast.js';
 import { CUSTOM_TEMPLATES } from './sections.js';
@@ -94,7 +95,8 @@ router.post('/', async (req, res) => {
     // pricing_tier{N}_*) that the UI added at runtime.
     const COPY_CHECKBOXES = ['promo_enabled', 'pricing_tier3_featured',
       'contact_fname_hidden', 'contact_lname_hidden', 'contact_email_hidden',
-      'contact_company_hidden', 'contact_service_hidden', 'contact_message_hidden'];
+      'contact_company_hidden', 'contact_service_hidden', 'contact_message_hidden',
+      'contact_optin_hidden'];
     const allCopyKeys = Object.values(COPY_SECTIONS).flat();
     const REPEATER_PATTERNS = [
       /^service\d+_(title|desc|link|image|hidden)$/,
@@ -470,139 +472,333 @@ router.get('/api/current', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// DESIGN AGENT — specialist agent for design & settings
+// DESIGN AGENT — specialist agent for design, content & layout
+//
+// The agent's field catalog is not hand-maintained here. The panel posts the
+// fields it is actually rendering (name/tab/section/label/type), so the catalog
+// IS the left bar — dynamic repeater rows and custom sections included, with no
+// drift as the panel grows. This route's job is to scope that catalog down to
+// something a 7B model can reason about, which is what the throttle controls.
 // ═══════════════════════════════════════════════════════════════════════════════
+
+const TAB_LABELS = { design: 'Design', copy: 'Content', source: 'Layout' };
+
+// Throttle = variety AND depth of change. It sets both how much of the panel the
+// agent is shown and how many fields it is allowed to touch in one pass, so a
+// "light" ask can't quietly turn into a site-wide repaint.
+// Catalog character budgets. The house model (qwen2.5:7b) advertises a 32k
+// window but Ollama's *runtime* num_ctx defaults to 4096 and can't be set over
+// the OpenAI-compatible endpoint, so an over-long prompt is silently truncated
+// from the front — which would quietly lop off the response format and brand
+// context and leave the agent babbling. These budgets keep the worst case
+// (fixed prompt ≈ 4.3k chars + catalog + reply headroom) inside 4096 tokens.
+// Raise them only alongside a verified OLLAMA_CONTEXT_LENGTH increase.
+const THROTTLE_LEVELS = {
+  light: {
+    label: 'Light',
+    maxFields: 6,
+    tabs: 'active',
+    budget: 2000,
+    guidance: 'LIGHT THROTTLE: change ONE dimension only (e.g. just the palette, or just the headline). '
+      + 'Touch at most 6 fields. Stay close to the current values — nudge, do not replace. '
+      + 'Do not touch layout, section visibility, or fields outside the active tab.',
+  },
+  balanced: {
+    label: 'Balanced',
+    maxFields: 18,
+    tabs: 'active+',
+    budget: 4500,
+    guidance: 'BALANCED THROTTLE: change 2-3 related dimensions (e.g. palette + type + the hero copy that sits on them). '
+      + 'Touch at most 18 fields. Keep the existing structure — restyle and rewrite, but do not reorder or hide sections.',
+  },
+  full: {
+    label: 'Full send',
+    maxFields: 45,
+    tabs: 'all',
+    budget: 5500,
+    guidance: 'FULL THROTTLE: make a bold, opinionated pass across Design, Content AND Layout together. '
+      + 'Touch up to 45 fields. Commit to a point of view — a coherent palette, a real type pairing, rewritten copy '
+      + 'in the brand voice, and section visibility/layout choices that serve the story. Half-measures are worse than nothing here.',
+  },
+};
+
+// A request is "broad" when it asks for sweeping change without saying how far
+// to go. Those are the ones that get the throttle question first. Detected here
+// rather than asked of the model so the question is instant and costs no tokens.
+const BROAD_RE = /\b(redesign|re-design|overhaul|revamp|rebrand|re-brand|makeover|make ?over|refresh|moderni[sz]e|transform|reimagine|rework|from scratch|start over|clean slate|new look|whole site|entire site|everything|all of it|full site|top to bottom)\b/i;
+
+// Semantics a raw key name doesn't convey. Keyed by exact field name or a
+// `prefix*` glob; only notes whose fields are actually in the scoped catalog get
+// sent, so this can grow without inflating every prompt.
+const FIELD_NOTES = {
+  'color_primary': 'Main brand color — navs, headings, buttons.',
+  'color_primary_deep': 'Darkest shade — hero bg, footer.',
+  'color_primary_mid': 'Mid-tone — borders, hover states.',
+  'color_accent': 'Accent — highlights, badges, CTA. Must contrast with primary.',
+  'color_accent_light': 'Light accent — text on dark backgrounds.',
+  'color_bg': 'Section backgrounds. Keep light and neutral for readability.',
+  'font_heading': 'Any Google Font family, EXACT name as on fonts.google.com. Characterful serif/display works well (Cormorant Garamond, Playfair Display, Fraunces, DM Serif Display).',
+  'font_body': 'Any Google Font family, EXACT name. Prefer legible sans-serifs (Jost, Inter, Poppins, DM Sans, Manrope, Work Sans).',
+  'font_heading_spec': 'NEVER set this — derived automatically from the family name.',
+  'font_body_spec': 'NEVER set this — derived automatically from the family name.',
+  'landing_layout': 'classic, bold, minimal, magazine, dark, or startup.',
+  'portfolio_layout': 'grid, masonry, carousel, or list.',
+  'blog_layout': 'grid, list, masonry, or featured.',
+  'nav_logo_display': 'text, image, or both.',
+  'vis_*': 'Section visibility. String "true" or "false" — these show/hide whole sections on the home page.',
+  'section_animation': 'none, fade, slide, zoom, flip, stagger, or blur — how sections animate in on scroll.',
+  'snap_enabled': '"true"/"false" — full-page scroll-snap between sections.',
+  'snap_strictness': 'proximity (gentle) or mandatory (hard lock to each section).',
+  'ticker_items': 'Pipe-separated items for the scrolling ticker (e.g. "Free Shipping | 24/7 Support"). Empty auto-populates from brand services/location.',
+  'ticker_speed': 'Animation duration in seconds (10=fast, 22=default, 40=slow).',
+  'ticker_shape': 'straight (flat), diagonal (angled bar), or arc (text curved along an SVG path).',
+  'ticker_treatment': 'bar (flat ticker) or parallax (tall layered band with a big floating marquee typeface).',
+  'cookie_consent_enabled': '"true"/"false" — GDPR-style consent that gates analytics/marketing tags.',
+  'cookie_consent_style': 'modal (centered dialog) or banner (docked bar).',
+  'hero_heading_em': 'The italic/accent word inside the hero heading — not the whole heading.',
+  'about_initial': 'Large decorative initial letter.',
+  'agent_name': 'Name of the AI assistant shown to visitors.',
+  'agent_greeting': 'Greeting shown in the visitor chat.',
+};
+
+const clipStr = (v, n) => (v == null ? '' : String(v).slice(0, n));
+
+// Absolute catalog cap, above every throttle budget. The per-throttle budgets
+// shape what the agent sees; this one exists so no input — an unbounded
+// repeater, a focused section that grew — can push the prompt past the context
+// window and get it silently truncated. See the THROTTLE_LEVELS note.
+const ABS_MAX = 9000;
+
+/** Sanitize the panel-reported field list. Untrusted input — cap hard. */
+function sanitizeFields(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 900).map(f => ({
+    name: clipStr(f?.name, 80),
+    tab: TAB_LABELS[f?.tab] ? f.tab : 'design',
+    section: clipStr(f?.section, 60),
+    label: clipStr(f?.label, 60),
+    type: clipStr(f?.type, 20),
+    options: Array.isArray(f?.options) ? f.options.slice(0, 12).map(o => clipStr(o, 30)) : null,
+  })).filter(f => f.name && /^[a-zA-Z0-9_]+$/.test(f.name));
+}
+
+/** Notes relevant to the given key set, exact matches and `prefix*` globs. */
+function notesFor(keys) {
+  const set = new Set(keys);
+  const lines = [];
+  for (const [pat, note] of Object.entries(FIELD_NOTES)) {
+    const hit = pat.endsWith('*')
+      ? keys.some(k => k.startsWith(pat.slice(0, -1)))
+      : set.has(pat);
+    if (hit) lines.push(`- ${pat}: ${note}`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Build the scoped catalog the model sees.
+ *
+ * Detail tabs get field label + type + current value; the rest are listed by key
+ * name only so the agent still knows they exist (and can be asked about them)
+ * without paying full freight for ~350 fields on every turn.
+ */
+function buildCatalog(fields, values, { scope, focusField, focusSection, tabs, budget = 4500 }) {
+  const byTab = { design: [], copy: [], source: [] };
+  for (const f of fields) (byTab[f.tab] || byTab.design).push(f);
+
+  const activeTab = TAB_LABELS[scope] ? scope : 'design';
+  let detailTabs;
+  if (tabs === 'all') detailTabs = ['design', 'copy', 'source'];
+  else if (tabs === 'active+') detailTabs = [activeTab, ...['design', 'copy', 'source'].filter(t => t !== activeTab)].slice(0, 2);
+  else detailTabs = [activeTab];
+
+  // Focus resolves to a section either way: a focused field pulls in its own
+  // section for context, and a section button focuses that section directly.
+  // The focused section is always expanded in full, whatever the throttle.
+  const focusEntry = focusField ? fields.find(f => f.name === focusField) : null;
+  const focusSec = focusEntry ? focusEntry.section : (focusSection || null);
+  const focusTab = focusEntry
+    ? focusEntry.tab
+    : (focusSec ? (fields.find(f => f.section === focusSec)?.tab || null) : null);
+
+  const out = [];
+  const detailedKeys = [];
+  let spent = 0;
+  const push = (line) => { out.push(line); spent += line.length + 1; };
+
+  // Section-level summary for anything not expanded. A tenant with 299 copy
+  // fields can't have them all listed by name either (~5k chars on its own), and
+  // the model doesn't need to: it needs to know the area exists so it can say
+  // "open the Pricing section and ask me there".
+  const summarize = (list) => {
+    const counts = new Map();
+    for (const f of list) counts.set(f.section || 'General', (counts.get(f.section || 'General') || 0) + 1);
+    return [...counts].map(([s, n]) => `${s} (${n})`).join(', ');
+  };
+
+  // Active tab first so the budget is spent on what the tenant is looking at.
+  const tabOrder = [activeTab, ...['design', 'copy', 'source'].filter(t => t !== activeTab)];
+
+  for (const tab of tabOrder) {
+    const list = byTab[tab];
+    if (!list.length) continue;
+    const detailed = detailTabs.includes(tab);
+    const hasFocus = focusTab === tab;
+
+    if (!detailed && !hasFocus) {
+      push(`\n### ${TAB_LABELS[tab]} tab (${list.length} fields) — not expanded; sections: ${summarize(list)}`);
+      continue;
+    }
+    push(`\n### ${TAB_LABELS[tab]} tab (${list.length} fields)`);
+
+    // Group by the panel's own accordion sections so the model inherits the
+    // panel's information architecture instead of a flat wall of keys.
+    const sections = new Map();
+    for (const f of list) {
+      if (!sections.has(f.section)) sections.set(f.section, []);
+      sections.get(f.section).push(f);
+    }
+    // The focused field's own section is expanded first and is never dropped.
+    const secNames = [...sections.keys()];
+    if (hasFocus && focusSec) secNames.sort((a, b) => (a === focusSec ? -1 : b === focusSec ? 1 : 0));
+
+    // Hard ceiling as well as a soft budget: a single big section (Contact has
+    // 31 fields) can start just under budget and blow well past it, so stop
+    // mid-section too rather than letting one accordion eat the context.
+    const ceiling = Math.round(budget * 1.15);
+    const skipped = [];
+    for (const sec of secNames) {
+      const items = sections.get(sec);
+      const isFocusSec = hasFocus && !!focusSec && sec === focusSec;
+      if (spent > budget && !isFocusSec) { skipped.push(...items); continue; }
+      push(`${sec || 'General'}:`);
+      for (const f of items) {
+        // ABS_MAX binds even the focused section. It gets first claim on the
+        // budget (its tab and section both sort first), so this truncates the
+        // tail rather than the thing the tenant asked about — but a repeater
+        // that has grown unbounded still can't push us past the context window.
+        if (spent > ABS_MAX) { skipped.push(f); continue; }
+        if (spent > ceiling && !isFocusSec) { skipped.push(f); continue; }
+        detailedKeys.push(f.name);
+        const val = values && values[f.name] != null ? clipStr(values[f.name], 120) : '';
+        const opts = f.options && f.options.length ? ` [${f.options.join('|')}]` : '';
+        const lbl = f.label ? ` (${f.label})` : '';
+        push(`  ${f.name}${lbl}${opts} = "${val}"`);
+      }
+    }
+    if (skipped.length) {
+      push(`(${skipped.length} more fields in this tab, not expanded; sections: ${summarize(skipped)})`);
+    }
+  }
+  return { text: out.join('\n'), detailedKeys };
+}
 
 router.post('/agent', async (req, res) => {
   try {
-    const { messages, currentDesign } = req.body;
+    const { messages, currentDesign, fields: rawFields } = req.body;
     if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'messages required' });
 
-    const designCtx = currentDesign
-      ? `\n\nCurrent design settings:\n${Object.entries(currentDesign).map(([k, v]) => `  ${k}: "${v}"`).join('\n')}`
-      : '';
+    const scope = TAB_LABELS[req.body.scope] ? req.body.scope : 'design';
+    const throttleKey = THROTTLE_LEVELS[req.body.throttle] ? req.body.throttle : null;
+    const focusField = /^[a-zA-Z0-9_]{1,80}$/.test(req.body.focusField || '') ? req.body.focusField : null;
+    const focusSection = clipStr(req.body.focusSection, 60) || null;
 
+    const lastMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+
+    // ── Throttle step ──────────────────────────────────────────────────────────
+    // A broad ask with no throttle chosen gets the question first. Focused asks
+    // (a single field, or one panel section) are bounded by construction and
+    // skip it — the focus itself is the throttle.
+    if (!throttleKey && !focusField && !focusSection && BROAD_RE.test(lastMsg)) {
+      return res.json({
+        ask: 'throttle',
+        message: "Happy to take that on — how hard do you want me to hit the throttle?",
+        options: Object.entries(THROTTLE_LEVELS).map(([key, t]) => ({
+          key,
+          label: t.label,
+          hint: key === 'light' ? 'One dimension, ~6 fields. Nudge, don\'t replace.'
+            : key === 'balanced' ? 'A few related dimensions, ~18 fields. Same structure, new skin.'
+            : 'Design + Content + Layout together, up to 45 fields. Bold and opinionated.',
+        })),
+        fill: {},
+      });
+    }
+
+    const throttle = THROTTLE_LEVELS[throttleKey] || THROTTLE_LEVELS.balanced;
+    const fields = sanitizeFields(rawFields);
     const brandCtx = await loadBrandContext(req.tenant, req.db);
 
-    const systemPrompt = `You are a design and branding assistant for the business.
+    // Fall back to the flat currentDesign dump when the panel didn't report its
+    // fields (older cached page, or a caller that isn't the panel).
+    let catalogText = '';
+    let knownKeys = [];
+    if (fields.length) {
+      const cat = buildCatalog(fields, currentDesign, { scope, focusField, focusSection, tabs: throttle.tabs, budget: throttle.budget });
+      catalogText = cat.text;
+      knownKeys = fields.map(f => f.name);
+    } else if (currentDesign && typeof currentDesign === 'object') {
+      catalogText = '\n' + Object.entries(currentDesign).map(([k, v]) => `  ${k} = "${clipStr(v, 120)}"`).join('\n');
+      knownKeys = Object.keys(currentDesign);
+    }
+
+    const notes = notesFor(knownKeys);
+    const focusEntry = focusField ? fields.find(f => f.name === focusField) : null;
+
+    // Two focus modes, matching the two buttons in the panel: a long-form field
+    // gets its own button, everything else is reached through its section.
+    let focusBlock = '';
+    if (focusField) {
+      focusBlock = `\n\n=== FOCUSED FIELD ===
+The user opened this conversation from a specific input in the left bar:
+  ${focusField}${focusEntry?.label ? ` — "${focusEntry.label}"` : ''}${focusEntry?.section ? ` (in the ${focusEntry.section} section of the ${TAB_LABELS[focusEntry.tab]} tab)` : ''}
+This is a long-form field, so give it real attention: write the actual content,
+not a description of what you'd write. Change THIS field, and only touch others
+when they must move with it (e.g. a heading whose emphasis word no longer
+matches). Say so when you do.`;
+    } else if (focusSection) {
+      focusBlock = `\n\n=== FOCUSED SECTION ===
+The user opened this conversation from the "${focusSection}" section of the left bar.
+Center your work on the fields in THAT section — they are expanded in full above.
+Treat them as one coherent group: change them together so the result is
+consistent, rather than adjusting a single value in isolation. Stay out of other
+sections unless something there would visibly break, and say so if it does.`;
+    }
+
+    const systemPrompt = `You are the design agent for this business's website. You drive the admin design panel directly.
 
 ${brandCtx}
 
-Your job is to help configure the site's visual design: colors, fonts, layouts, and section visibility.
+=== WHAT YOU CONTROL ===
+The panel's left bar has three tabs and you can set fields in ALL of them in a single response:
+  • Design  — colors, typography, header/footer, nav, hero styling, motion, ticker, cookie consent
+  • Content — the words on the page: hero, services, about, process, pricing, contact, footer, custom sections
+  • Layout  — page layout, section visibility and ordering, template source
 
-When the user asks you to change design settings, respond with valid JSON in this exact format:
+=== RESPONSE FORMAT ===
+Respond with valid JSON, nothing else:
 {
-  "message": "Brief explanation of your design changes.",
-  "fill": {
-    "field_key": "new value",
-    ...
-  }
+  "message": "Brief, concrete explanation of what you changed and why.",
+  "fill": { "field_key": "new value" }
 }
+Only include keys in "fill" that you are actually changing. For pure conversation use "fill": {}.
+Use ONLY field keys that appear in the catalog below — an invented key does nothing.
+Booleans are the strings "true" / "false". Colors are hex (#RRGGBB).
 
-Only include fields in "fill" that you are actually changing. If just having a conversation, respond with:
-{
-  "message": "Your conversational response here.",
-  "fill": {}
-}
+=== THROTTLE: ${throttle.label.toUpperCase()} ===
+${throttle.guidance}
+This is a hard ceiling: anything past ${throttle.maxFields} fields is dropped before it reaches the user.${focusBlock}
 
-Available field keys and their types:
-COLOR FIELDS (hex values):
-- color_primary: Main brand color — navs, headings, buttons (current default: #1C2B4A navy)
-- color_primary_deep: Darkest shade — hero bg, footer (default: #0F1B30)
-- color_primary_mid: Mid-tone — borders, hover states (default: #2E4270)
-- color_accent: Gold accent — highlights, badges, CTA (default: #C9A848)
-- color_accent_light: Light accent — text on dark backgrounds (default: #E8D08A)
-- color_bg: Section backgrounds — ivory/cream tones (default: #F5F3EF)
+=== FIELD CATALOG (current values shown) ===${catalogText}
+${notes ? `\n=== FIELD NOTES ===\n${notes}` : ''}
 
-FONT FIELDS (any Google Font — use the EXACT family name as it appears on fonts.google.com):
-- font_heading: any Google Font family for headings. Prefer characterful serif/display faces (e.g. Cormorant Garamond, Playfair Display, Fraunces, DM Serif Display, Libre Baskerville) unless the brand calls for something else.
-- font_body: any Google Font family for body text. Prefer highly legible sans-serifs (e.g. Jost, Inter, Poppins, DM Sans, Manrope, Work Sans).
-- Do NOT set font_heading_spec / font_body_spec — those are derived automatically from the family name.
-
-LAYOUT FIELDS:
-- landing_layout: classic, bold, minimal, magazine, dark, or startup (overall landing page layout)
-- portfolio_layout: grid, masonry, carousel, or list
-- blog_layout: grid, list, masonry, or featured
-- nav_logo_display: text, image, or both
-
-VISIBILITY FIELDS (string "true" or "false"):
-- vis_hero, vis_services, vis_portfolio, vis_about, vis_process, vis_reviews, vis_contact, vis_blog, vis_marquee
-
-TICKER / MARQUEE FIELDS:
-- ticker_items: Pipe-separated items for the scrolling ticker bar (e.g. "Free Shipping | 24/7 Support | Same-Day Install"). Leave empty to auto-populate from brand services/location/tagline.
-- ticker_speed: Animation duration in seconds (10=fast, 22=default, 40=slow)
-- ticker_direction: "left" or "right"
-- ticker_bg: Ticker background color (hex). Empty = primary color.
-- ticker_text_color: Ticker text color (hex). Empty = accent-light.
-- ticker_dot_color: Separator dot color (hex). Empty = accent.
-- ticker_shape: "straight" (flat scroll), "diagonal" (angled vector bar), or "arc" (text curved along an SVG path, barbershop-sign style)
-- ticker_angle: Tilt in degrees for diagonal shape (e.g. -4)
-- ticker_arc_height: Curve rise/sag in px for arc shape (e.g. 40)
-- ticker_treatment: "bar" (flat ticker) or "parallax" (tall layered band — background image z1, big floating marquee typeface z2, copy card z3, all parallax-scrolling)
-- ticker_parallax_image: Background image URL for the parallax band (empty = falls back to hero background media)
-- ticker_parallax_height: Band height, e.g. "70vh" or "560px"
-- ticker_parallax_overlay: 0-100 dark overlay strength over the band image
-- ticker_band_font_size: Size in rem of the big floating marquee typeface (e.g. 5)
-- ticker_band_heading / ticker_band_text / ticker_band_cta / ticker_band_cta_link: Copy for the z3 card (edited in Copy)
-
-MOTION / SCROLL FIELDS:
-- section_animation: "none", "fade", "slide", "zoom", "flip", "stagger", or "blur" — how sections animate in on scroll
-- snap_enabled: "true"/"false" — full-page scroll-snap between sections
-- snap_strictness: "proximity" (gentle) or "mandatory" (hard lock to each section)
-
-COOKIE CONSENT FIELDS:
-- cookie_consent_enabled: "true"/"false" — show GDPR-style cookie consent to visitors (gates analytics/marketing tags)
-- cookie_consent_style: "modal" (centered dialog) or "banner" (docked bar)
-- cookie_consent_position: "bottom", "bottom-left", or "center"
-- cookie_bg / cookie_text_color / cookie_accent: Optional color overrides (empty = theme surface/text/accent)
-- Cookie text (title, message, button labels, category descriptions) is edited in the Copy editor under the "cookie" section.
-
-COPY FIELDS (text content shown on the landing page):
-- hero_eyebrow: Small text above the headline (e.g. "Welcome to...")
-- hero_heading: Main hero headline
-- hero_heading_em: Italic/accent word in the hero heading
-- hero_sub: Supporting text below the headline
-- hero_badge: Small badge text (e.g. "Est. 2020")
-- hero_cta_primary: Primary call-to-action button text
-- hero_cta_primary_link: Primary CTA link URL
-- hero_cta_secondary: Secondary CTA button text
-- hero_cta_secondary_link: Secondary CTA link URL
-- services_label: Section label for services (e.g. "What We Do")
-- services_heading: Services section heading
-- services_heading_em: Emphasized word in services heading
-- services_sub: Services section subheading
-- service1_title, service2_title, service3_title: Individual service card titles
-- service1_desc, service2_desc, service3_desc: Individual service card descriptions
-- about_eyebrow: About section label
-- about_quote: Main quote/statement in about section
-- about_desc: About section description paragraph
-- about_sig: Signature/name in about section
-- about_initial: Large decorative initial letter
-- process_label: Process section label
-- process_heading, process_heading_em: Process section heading + emphasis
-- process1_title through process4_title: Step titles
-- process1_desc through process4_desc: Step descriptions
-- contact_eyebrow: Contact section label
-- contact_heading, contact_heading_em: Contact heading + emphasis
-- contact_sub: Contact section subheading
-- contact_location: Business location text
-- contact_serving: "Serving" text
-- contact_services: Services list text
-- contact_btn: Submit button text
-
-AGENT SETTINGS:
-- agent_name: Name of the AI assistant
-- agent_greeting: Greeting message shown in the chat
-
-DESIGN TIPS:
-- Keep color palettes cohesive. Primary/deep/mid should be shades of the same hue.
-- Accent colors should contrast with primary for CTAs and highlights.
-- Background color should be light and neutral for readability.
-- Any Google Font may be used. Serif/display faces (Cormorant Garamond, Playfair Display, Fraunces) work well for headings; sans-serif (Jost, Inter, Manrope) for body. Pair a distinctive heading with a clean, legible body.
-- Consider accessibility — ensure sufficient contrast between text and background colors.
-${designCtx}`;
-
-    const lastMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+=== DESIGN PRINCIPLES ===
+- Keep palettes cohesive: primary/deep/mid should be shades of one hue.
+- Accent must contrast with primary — it carries CTAs and highlights.
+- Backgrounds stay light and neutral unless the brand is deliberately dark.
+- Pair a distinctive heading face with a clean, legible body face.
+- Check contrast between text and background; accessibility is not optional.
+- Write copy in the brand's voice, specific to this business — never lorem-ipsum
+  filler or generic agency boilerplate.`;
 
     // Optional web search for design inspiration
     let researchCtx = '';
@@ -616,20 +812,67 @@ ${designCtx}`;
 
     const fullPrompt = systemPrompt + researchCtx;
     const raw = await callLLM(messages, fullPrompt, 90000, await agentLLMOpts(req.db, req.tenant, 'design'));
-    const parsed = tryParseAgentResponse(raw);
+    const parsed = tryParseAgentResponse(raw) || { message: '', fill: {} };
+
+    // ── Enforce the throttle server-side ──────────────────────────────────────
+    // The model is told the ceiling but not trusted with it. Unknown keys are
+    // dropped too: they'd silently no-op in the panel and read as a phantom edit.
+    let dropped = 0, unknown = [];
+    if (parsed.fill && typeof parsed.fill === 'object') {
+      const known = new Set(knownKeys);
+      let entries = Object.entries(parsed.fill);
+      if (known.size) {
+        const kept = entries.filter(([k]) => known.has(k) || DESIGN_DEFAULTS.hasOwnProperty(k));
+        unknown = entries.filter(([k]) => !known.has(k) && !DESIGN_DEFAULTS.hasOwnProperty(k)).map(([k]) => k);
+        entries = kept;
+      }
+      if (entries.length > throttle.maxFields) {
+        dropped = entries.length - throttle.maxFields;
+        entries = entries.slice(0, throttle.maxFields);
+      }
+      parsed.fill = Object.fromEntries(entries);
+    }
 
     // The agent picks a font by NAME; enrich with the CSS2 weight spec from the
     // catalog so the picked font renders with its real weights (not just 400).
-    if (parsed && parsed.fill && typeof parsed.fill === 'object') {
+    if (parsed.fill && typeof parsed.fill === 'object') {
       const fkey = tenantFontsKey(req);
       if (parsed.fill.font_heading) parsed.fill.font_heading_spec = await specForFamily(parsed.fill.font_heading, fkey);
       if (parsed.fill.font_body) parsed.fill.font_body_spec = await specForFamily(parsed.fill.font_body, fkey);
     }
 
+    parsed.throttle = throttleKey || 'balanced';
+    if (dropped) parsed.notice = `${dropped} further change${dropped > 1 ? 's were' : ' was'} held back by the ${throttle.label.toLowerCase()} throttle. Ask again with a harder throttle to go further.`;
+    else if (unknown.length) parsed.notice = `Skipped ${unknown.length} unrecognized field${unknown.length > 1 ? 's' : ''}.`;
+
     res.json(parsed);
   } catch (err) {
     console.error('Design agent error:', err);
     res.status(500).json({ error: 'Agent error: ' + err.message });
+  }
+});
+
+// ── Thumbs up/down on an agent reply → developer signal ──────────────────────
+// Fire-and-forget: the panel never blocks on this and a failure is silent.
+router.post('/agent/feedback', async (req, res) => {
+  try {
+    const rating = req.body.rating === 'up' ? 'up' : 'down';
+    await recordAgentFeedback({
+      agent: 'design',
+      rating,
+      prompt: req.body.prompt,
+      reply: req.body.reply,
+      fill: req.body.fill,
+      throttle: req.body.throttle,
+      focusField: req.body.focusField || req.body.focusSection,
+      scope: req.body.scope,
+      note: req.body.note,
+      req,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Agent feedback error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

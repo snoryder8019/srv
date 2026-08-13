@@ -1,0 +1,21 @@
+# Install on the VPS:
+#   cp srv-domainprov.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now srv-domainprov
+# Logs:  journalctl -u srv-domainprov -f
+[Unit]
+Description=Slab domain-provisioner (tenant custom domains -> Apache vhost + Lets Encrypt)
+After=network-online.target apache2.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Runs as root: needs to write /etc/apache2, run certbot, reload apache.
+User=root
+WorkingDirectory=/opt/domain-provisioner
+EnvironmentFile=/opt/domain-provisioner/.env
+ExecStart=/usr/bin/node /opt/domain-provisioner/provisioner.mjs
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

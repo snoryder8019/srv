@@ -1,14 +1,15 @@
 <!DOCTYPE html>
+<% const _t = (typeof t === 'function') ? t : (k => k); %>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <%- include('../partials/seo-head', { seo: { title: (settings.title || 'Book a Meeting') + ' — ' + (brand?.name || '') } }) %>
+  <%- include('../partials/seo-head', { seo: { title: (settings.title || _t('booking.book_a_meeting')) + ' — ' + (brand?.name || '') } }) %>
   <%- include('../partials/font-vars') %>
   <%- include('../partials/landing-styles') %>
   <style>
     /* ── booking page — uses tenant design tokens from landing-styles ── */
-    body.booking-page { background: var(--bg, var(--ivory)); color: var(--on-ivory, var(--dark)); padding-top: 96px; }
+    body.booking-page { background: var(--bg, var(--ivory)); color: var(--on-ivory, var(--dark)); padding-top: max(24px, var(--nav-clear)); }
 
     .booking-hero { padding: 24px 24px 0; text-align: center; max-width: 720px; margin: 0 auto; }
     .booking-hero h1 { font-family: var(--font-heading), serif; font-size: clamp(1.8rem, 3.4vw, 2.6rem); font-weight: 400; color: var(--on-ivory, var(--dark)); margin-bottom: 10px; line-height: 1.15; }
@@ -58,20 +59,20 @@
 <% } %>
 
 <% if (success) { %>
-<div class="alert alert-success">✓ Your meeting request has been submitted! Check your email for a confirmation.</div>
+<div class="alert alert-success">✓ <%= _t('booking.success_submitted') %></div>
 <% } %>
 <% if (error) { %>
 <div class="alert alert-error">
-  <% if (error === 'taken') { %>That time slot was just booked — please choose another.
-  <% } else if (error === 'missing') { %>Please fill in all required fields.
-  <% } else if (error === 'captcha') { %>Verification failed — please try submitting again.
-  <% } else { %>Something went wrong. Please try again.<% } %>
+  <% if (error === 'taken') { %><%= _t('booking.error_taken') %>
+  <% } else if (error === 'missing') { %><%= _t('booking.error_missing') %>
+  <% } else if (error === 'captcha') { %><%= _t('booking.error_captcha') %>
+  <% } else { %><%= _t('booking.error_generic') %><% } %>
 </div>
 <% } %>
 
 <div class="booking-hero">
-  <h1><%= settings.title || 'Book a Meeting' %></h1>
-  <p><%= settings.subtitle || 'Choose a time that works for you.' %></p>
+  <h1><%= settings.title || _t('booking.book_a_meeting') %></h1>
+  <p><%= settings.subtitle || _t('booking.choose_time') %></p>
 </div>
 
 <div class="booking-layout">
@@ -81,18 +82,18 @@
       <% days.forEach((day, i) => { %>
       <button class="day-btn <%= i === 0 ? 'active' : '' %>" data-day="<%= i %>" onclick="selectDay(<%= i %>, this)">
         <span class="day-label"><%= day.label %></span>
-        <span class="day-count"><%= day.slots.length %> slot<%= day.slots.length !== 1 ? 's' : '' %></span>
+        <span class="day-count"><%= day.slots.length %> <%= day.slots.length !== 1 ? _t('booking.slots_plural') : _t('booking.slot_singular') %></span>
       </button>
       <% }); %>
       <% if (!days.length) { %>
-      <div style="text-align:center;padding:40px;color:var(--on-surface-muted, var(--muted));font-size:14px">No available slots in the next <%= settings.advanceDays || 14 %> days.</div>
+      <div style="text-align:center;padding:40px;color:var(--on-surface-muted, var(--muted));font-size:14px"><%= _t('booking.no_slots_prefix') %> <%= settings.advanceDays || 14 %> <%= _t('booking.no_slots_suffix') %></div>
       <% } %>
     </div>
   </div>
 
   <div class="slots-panel">
     <div class="slots-header" id="slotsHeader">
-      <% if (days.length) { %><%= days[0]?.label %><% } else { %>No availability<% } %>
+      <% if (days.length) { %><%= days[0]?.label %><% } else { %><%= _t('booking.no_availability') %><% } %>
     </div>
 
     <div class="slots-grid" id="slotsGrid">
@@ -101,7 +102,7 @@
         <button class="slot-btn" data-iso="<%= slot.iso %>" data-label="<%= days[0].label %> at <%= slot.label %>" onclick="selectSlot(this)"><%= slot.label %></button>
         <% }); %>
       <% } else { %>
-      <div class="slot-placeholder" style="grid-column:span 2">Select a date</div>
+      <div class="slot-placeholder" style="grid-column:span 2"><%= _t('booking.select_a_date') %></div>
       <% } %>
     </div>
 
@@ -111,17 +112,17 @@
         <input type="hidden" name="slotIso" id="slotIso">
         <div aria-hidden="true" style="position:absolute;left:-5000px;width:1px;height:1px;overflow:hidden;"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
         <div class="form-row-2">
-          <div class="form-field"><label>First Name *</label><input name="firstName" required></div>
-          <div class="form-field"><label>Last Name</label><input name="lastName"></div>
+          <div class="form-field"><label><%= _t('booking.first_name') %> *</label><input name="firstName" required></div>
+          <div class="form-field"><label><%= _t('booking.last_name') %></label><input name="lastName"></div>
         </div>
-        <div class="form-field"><label>Email *</label><input type="email" name="email" required></div>
+        <div class="form-field"><label><%= _t('booking.email') %> *</label><input type="email" name="email" required></div>
         <div class="form-row-2">
-          <div class="form-field"><label>Phone</label><input type="tel" name="phone"></div>
-          <div class="form-field"><label>Company</label><input name="company"></div>
+          <div class="form-field"><label><%= _t('booking.phone') %></label><input type="tel" name="phone"></div>
+          <div class="form-field"><label><%= _t('booking.company') %></label><input name="company"></div>
         </div>
-        <div class="form-field"><label>Message</label><textarea name="message" placeholder="Anything we should know before the meeting?"></textarea></div>
+        <div class="form-field"><label><%= _t('booking.message') %></label><textarea name="message" placeholder="<%= _t('booking.message_placeholder') %>"></textarea></div>
         <input type="hidden" name="name" id="fullNameHidden">
-        <button type="submit" class="btn-book" id="bookBtn">Request Meeting</button>
+        <button type="submit" class="btn-book" id="bookBtn"><%= _t('booking.request_meeting') %></button>
       </form>
     </div>
 

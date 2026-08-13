@@ -5,6 +5,8 @@
 // Calendar without the admin hand-picking each time.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { randomUUID } from 'node:crypto';
+
 // Good local posting hours per day, well-spaced: morning, midday, evening.
 // A day is FILLED across these before the schedule advances to the next day.
 const POST_HOURS = [9, 13, 18];
@@ -16,16 +18,32 @@ function dayKey(dt) { return `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate(
 // at the same single time. One platform → one doc. `base` carries the shared
 // fields (body, mediaUrls, format …). Slots run short? later networks reuse the
 // last slot rather than dropping the post.
-export function staggerByPlatform(base, platforms, slots) {
+//
+// Every doc in the run shares a `groupId`. Siblings carry identical body+media,
+// so without that link the Calendar renders one composed post as N chips with
+// the same thumbnail — indistinguishable from real duplicates. `groupId` lets
+// the calendar collapse same-day siblings into a single chip and badge the
+// cross-day ones as "n of N" (see routes/admin/social/dashboard.js).
+// `opts.groupId` joins these docs to an EXISTING run — used when the caller
+// already updated one doc in place (see suggestions.js auto-slot) and needs the
+// clones to share that doc's group rather than starting a fresh one.
+export function staggerByPlatform(base, platforms, slots, opts = {}) {
   const list = (platforms && platforms.length) ? platforms : [null];
   const times = slots && slots.length ? slots : [null];
+  // Only a real multi-doc run needs a group — a single doc has nothing to link to.
+  const groupId = opts.groupId || (list.length > 1 ? newGroupId() : null);
   return list.map((p, i) => ({
     ...base,
+    ...(groupId ? { groupId } : {}),
     platforms: p ? [p] : [],
     status: 'scheduled',
     scheduledAt: times[i] || times[times.length - 1] || null,
   }));
 }
+
+// Shared id for one staggered run. Exported so callers that update a doc in
+// place can stamp it with the same group they pass to staggerByPlatform().
+export function newGroupId() { return `stg_${randomUUID().replace(/-/g, '').slice(0, 16)}`; }
 
 // Suggest `count` future slots. Packs each day's posting hours (with spacing)
 // before moving to the next day — so a batch fills morning/midday/evening rather

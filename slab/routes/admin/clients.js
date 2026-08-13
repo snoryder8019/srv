@@ -3,7 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getDb } from '../../plugins/mongo.js';
 import { clientFileUpload } from '../../middleware/upload.js';
 import { generateInvoiceNumber, generatePaymentToken, calculateTotal, getNextGenerateDate } from '../../plugins/invoiceHelpers.js';
-import { sendInvoiceEmail, sendClientEmail, renderCampaignEmail, renderInvoiceEmail, formatEmailBody } from '../../plugins/mailer.js';
+import { sendInvoiceEmail, sendClientEmail, renderCampaignEmail, renderInvoiceEmail, formatEmailBody, resolveSmtp, trackingEnabled } from '../../plugins/mailer.js';
 import { config } from '../../config/config.js';
 import { normalizeSubject } from '../../plugins/imapPoller.js';
 import { runTool, callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
@@ -697,16 +697,21 @@ router.post('/:id/emails/send', emailAttachmentUpload, async (req, res) => {
     // Process attachments (uploads to S3 + records in Files tab)
     const { attachments, records } = await processEmailAttachments(req, req.params.id);
 
-    // Send the email
+    // Send the email. The history _id is reserved first so the open pixel and
+    // click links can point back at this exact row (Emails tab shows the state).
     const ccList = cc ? cc.split(',').map(e => e.trim()).filter(Boolean) : [];
-    const info = await sendClientEmail(toAddr, ccList, subject, body, null, req.tenant, attachments);
+    const emailId = new ObjectId();
+    const info = await sendClientEmail(toAddr, ccList, subject, body, null, req.tenant, attachments, { trackId: emailId });
 
     // Store in history — this outbound becomes the thread root
     const baseSubj = normalizeSubject(subject);
-    const result = await db.collection('client_emails').insertOne({
+    await db.collection('client_emails').insertOne({
+      _id: emailId,
+      threadId: emailId,
+      tracked: trackingEnabled(req.tenant),
       clientId: client._id.toString(),
       direction: 'outbound',
-      from: config.ZOHO_USER,
+      from: resolveSmtp(req.tenant).user || config.ZOHO_USER,
       to: toAddr,
       cc: ccList,
       subject,
@@ -718,11 +723,6 @@ router.post('/:id/emails/send', emailAttachmentUpload, async (req, res) => {
       sentBy: req.adminUser?.displayName || 'admin',
       sentAt: new Date(),
     });
-    // Set threadId to own _id (thread root)
-    await db.collection('client_emails').updateOne(
-      { _id: result.insertedId },
-      { $set: { threadId: result.insertedId } }
-    );
 
     console.log(`[Clients] Email sent to ${toAddr} (client: ${client.name})`);
     res.redirect(`/admin/clients/${req.params.id}?tab=emails&success=Email+sent`);
@@ -769,12 +769,15 @@ router.post('/:id/emails/reply', emailAttachmentUpload, async (req, res) => {
       }
     }
 
-    const info = await sendClientEmail(toAddr, [], replySubject, body, threadHeaders, req.tenant, attachments);
+    const emailId = new ObjectId();
+    const info = await sendClientEmail(toAddr, [], replySubject, body, threadHeaders, req.tenant, attachments, { trackId: emailId });
 
     await db.collection('client_emails').insertOne({
+      _id: emailId,
+      tracked: trackingEnabled(req.tenant),
       clientId: client._id.toString(),
       direction: 'outbound',
-      from: config.ZOHO_USER,
+      from: resolveSmtp(req.tenant).user || config.ZOHO_USER,
       to: toAddr,
       cc: [],
       subject: replySubject,

@@ -8,9 +8,19 @@ import jwt from 'jsonwebtoken';
 import { config } from '../../config/config.js';
 import { logActivity } from '../../plugins/activityLog.js';
 import { PLATFORM_LIST, maskAccount } from '../../plugins/socialPublish.js';
+// The exact scope string the Connect button asks for — the connections partial
+// offers it for copy/paste so a hand-built Graph Explorer token matches it.
+import { FB_LOGIN_SCOPES } from './social/oauth.js';
+import { SUPPORTED_LOCALES, DEFAULT_LOCALE, isSupportedLocale } from '../../plugins/i18n.js';
 import { toggleableFunctions, toggleableFunctionKeys } from '../../plugins/featureRegistry.js';
 import { buildAuthUrl, exchangeCode, isOAuthProvider, EMAIL_OAUTH_PROVIDERS } from '../../plugins/emailOAuth.js';
 import { notifyAdmin } from '../../plugins/notify.js';
+import { emailConfigured } from '../../plugins/mailer.js';
+import {
+  linodeConfigured, ensureZone, publishWebRecords, publishMailRecords,
+  publishZohoVerification, LINODE_NAMESERVERS,
+} from '../../plugins/linodeDns.js';
+import { provisionDomainSafe, ingressConfigured } from '../../plugins/ingressProvision.js';
 
 const router = express.Router();
 
@@ -98,6 +108,9 @@ router.get('/', async (req, res) => {
   settings.gmailOAuthConnected   = !!tenant.secrets?.gmailOAuthRefreshToken;
   settings.outlookOAuthConnected = !!tenant.secrets?.outlookOAuthRefreshToken;
   settings.emailAuthMode = tenant.public?.emailAuthMode || 'password';
+  // True once a sending mailbox is actually usable (SMTP password OR OAuth) —
+  // drives the email setup wizard's initial state (summary vs. chooser).
+  settings.emailConfigured = emailConfigured(tenant);
   // The exact redirect URI the tenant must register in their OAuth app
   settings.emailOAuthRedirectBase = `https://${tenant.meta?.customDomain || tenant.public?.customDomain || tenant.domain}/admin/settings/email/oauth`;
   // Microsoft (Azure AD) sign-in redirect URI to register in the tenant's app
@@ -117,6 +130,8 @@ router.get('/', async (req, res) => {
   settings.status = tenant.status;
   settings.plan = tenant.meta?.plan || 'free';
   settings.customDomain = tenant.meta?.customDomain || tenant.public?.customDomain || '';
+  settings.linodeDomainId = tenant.meta?.linodeDomainId || null;
+  settings.linodeManaged = linodeConfigured();
   // Custom domain requires an active paid plan (trial/preview must subscribe first).
   settings.customDomainPaidRequired = !(
     tenant.status === 'active' &&
@@ -205,6 +220,11 @@ router.get('/', async (req, res) => {
     user: req.adminUser,
     page: 'settings',
     settings,
+    // Language / localization controls
+    supportedLocales: SUPPORTED_LOCALES,
+    tenantLanguage: isSupportedLocale(tenant.public?.language) ? tenant.public.language : DEFAULT_LOCALE,
+    tenantAdminLanguage: isSupportedLocale(tenant.public?.adminLanguage) ? tenant.public.adminLanguage : '',
+    multilangEnabled: String(tenant.public?.multilang ?? 'false') === 'true',
     toggleableFunctions: toggleableFunctions(),
     disabledFunctions: (tenant.public?.disabledFunctions || '').split(',').map((x) => x.trim()).filter(Boolean),
     brandProfile,
@@ -215,6 +235,7 @@ router.get('/', async (req, res) => {
     deletionRequests,
     publicBaseUrl,
     publicWebhookUrl,
+    metaScopes: FB_LOGIN_SCOPES,
     saved: req.query.saved || null,
     error: req.query.error || null,
     // Google OAuth connect flags — surfaced by the connections partial's hint.
@@ -279,6 +300,20 @@ router.post('/', async (req, res) => {
     updates['public.networkMarket'] = joined ? asBool(req.body.networkMarket) : 'false';
     updates['public.networkContent'] = joined ? asBool(req.body.networkContent) : 'false';
     updates['public.networkFollow'] = joined ? asBool(req.body.networkFollow) : 'false';
+  }
+
+  // Language — the tenant's default public locale + whether to show the visitor
+  // language switcher. Guarded by a form marker so saving another section can't
+  // reset it. Validate the locale so only supported codes are ever stored.
+  if (req.body.languageForm !== undefined) {
+    const asBool = (v) => (v === 'on' || v === 'true') ? 'true' : 'false';
+    const lang = String(req.body.language || '').toLowerCase();
+    updates['public.language'] = isSupportedLocale(lang) ? lang : DEFAULT_LOCALE;
+    // Admin/workspace language is independent of the public default. Empty →
+    // inherit the public default (store '' so the middleware fallback applies).
+    const adminLang = String(req.body.adminLanguage || '').toLowerCase();
+    updates['public.adminLanguage'] = isSupportedLocale(adminLang) ? adminLang : '';
+    updates['public.multilang'] = asBool(req.body.multilang);
   }
 
   // Slab Functions — per-tenant sidebar tool visibility. Only enabled tools post
@@ -348,6 +383,17 @@ router.post('/', async (req, res) => {
     // Bust every hostname this tenant may be cached under
     for (const d of [canonicalDomain, tenant.domain, tenant.customDomain, tenant.meta?.customDomain]) {
       if (d) bustTenantCache(d);
+    }
+
+    // Auto-push: if a custom domain was set/confirmed in this save, ask the VPS
+    // ingress-mcp to put it live (Let's Encrypt cert + Apache vhost) right now,
+    // rather than waiting on any poll. Paid-only (blocked saves already stripped
+    // the field), custom domains only, fire-and-forget. `dns_not_pointed` is
+    // handled gracefully inside — the tenant just re-saves once DNS propagates.
+    const savedDomain = (updates['public.customDomain'] || '').trim().toLowerCase();
+    if (savedDomain && !customDomainBlocked
+        && !savedDomain.endsWith('.madladslab.com') && ingressConfigured()) {
+      provisionDomainSafe(savedDomain);
     }
 
     // Build a readable list of what changed
@@ -650,10 +696,32 @@ router.post('/auto-create-dns', async (req, res) => {
     if (!zohoUser) return res.json({ ok: false, error: 'Set Zoho email first' });
 
     const emailDomain = zohoUser.split('@')[1];
+    if (!emailDomain) return res.json({ ok: false, error: 'Invalid email domain' });
 
-    // Only auto-create for madladslab.com subdomains
-    if (!emailDomain || !emailDomain.endsWith('.madladslab.com')) {
-      return res.json({ ok: false, error: 'Auto-create only works for *.madladslab.com subdomains. For custom domains, add records manually in your DNS provider.' });
+    // Custom-domain path: if this tenant has a Linode zone, publish the mail
+    // record set into it via the wrapper. (Generalizes the old madladslab-only
+    // path — no more "add records manually" dead end for custom domains.)
+    if (!emailDomain.endsWith('.madladslab.com')) {
+      const linodeDomainId = req.tenant?.meta?.linodeDomainId;
+      if (!linodeConfigured()) return res.json({ ok: false, error: 'Linode API not configured' });
+      if (!linodeDomainId) {
+        return res.json({ ok: false, error: 'Create the domain zone first (Settings → Domain → Create zone), then retry.' });
+      }
+      try {
+        await publishMailRecords(linodeDomainId, emailDomain);
+        logActivity({
+          category: 'settings', action: 'dns_auto_create',
+          tenantDomain: req.tenant?.domain, tenantId: req.tenant?._id, status: 'success',
+          actor: { email: req.adminUser?.email, role: 'admin' },
+          details: { emailDomain, via: 'linode-zone', linodeDomainId }, ip: req.ip,
+        });
+        return res.json({
+          ok: true, created: ['MX', 'SPF', 'DMARC', 'Return-Path CNAME'], errors: [],
+          note: 'DKIM must still be added manually — get the key from Zoho Mail Admin → DKIM. DNS changes take up to 5 minutes to propagate.',
+        });
+      } catch (e) {
+        return res.json({ ok: false, error: e.message });
+      }
     }
 
     if (!config.LINODE_API_TOKEN || !config.LINODE_DOMAIN_ID) {
@@ -931,6 +999,154 @@ router.post('/keys/:id/delete', async (req, res) => {
   } catch (err) {
     console.error('[settings/keys] delete error:', err);
     res.redirect('/admin/settings/keys?err=save');
+  }
+});
+
+// ── Custom-domain provisioning via Linode (Tier 1) ───────────────────────────
+// Intake is here in Slab; the zone + records are API'd into Linode. The tenant's
+// only manual step is the one-time nameserver switch at their registrar.
+
+/** The tenant's configured custom domain (apex, lowercased) or null. */
+function tenantCustomDomain(tenant) {
+  const raw = tenant?.meta?.customDomain || tenant?.public?.customDomain || '';
+  const d = String(raw).trim().toLowerCase().replace(/^www\./, '');
+  if (!d || d.endsWith('.madladslab.com') || d === 'madladslab.com') return null;
+  return d;
+}
+
+async function persistTenantMeta(tenant, set) {
+  const slab = getSlabDb();
+  const canonicalDomain = tenant.wildcardDomain || tenant.domain;
+  await slab.collection('tenants').updateOne(
+    { domain: canonicalDomain },
+    { $set: { ...set, updatedAt: new Date() } },
+  );
+  for (const d of [canonicalDomain, tenant.domain, tenant.customDomain, tenant.meta?.customDomain]) {
+    if (d) bustTenantCache(d);
+  }
+}
+
+// Step 1 — create (or find) the Linode zone for the tenant's custom domain,
+// write the website A records, and store linodeDomainId on the tenant. Returns
+// the nameservers the tenant must set once at their registrar.
+router.post('/domain/ensure-zone', async (req, res) => {
+  try {
+    const tenant = req.tenant;
+    if (!tenant) return res.json({ ok: false, error: 'No tenant' });
+    if (!linodeConfigured()) return res.json({ ok: false, error: 'Linode API not configured (set LINODE_API_TOKEN)' });
+
+    const domain = tenantCustomDomain(tenant);
+    if (!domain) return res.json({ ok: false, error: 'Set a custom domain in settings first (a *.madladslab.com subdomain does not need this).' });
+
+    const { id, created } = await ensureZone(domain);
+    await publishWebRecords(id);
+    await persistTenantMeta(tenant, { 'meta.linodeDomainId': id, 'meta.customDomain': domain });
+
+    logActivity({
+      category: 'settings', action: 'domain_zone_ensured',
+      tenantDomain: tenant.domain, tenantId: tenant._id, status: 'success',
+      actor: { email: req.adminUser?.email, role: 'admin' },
+      details: { domain, linodeDomainId: id, created }, ip: req.ip,
+    });
+
+    res.json({
+      ok: true, domain, linodeDomainId: id, created,
+      nameservers: LINODE_NAMESERVERS,
+      message: created
+        ? 'Zone created. Point your domain’s nameservers at Linode (below), then click Verify.'
+        : 'Zone already existed. Confirm the nameservers below are set, then click Verify.',
+    });
+  } catch (err) {
+    console.error('[settings] ensure-zone error:', err);
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// Add the Zoho domain-ownership TXT to the managed zone. The zone lives on the
+// platform's Linode account, so the tenant can't add this at a registrar — Slab
+// writes it. Value comes from Zoho Mail Admin → Add Domain → TXT method.
+router.post('/domain/zoho-verify-txt', express.json(), async (req, res) => {
+  try {
+    const tenant = req.tenant;
+    if (!tenant) return res.json({ ok: false, error: 'No tenant' });
+    if (!linodeConfigured()) return res.json({ ok: false, error: 'Managed DNS not available (Linode API not configured)' });
+    const linodeDomainId = tenant.meta?.linodeDomainId;
+    if (!linodeDomainId) return res.json({ ok: false, error: 'Create the DNS zone first (use “Create DNS Zone” above).' });
+
+    const value = (req.body?.value || '').toString();
+    if (!value.trim()) return res.json({ ok: false, error: 'Paste the verification value Zoho gave you.' });
+
+    const { record, changed } = await publishZohoVerification(linodeDomainId, value);
+    logActivity({
+      category: 'settings', action: 'domain_zoho_verify_txt',
+      tenantDomain: tenant.domain, tenantId: tenant._id, status: 'success',
+      actor: { email: req.adminUser?.email, role: 'admin' },
+      details: { target: record.target, changed }, ip: req.ip,
+    });
+    res.json({
+      ok: true, target: record.target, changed,
+      message: changed
+        ? 'Verification TXT published to your zone. Give it 2–5 minutes to propagate, then click Verify in Zoho.'
+        : 'That verification TXT is already in your zone — you can click Verify in Zoho now.',
+    });
+  } catch (err) {
+    console.error('[settings] zoho-verify-txt error:', err);
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// Step 2 — check nameserver delegation + whether the apex points at the VPS. If
+// delegation is live, publish the Zoho mail record set (idempotent). DKIM's
+// domain-specific key still has to be copied from Zoho Mail Admin.
+router.post('/domain/verify', async (req, res) => {
+  try {
+    const tenant = req.tenant;
+    if (!tenant) return res.json({ ok: false, error: 'No tenant' });
+    const domain = tenantCustomDomain(tenant);
+    if (!domain) return res.json({ ok: false, error: 'No custom domain configured' });
+
+    const { resolveNs, resolve4 } = await import('dns/promises');
+
+    let delegated = false, nsList = [];
+    try {
+      nsList = await resolveNs(domain);
+      delegated = nsList.some((ns) => /(^|\.)linode\.com\.?$/i.test(ns));
+    } catch { /* NS not resolvable yet */ }
+
+    let pointsToVps = false, aList = [];
+    try {
+      aList = await resolve4(domain);
+      pointsToVps = aList.includes(config.LINODE_IP);
+    } catch { /* apex A not resolvable yet */ }
+
+    let mailPublished = false, mailError = null;
+    const linodeDomainId = tenant.meta?.linodeDomainId;
+    if (delegated && linodeDomainId && linodeConfigured()) {
+      try { await publishMailRecords(linodeDomainId, domain); mailPublished = true; }
+      catch (e) { mailError = e.message; }
+    }
+
+    logActivity({
+      category: 'settings', action: 'domain_verify',
+      tenantDomain: tenant.domain, tenantId: tenant._id,
+      status: delegated ? 'success' : 'pending',
+      actor: { email: req.adminUser?.email, role: 'admin' },
+      details: { domain, delegated, pointsToVps, mailPublished }, ip: req.ip,
+    });
+
+    res.json({
+      ok: true, domain, delegated, nameservers: nsList,
+      pointsToVps, aRecords: aList,
+      expectedNameservers: LINODE_NAMESERVERS,
+      expectedIp: config.LINODE_IP,
+      mailPublished, mailError,
+      message: delegated
+        ? (mailPublished ? 'Delegation live — mail records published. SSL provisions automatically within a few minutes.' : 'Delegation live.')
+        : 'Nameservers not delegated to Linode yet. Set them at your registrar; DNS can take up to an hour to propagate.',
+    });
+  } catch (err) {
+    console.error('[settings] domain verify error:', err);
+    res.json({ ok: false, error: err.message });
   }
 });
 

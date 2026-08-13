@@ -1,0 +1,124 @@
+<%
+  /**
+   * Dashboard marquee — the next 7 days of the whole business.
+   * Reads /admin/calendar/feed.json (the same source registry the full calendar
+   * uses), so a new calendar source appears here with no change to this file.
+   * Loaded client-side on purpose: the dashboard route stays untouched, and a
+   * slow source can never delay the dashboard render.
+   */
+%>
+<style>
+  .mq-wrap    { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 16px 16px;
+              margin-bottom:18px; width:100%; min-width:0; box-sizing:border-box; }
+  .mq-head    { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:11px; }
+  .mq-title   { font-size:0.95rem; font-weight:700; color:var(--on-surface); display:flex; align-items:center; gap:8px; margin:0; }
+  .mq-sub     { font-size:0.72rem; color:var(--slate); }
+  .mq-links   { display:flex; gap:6px; flex-wrap:wrap; }
+  .mq-link    { font-size:0.68rem; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; text-decoration:none;
+                color:var(--navy,#1C2B4A); border:1px solid var(--border); border-radius:3px; padding:5px 10px; }
+  .mq-link:hover { border-color:var(--gold,#C9A848); }
+  .mq-strip   { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:8px; }
+  @media (max-width:900px){ .mq-strip { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+  @media (max-width:560px){ .mq-strip { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  .mq-day     { border:1px solid var(--border); border-radius:6px; padding:7px 7px 8px; min-height:96px;
+              background:var(--surface); min-width:0; }
+  .mq-day.today { border-color:var(--gold,#C9A848); background:color-mix(in srgb, var(--gold,#C9A848) 7%, transparent); }
+  .mq-dh      { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:5px; }
+  .mq-dw      { font-size:0.58rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--slate); }
+  .mq-dd      { font-size:0.86rem; font-weight:700; color:var(--on-surface); text-decoration:none; }
+  .mq-ev      { display:flex; align-items:center; gap:4px; font-size:0.66rem; line-height:1.4; padding:2px 4px; margin-bottom:2px;
+                border-left:2px solid var(--ev,#6B7380); border-radius:2px; background:color-mix(in srgb, var(--ev,#6B7380) 10%, transparent);
+                color:var(--on-surface); text-decoration:none; }
+  .mq-ev:hover{ background:color-mix(in srgb, var(--ev,#6B7380) 20%, transparent); }
+  .mq-ev span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mq-none    { font-size:0.63rem; color:var(--slate); padding:2px 3px; }
+  .mq-more    { font-size:0.6rem; color:var(--slate); text-decoration:none; display:inline-block; margin-top:2px; }
+  .mq-msg     { font-size:0.75rem; color:var(--slate); padding:14px 4px; }
+</style>
+
+<div class="mq-wrap" id="calMarquee">
+  <div class="mq-head">
+    <div>
+      <h2 class="mq-title">&#128197; The week ahead</h2>
+      <div class="mq-sub" id="mqSub">Loading the next 7 days…</div>
+    </div>
+    <div class="mq-links">
+      <a class="mq-link" href="/admin/calendar?view=week">Week</a>
+      <a class="mq-link" href="/admin/calendar?view=month">Month</a>
+      <a class="mq-link" href="/admin/calendar?view=year">Year</a>
+      <a class="mq-link" href="/admin/calendar">Open calendar</a>
+    </div>
+  </div>
+  <div class="mq-strip" id="mqStrip"></div>
+</div>
+
+<script>
+(function () {
+  var strip = document.getElementById('mqStrip');
+  var sub = document.getElementById('mqSub');
+  if (!strip) return;
+  var CAP = 4;
+
+  var COLORS = {
+    social:'#7C5CBF', blog:'#2E7D5B', email:'#B7791F', meetings:'#1C6FB8', field:'#0F766E',
+    invoices:'#B45309', engagements:'#5B21B6', mail:'#475569', tasks:'#1C2B4A',
+    blocks:'#9CA3AF', holidays:'#BE123C'
+  };
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+    });
+  }
+  function key(d) {
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+
+  fetch('/admin/calendar/feed.json?days=7')
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d || !d.ok) throw new Error(d && d.error ? d.error : 'feed unavailable');
+      var byDay = {};
+      (d.events || []).forEach(function (ev) {
+        var k = key(new Date(ev.at));
+        (byDay[k] = byDay[k] || []).push(ev);
+      });
+
+      var today = new Date(); today.setHours(0,0,0,0);
+      var html = '';
+      var total = 0;
+      for (var i = 0; i < 7; i++) {
+        var day = new Date(today); day.setDate(day.getDate() + i);
+        var k = key(day);
+        var rows = byDay[k] || [];
+        total += rows.length;
+        html += '<div class="mq-day' + (i === 0 ? ' today' : '') + '">'
+          + '<div class="mq-dh"><span class="mq-dw">' + day.toLocaleDateString('en-US',{weekday:'short'}) + '</span>'
+          + '<a class="mq-dd" href="/admin/calendar?view=day&date=' + k + '">' + day.getDate() + '</a></div>';
+        if (!rows.length) html += '<div class="mq-none">—</div>';
+        rows.slice(0, CAP).forEach(function (ev) {
+          var t = ev.allDay ? '' : new Date(ev.at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) + ' ';
+          html += '<a class="mq-ev" style="--ev:' + (COLORS[ev.source] || '#6B7380') + '" href="' + esc(ev.url || '/admin/calendar') + '" title="' + esc(ev.title) + '">'
+            + '<span>' + esc(t + ev.title) + '</span></a>';
+        });
+        if (rows.length > CAP) {
+          html += '<a class="mq-more" href="/admin/calendar?view=day&date=' + k + '">+' + (rows.length - CAP) + ' more</a>';
+        }
+        html += '</div>';
+      }
+      strip.innerHTML = html;
+      if (sub) {
+        sub.textContent = total
+          ? total + ' item' + (total === 1 ? '' : 's') + ' scheduled across the business'
+          : 'Nothing scheduled in the next 7 days.';
+      }
+      if (d.failed && d.failed.length && sub) {
+        sub.textContent += ' · some sources unavailable (' + d.failed.join(', ') + ')';
+      }
+    })
+    .catch(function (e) {
+      strip.innerHTML = '<div class="mq-msg" style="grid-column:1/-1;">Calendar unavailable right now. <a href="/admin/calendar">Open it directly</a>.</div>';
+      if (sub) sub.textContent = '';
+    });
+})();
+</script>

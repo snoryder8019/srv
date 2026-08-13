@@ -29,23 +29,30 @@ const LIFETIME_PRICE = 2500;                                                   /
 
 /**
  * Platform plans.
- *   amount   — charged total for the window, as a fixed-2 string (checkout wants strings)
- *   days     — access window granted; null = no expiry (lifetime)
+ *   amount   — charged total per billing cycle, as a fixed-2 string (checkout wants strings)
+ *   days     — access window granted per cycle; null = no expiry (lifetime)
  *   monthly  — monthly-equivalent gross (used for delegate commission math)
  *   public   — true if shown on the public go-live pricing cards
+ *   interval — Stripe recurring interval for subscription checkout:
+ *              { unit: 'month'|'year', count: N }. Absent = non-recurring
+ *              (trial has no card; lifetime is a one-time superadmin grant).
+ *              Quarterly bills as every-3-months so the discounted amount recurs.
  */
 export const PLANS = {
   monthly: {
     label: 'Monthly', amount: BASE_MONTHLY.toFixed(2), days: 30,
     monthly: BASE_MONTHLY, public: true,
+    interval: { unit: 'month', count: 1 },
   },
   quarterly: {
     label: 'Quarterly', amount: quarterlyTotal.toFixed(2), days: 90,
     monthly: round2(quarterlyTotal / 3), public: true, discount: DISCOUNTS.quarterly,
+    interval: { unit: 'month', count: 3 },
   },
   annual: {
     label: 'Annual', amount: annualTotal.toFixed(2), days: 365,
     monthly: round2(annualTotal / 12), public: true, discount: DISCOUNTS.annual,
+    interval: { unit: 'year', count: 1 },
   },
   trial: {
     label: 'Free Trial', amount: '0.00', days: TRIAL_DAYS,
@@ -56,6 +63,11 @@ export const PLANS = {
     monthly: 0, public: false, // superadmin-assign only — never a public card
   },
 };
+
+// Days after expiry before a lapsed subscription is enforced (read-only).
+// Covers Stripe's retry window for a failed charge so a transient decline
+// doesn't restrict a paying tenant.
+export const BILLING_GRACE_DAYS = 3;
 
 // Sales-delegate commission schedule — % of NET tenant revenue (after owner tax).
 // Year 1 = 40%, Year 2 = 20%, Year 3+ = 10% lifetime royalty while subscribed.

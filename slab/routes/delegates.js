@@ -787,6 +787,7 @@ router.get('/admin/:id', async (req, res) => {
     payoutIdem: 'deleg-' + delegate._id + '-' + crypto.randomBytes(5).toString('hex'),
     error: req.query.error || null,
     msg: req.query.msg || null,
+    tmppw: req.query.tmppw || null,
   });
 });
 
@@ -808,6 +809,34 @@ router.post('/admin/:id/status', async (req, res) => {
   });
 
   res.redirect(`/delegates/admin/${req.params.id}`);
+});
+
+// Reset a delegate's password. Sets a fresh temporary password and returns it to
+// the superadmin ONCE (via query param) to relay — never persisted/logged in
+// plaintext. The delegate can change it under /delegates/panel/settings.
+router.post('/admin/:id/reset-password', async (req, res) => {
+  const back = `/delegates/admin/${req.params.id}`;
+  const slab = getSlabDb();
+  let delegate;
+  try { delegate = await slab.collection('sales_delegates').findOne({ _id: new ObjectId(req.params.id) }); }
+  catch { return res.redirect('/delegates/admin'); }
+  if (!delegate) return res.redirect('/delegates/admin');
+
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const pick = (n) => Array.from(crypto.randomBytes(n)).map((b) => chars[b % chars.length]).join('');
+  const tempPw = `${pick(4)}-${pick(4)}-${pick(4)}`;
+  const hash = await bcrypt.hash(tempPw, 12);
+  await slab.collection('sales_delegates').updateOne(
+    { _id: delegate._id },
+    { $set: { password: hash, updatedAt: new Date() } }
+  );
+  logActivity({
+    category: 'admin_action', action: 'delegate_password_reset',
+    status: 'success',
+    actor: { email: req.superAdmin.email, role: 'superadmin' },
+    details: { delegateId: req.params.id, email: delegate.email },
+  });
+  res.redirect(`${back}?tmppw=${encodeURIComponent(tempPw)}`);
 });
 
 // Add a referral: a Slab subscription (slab.madladslab.com) the delegate sold,

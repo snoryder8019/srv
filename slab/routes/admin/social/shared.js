@@ -87,7 +87,7 @@ function parsePlatforms(raw) {
 // Post format discriminator. 'single' = one feed post (today's behaviour);
 // 'carousel'/'story' fan a post's ordered mediaUrls into a multi-frame publish
 // on the platforms that support it (see platformSupportsFormat).
-const POST_FORMATS = new Set(['single', 'carousel', 'story']);
+const POST_FORMATS = new Set(['single', 'carousel', 'story', 'reel']);
 function parseFormat(raw) {
   const f = String(raw || 'single').trim();
   return POST_FORMATS.has(f) ? f : 'single';
@@ -109,9 +109,12 @@ async function publishPostBackground(db, postId, post, accountMap, meta = {}) {
     const results = await publishPost(post, accountMap);
     const okCount = results.filter(r => r.ok).length;
     const finalStatus = okCount === 0 ? 'failed' : okCount === results.length ? 'published' : 'partial';
+    // A DRAFT reel reached Facebook but is NOT live — flag it so the UI can say
+    // so instead of showing a green "published" for something nobody can see.
+    const needsFinish = results.some(r => r.ok && r.draft);
     await db.collection('social_posts').updateOne(
       { _id: postId },
-      { $set: { status: finalStatus, results, publishedAt: new Date(), updatedAt: new Date() } },
+      { $set: { status: finalStatus, results, needsFinish, publishedAt: new Date(), updatedAt: new Date() } },
     );
     logActivity({
       category: 'social', action: 'post_published',

@@ -6,6 +6,7 @@ import { bustTenantCache } from '../../middleware/tenant.js';
 import { createLoginToken } from '../../middleware/jwtAuth.js';
 import { config } from '../../config/config.js';
 import nodemailer from 'nodemailer';
+import bcrypt from 'bcrypt';
 import { logActivity, getActivityLogs, getSignupFunnel } from '../../plugins/activityLog.js';
 import { scanSrv, scanSrvSummary } from '../../plugins/srvScan.js';
 import { execSync } from 'child_process';
@@ -52,6 +53,15 @@ function isSystemAccount(u) {
       || /^fakebot\d*@/.test(e)
       || e.startsWith('scanner-test@')
       || e === 'bot@slab.system';
+}
+
+// A readable-but-strong one-time password (no ambiguous chars). Used when a
+// superadmin resets a tenant user's or delegate's password — shown ONCE to the
+// superadmin to relay; NEVER logged in plaintext.
+export function genTempPassword() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const pick = (n) => Array.from(crypto.randomBytes(n)).map((b) => chars[b % chars.length]).join('');
+  return `${pick(4)}-${pick(4)}-${pick(4)}`;
 }
 
 router.get('/users', async (req, res) => {
@@ -295,6 +305,34 @@ router.post('/users/:tenantDb/:userId/delete', async (req, res) => {
   res.redirect(`/superadmin/users?tenant=${req.params.tenantDb}`);
 });
 
+// ── Reset a tenant user's password ────────────────────────────────────────────
+// Sets a fresh temporary password (adds the 'local' provider so email login works
+// even for a Google-only account) and hands it back to the superadmin ONCE via a
+// query param. The plaintext is never persisted or logged.
+router.post('/users/:tenantDb/:userId/reset-password', async (req, res) => {
+  const back = `/superadmin/users/${req.params.tenantDb}/${req.params.userId}`;
+  const tDb = getTenantDb(req.params.tenantDb);
+  let user;
+  try { user = await tDb.collection('users').findOne({ _id: new ObjectId(req.params.userId) }); }
+  catch { return res.redirect('/superadmin/users'); }
+  if (!user) return res.redirect('/superadmin/users');
+
+  const tempPw = genTempPassword();
+  const hash = await bcrypt.hash(tempPw, 12);
+  const providers = [...new Set([...(user.providers || (user.provider ? [user.provider] : [])), 'local'])];
+  await tDb.collection('users').updateOne(
+    { _id: user._id },
+    { $set: { password: hash, providers, updatedAt: new Date() } },
+  );
+  await logActivity({
+    category: 'admin_action',
+    action: `Reset password for ${user.email} in ${req.params.tenantDb}`,
+    tenantDomain: req.params.tenantDb,
+    actor: { email: req.superAdmin.email, role: 'superadmin' },
+  });
+  res.redirect(`${back}?tmppw=${encodeURIComponent(tempPw)}`);
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PLATFORM FEATURES — Set each admin feature's release stage platform-wide.
 //   experimental → hidden until a tenant opts in (/admin/labs), badged "exp"
@@ -387,7 +425,56 @@ router.get('/permissions', async (req, res) => {
       totalTenants: tenants.length,
       activeTenants: tenants.filter(t => t.status === 'active').length,
     },
+    success: req.query.success || null,
+    error: req.query.error || null,
   });
+});
+
+// ── Grant tenant admin by email — creates the user in the tenant DB if absent ──
+// The everyday "give this person admin on that site" action. If the email already
+// exists in the tenant it's elevated to admin; otherwise a fresh admin user is
+// created (no password yet — they sign in via Google or a superadmin reset link).
+router.post('/permissions/grant-tenant-admin', async (req, res) => {
+  const back = '/superadmin/permissions';
+  const email = (req.body.email || '').toLowerCase().trim();
+  const tenantDb = (req.body.tenantDb || '').trim();
+  const displayName = (req.body.displayName || '').trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !tenantDb) {
+    return res.redirect(`${back}?error=${encodeURIComponent('A valid email and a tenant are required.')}`);
+  }
+  const slab = getSlabDb();
+  const tenant = await slab.collection('tenants').findOne({ db: tenantDb });
+  if (!tenant) return res.redirect(`${back}?error=${encodeURIComponent('Tenant not found.')}`);
+  try {
+    const tDb = getTenantDb(tenant.db, tenant.dbHost);
+    const existing = await tDb.collection('users').findOne({ email });
+    if (existing) {
+      await tDb.collection('users').updateOne(
+        { _id: existing._id },
+        { $set: { isAdmin: true, role: 'admin', updatedAt: new Date() } },
+      );
+    } else {
+      await tDb.collection('users').insertOne({
+        email,
+        displayName: displayName || email.split('@')[0],
+        isAdmin: true,
+        role: 'admin',
+        providers: [],
+        createdAt: new Date(),
+      });
+    }
+    await logActivity({
+      category: 'admin_action',
+      action: `Granted tenant admin to ${email} in ${tenant.db}${existing ? '' : ' (new user)'}`,
+      tenantDomain: tenant.db,
+      actor: { email: req.superAdmin.email, role: 'superadmin' },
+    });
+    const label = tenant.brand?.name || tenant.domain || tenant.db;
+    res.redirect(`${back}?success=${encodeURIComponent(`${existing ? 'Elevated' : 'Created'} admin ${email} on ${label}.`)}`);
+  } catch (e) {
+    console.error('[superadmin/grant-tenant-admin] error:', e.message);
+    res.redirect(`${back}?error=${encodeURIComponent('Failed to grant admin: ' + e.message)}`);
+  }
 });
 
 router.post('/permissions/platform-role', async (req, res) => {
@@ -468,6 +555,7 @@ router.get('/users/:tenantDb/:userId', async (req, res) => {
     messages,
     analytics,
     isSuperAdminUser: isSuperAdminEmail(user.email),
+    tmppw: req.query.tmppw || null,
   });
 });
 

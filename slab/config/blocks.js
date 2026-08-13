@@ -6,6 +6,7 @@
 export const VALID_BLOCK_TYPES = [
   'hero', 'text', 'split', 'cta', 'cards', 'faq',
   'pricing', 'testimonials', 'stats', 'ticker',
+  'blog', 'aurora',
 ];
 
 /**
@@ -14,11 +15,27 @@ export const VALID_BLOCK_TYPES = [
  * inputType: 'text' | 'textarea'
  */
 export const BLOCK_FIELDS = {
+  blog: [
+    ['heading', 'Heading', 'text'],
+    ['subtext', 'Subtext', 'text'],
+    ['count', 'Posts to show (1-6)', 'text'],
+  ],
+  aurora: [
+    ['heading', 'Heading', 'text'],
+    ['subtext', 'Subtext', 'textarea'],
+    ['cta_text', 'Button Text', 'text'],
+    ['cta_link', 'Button Link', 'text'],
+    ['colors', 'Aurora colors (| separated, blank = brand-derived)', 'text'],
+  ],
   hero: [
+    ['eyebrow', 'Eyebrow (above heading)', 'text'],
+    ['badge', 'Badge (pill, top)', 'text'],
     ['heading', 'Heading', 'text'],
     ['subheading', 'Subheading', 'text'],
     ['cta_text', 'Button Text', 'text'],
     ['cta_link', 'Button Link', 'text'],
+    ['cta2_text', 'Secondary Button Text', 'text'],
+    ['cta2_link', 'Secondary Button Link', 'text'],
   ],
   text: [
     ['heading', 'Heading', 'text'],
@@ -88,6 +105,8 @@ export const BLOCK_FIELDS = {
  * Dummy/placeholder content per block type — used when adding a new block in the builder.
  */
 export const BLOCK_DEFAULTS = {
+  blog:   { heading: 'From the Blog', subtext: '', count: '3' },
+  aurora: { heading: 'A statement worth a whole screen', subtext: '', cta_text: '', cta_link: '', colors: '' },
   hero: {
     heading: 'Welcome to Our Platform',
     subheading: 'Build something extraordinary with the tools you already love.',
@@ -160,6 +179,8 @@ export const BLOCK_DEFAULTS = {
 
 /** Block type display metadata — icons + labels for the builder palette */
 export const BLOCK_META = {
+  blog:         { icon: '✎', label: 'Latest Blog Posts' },
+  aurora:       { icon: '◐', label: 'Aurora (full viewport)' },
   hero:         { icon: '◆', label: 'Hero Banner' },
   text:         { icon: '¶', label: 'Text Section' },
   split:        { icon: '◫', label: 'Split Layout' },

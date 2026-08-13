@@ -11,9 +11,56 @@ import { startSession, writeChunk, stopSession, createYouTubeBroadcast, transiti
 import { startLiveChat, startViewerCounts } from './liveChat.js';
 import { initChatNamespace } from './chatSocket.js';
 
-const activeRooms = new Map(); // token -> Map<socketId, { displayName, isHost }>
+const activeRooms = new Map(); // token -> Map<socketId, { displayName, isHost, sessionId }>
 const roomTranscripts = new Map(); // token -> { lines: [], timer: null, tenantDb: '' }
 const MAX_PARTICIPANTS = 5;
+
+// Sockets that dropped but may still come back. A mobile client's transport
+// closes the instant it loses signal, seconds before its rejoin lands, so the
+// live room map is already empty by then — without this window every 5G blip
+// looks like a brand-new participant and burns a link use.
+const REJOIN_GRACE_MS = 90 * 1000;
+const recentSessions = new Map(); // token -> Map<sessionId, { displayName, expiresAt }>
+
+function rememberSession(token, sessionId, displayName) {
+  if (!token || !sessionId) return;
+  if (!recentSessions.has(token)) recentSessions.set(token, new Map());
+  recentSessions.get(token).set(sessionId, { displayName, expiresAt: Date.now() + REJOIN_GRACE_MS });
+}
+
+// Returns the remembered entry if this session left recently, else null.
+// Prunes expired entries as it goes so the map can't grow unbounded.
+function takeRecentSession(token, sessionId) {
+  const bucket = recentSessions.get(token);
+  if (!bucket) return null;
+  const now = Date.now();
+  for (const [sid, rec] of bucket) {
+    if (rec.expiresAt <= now) bucket.delete(sid);
+  }
+  const hit = sessionId ? bucket.get(sessionId) : null;
+  if (hit) bucket.delete(sessionId);
+  if (!bucket.size) recentSessions.delete(token);
+  return hit || null;
+}
+
+// True if this session is already a meeting participant — either live in the
+// room right now, or dropped within the rejoin grace window. Read-only (does
+// NOT consume the grace entry) so the socket join can still claim it. Lets the
+// page-load route tell "returning participant" from "brand-new visitor" without
+// duplicating the socket layer's session bookkeeping.
+export function peekKnownSession(token, sessionId) {
+  if (!token || !sessionId) return false;
+  const room = activeRooms.get(token);
+  if (room) {
+    for (const info of room.values()) {
+      if (info.sessionId === sessionId) return true;
+    }
+  }
+  const bucket = recentSessions.get(token);
+  const rec = bucket && bucket.get(sessionId);
+  return !!(rec && rec.expiresAt > Date.now());
+}
+
 const TRANSCRIPT_FLUSH_INTERVAL = 120000; // 2 minutes
 
 // Server-side transcript flush — summarizes accumulated lines from ALL participants
@@ -78,7 +125,7 @@ export function initSocketIO(server) {
     } catch {}
 
     socket.on('join-room', async (data) => {
-      const { token, displayName, db: dbName, consentAgreedAt } = data || {};
+      const { token, displayName, db: dbName, consentAgreedAt, sessionId } = data || {};
       if (!token || !displayName) {
         return socket.emit('room-error', { message: 'Name and meeting link required.' });
       }
@@ -94,14 +141,35 @@ export function initSocketIO(server) {
           await db.collection('meetings').updateOne({ _id: meeting._id }, { $set: { status: 'expired' } });
           return socket.emit('room-error', { message: 'This meeting link has expired.' });
         }
-        if (meeting.maxUses && meeting.useCount >= meeting.maxUses) {
+        if (!activeRooms.has(token)) activeRooms.set(token, new Map());
+        const room = activeRooms.get(token);
+
+        // Mobile clients reconnect constantly (5G handoff, backgrounding), and
+        // each reconnect arrives as a new socket id. Match on the browser's
+        // stable sessionId so a rejoin replaces the stale entry instead of
+        // counting as a second participant — otherwise flaky phones burn
+        // through maxUses and spam the participant list.
+        const staleSids = [];
+        if (sessionId) {
+          for (const [sid, info] of room) {
+            if (info.sessionId === sessionId && sid !== socket.id) staleSids.push(sid);
+          }
+        }
+        // Either the old socket is still in the room (fast reconnect) or it
+        // dropped moments ago and is inside the grace window (the common case).
+        const departed = takeRecentSession(token, sessionId);
+        const isRejoin = staleSids.length > 0 || !!departed;
+
+        // Resolved AFTER the rejoin check on purpose: someone already in the
+        // meeting must be able to come back even when the link is maxed out,
+        // otherwise the last seat locks its own occupant out on a dropped bar
+        // of signal.
+        if (!isRejoin && meeting.maxUses && meeting.useCount >= meeting.maxUses) {
           return socket.emit('room-error', { message: 'This meeting link has reached its maximum uses.' });
         }
 
-        // Check room capacity
-        if (!activeRooms.has(token)) activeRooms.set(token, new Map());
-        const room = activeRooms.get(token);
-        if (room.size >= MAX_PARTICIPANTS) {
+        // Check room capacity (the seats we're about to reclaim don't count)
+        if (room.size - staleSids.length >= MAX_PARTICIPANTS) {
           return socket.emit('room-error', { message: 'This meeting is full (max 5 participants).' });
         }
 
@@ -152,31 +220,52 @@ export function initSocketIO(server) {
           }
         }
 
-        // Build the update — always inc useCount + push participant
-        const updateOps = {
-          $inc: { useCount: 1 },
-          $push: { participants: {
-            name: finalName,
-            joinedAt: new Date(),
-            consentAgreedAt: consentAgreedAt ? new Date(consentAgreedAt) : null,
-          } },
-        };
-
-        // Merge $addToSet if we have any auto-tags
-        if (Object.keys(autoTag.$addToSet).length) {
-          updateOps.$addToSet = autoTag.$addToSet;
+        // A rejoin keeps the name it already had — re-deriving it could hand
+        // the same person a different "Guest N" mid-meeting.
+        if (isRejoin) {
+          const prior = staleSids.length ? room.get(staleSids[0]) : departed;
+          if (prior && prior.displayName) finalName = prior.displayName;
         }
 
-        await db.collection('meetings').updateOne(
-          { _id: meeting._id },
-          updateOps
-        );
+        // Only a genuinely new participant consumes a use and gets a record.
+        if (!isRejoin) {
+          const updateOps = {
+            $inc: { useCount: 1 },
+            $push: { participants: {
+              name: finalName,
+              joinedAt: new Date(),
+              consentAgreedAt: consentAgreedAt ? new Date(consentAgreedAt) : null,
+            } },
+          };
 
-        room.set(socket.id, { displayName: finalName, isHost });
+          // Merge $addToSet if we have any auto-tags
+          if (Object.keys(autoTag.$addToSet).length) {
+            updateOps.$addToSet = autoTag.$addToSet;
+          }
+
+          await db.collection('meetings').updateOne(
+            { _id: meeting._id },
+            updateOps
+          );
+        }
+
+        room.set(socket.id, { displayName: finalName, isHost, sessionId: sessionId || null });
         socket.join(token);
         socket.meetingToken = token;
         socket.meetingName = finalName;
         socket.tenantDb = dbName || '';
+
+        // Evict the superseded sockets — after room.set, so the room never
+        // momentarily empties (that would flush and drop the transcript buffer).
+        for (const sid of staleSids) {
+          room.delete(sid);
+          socket.to(token).emit('room-peer-left', { peerId: sid });
+          const stale = meetings.sockets.get(sid);
+          if (stale) {
+            stale.meetingToken = null;   // its disconnect handler is now a no-op
+            stale.disconnect(true);
+          }
+        }
 
         // Send existing peers to the joiner
         const existingPeers = [];
@@ -433,6 +522,10 @@ export function initSocketIO(server) {
       if (!token) return;
       const room = activeRooms.get(token);
       if (room) {
+        const info = room.get(socket.id);
+        // Hold the seat briefly — a mobile client that just lost signal will
+        // rejoin with this same sessionId and should resume, not re-register.
+        if (info && info.sessionId) rememberSession(token, info.sessionId, info.displayName);
         room.delete(socket.id);
         if (room.size === 0) {
           activeRooms.delete(token);
@@ -612,6 +705,55 @@ export function initSocketIO(server) {
       db.collection('meetings').createIndex({ token: 1 }, { unique: true }).catch(() => {});
     } catch {}
   }, 5000);
+
+  // ── Field ops: live GPS location for on-site jobs ──────────────────────────
+  // A field tech (admin/staff) broadcasts their device location for a job; anyone
+  // watching that job's detail page receives it live. Room = 'job:<jobId>'.
+  // DB writes are scoped to the JWT's own tenant (never a client-supplied name)
+  // so a tech can only ping into their own workspace's field_jobs.
+  const field = io.of('/field');
+  field.on('connection', (socket) => {
+    let adminUser = null;
+    try {
+      const match = (socket.handshake.headers.cookie || '').match(/slab_token=([^;]+)/);
+      if (match) {
+        const decoded = jwt.verify(match[1], config.JWT_SECRET);
+        if (decoded.isAdmin) adminUser = decoded;
+      }
+    } catch {}
+    // Field ops is staff-only.
+    if (!adminUser) { socket.disconnect(true); return; }
+    const tenantDb = adminUser.tenantDb || null;
+
+    socket.on('field:join', async (data) => {
+      const { jobId, role } = data || {};
+      if (!jobId) return;
+      let jid; try { jid = new ObjectId(jobId); } catch { return; }
+      socket.jobId = jobId;
+      socket.role = role === 'tech' ? 'tech' : 'viewer';
+      socket.join('job:' + jobId);
+      // Replay the last known location to a freshly-joined viewer.
+      try {
+        const db = tenantDb ? getTenantDb(tenantDb) : getDb();
+        const job = await db.collection('field_jobs').findOne({ _id: jid }, { projection: { location: 1 } });
+        if (job?.location) socket.emit('field:loc', { jobId, ...job.location });
+      } catch {}
+    });
+
+    socket.on('field:loc', async (data) => {
+      if (socket.role !== 'tech' || !socket.jobId) return;
+      const { lat, lng, accuracy } = data || {};
+      if (typeof lat !== 'number' || typeof lng !== 'number' || Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+      let jid; try { jid = new ObjectId(socket.jobId); } catch { return; }
+      const at = new Date();
+      const loc = { lat, lng, accuracy: typeof accuracy === 'number' ? accuracy : null, at, by: adminUser.email || '' };
+      try {
+        const db = tenantDb ? getTenantDb(tenantDb) : getDb();
+        await db.collection('field_jobs').updateOne({ _id: jid }, { $set: { location: loc, updatedAt: at } });
+      } catch (err) { console.error('[field-socket] persist error:', err.message); }
+      field.to('job:' + socket.jobId).emit('field:loc', { jobId: socket.jobId, ...loc });
+    });
+  });
 
   initChatNamespace(io);
   return io;

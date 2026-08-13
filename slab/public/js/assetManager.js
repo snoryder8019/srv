@@ -20,6 +20,101 @@
   let bulkSelected = new Set();
   const BUILTIN_FOLDERS = ['general', 'sections', 'portfolio', 'blog', 'pages', 'clients'];
 
+  const SAF = () => window.SlabAssetFilters;
+
+  /* ── FILTER STATE ──
+     The individual current* vars stay as the working state; these adapt them to
+     the shape the shared filter bar speaks, so the chips, the toolbar controls
+     and the query string can't drift apart. */
+  function filterState() {
+    return {
+      folder: currentFolder,
+      type: currentType,
+      search: currentSearch,
+      clientId: currentClientId || '',
+      channel: currentChannel,
+      campaign: currentCampaign,
+      sort: currentSort,
+    };
+  }
+
+  function setFilter(key, value) {
+    if (key === 'folder') currentFolder = value || 'all';
+    else if (key === 'type') currentType = value || 'all';
+    else if (key === 'search') currentSearch = value || '';
+    else if (key === 'clientId') currentClientId = value || null;
+    else if (key === 'channel') currentChannel = value || '';
+    else if (key === 'campaign') currentCampaign = value || '';
+    else if (key === 'sort') currentSort = value || 'newest';
+  }
+
+  /* Push filter state back onto every toolbar control and the folder panel.
+     Previously each control only ever reset itself, so clicking "All Assets"
+     left a stale channel/type filter silently narrowing the grid. */
+  function syncFilterControls() {
+    document.querySelectorAll('.folder-item').forEach((f) => {
+      const matches = f.dataset.folder === currentFolder
+        && String(f.dataset.clientId || '') === String(currentClientId || '');
+      f.classList.toggle('active', matches);
+    });
+    document.querySelectorAll('.type-tab').forEach((t) => {
+      t.classList.toggle('active', t.dataset.type === currentType);
+    });
+    const s = document.getElementById('searchInput');
+    if (s && s.value.trim() !== currentSearch) s.value = currentSearch;
+    const sortSel = document.getElementById('sortSelect');
+    if (sortSel) sortSel.value = currentSort;
+    const ch = document.getElementById('channelFilter');
+    if (ch) ch.value = currentChannel;
+    const cp = document.getElementById('campaignFilter');
+    if (cp) cp.value = currentCampaign;
+    if (uploadFolderLabel) uploadFolderLabel.textContent = currentFolder === 'all' ? 'general' : currentFolder;
+  }
+
+  function clearAllFilters() {
+    ['folder', 'type', 'search', 'clientId', 'channel', 'campaign'].forEach((k) => {
+      setFilter(k, SAF() ? SAF().emptyValue(k) : '');
+    });
+    syncFilterControls();
+    loadAssets();
+  }
+
+  function removeFilter(key) {
+    setFilter(key, SAF() ? SAF().emptyValue(key) : '');
+    // A client is a slice *of* the clients folder — dropping the folder that
+    // contains it has to drop the client too, or the chips lie.
+    if (key === 'folder') currentClientId = null;
+    syncFilterControls();
+    loadAssets();
+  }
+
+  function chipLabel(key, value) {
+    if (key === 'clientId') {
+      const c = clientsList.find((x) => String(x._id) === String(value));
+      return c ? (c.company || c.name) : 'Client';
+    }
+    if (key === 'folder') {
+      const custom = customFolders.find((f) => f.slug === value);
+      if (custom) return custom.name;
+      return value.charAt(0).toUpperCase() + value.slice(1);
+    }
+    if (key === 'type') return value === 'image' ? 'Images' : value === 'video' ? 'Videos' : value;
+    if (key === 'channel') {
+      const c = channelsList.find((x) => x.key === value);
+      return c ? c.name : value;
+    }
+    return value;
+  }
+
+  /* Keep the address bar in step with the filters so the view is refreshable,
+     bookmarkable and shareable. Filter state used to live only in memory. */
+  function syncUrl() {
+    if (!SAF()) return;
+    const qs = SAF().buildParams(filterState()).toString();
+    const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    window.history.replaceState(null, '', url);
+  }
+
   const grid = document.getElementById('assetGrid');
   const metaBody = document.getElementById('metaBody');
   const metaFooter = document.getElementById('metaFooter');
@@ -120,11 +215,10 @@
       // Click to browse
       el.addEventListener('click', (e) => {
         if (e.target.closest('.folder-del') || e.target.closest('.folder-rename')) return;
-        document.querySelectorAll('.folder-item').forEach(fi => fi.classList.remove('active'));
-        el.classList.add('active');
         currentFolder = f.slug;
         currentClientId = null;
-        uploadFolderLabel.textContent = f.name;
+        syncFilterControls();
+        uploadFolderLabel.textContent = f.name; // custom folders show their display name
         loadAssets();
       });
 
@@ -200,7 +294,9 @@
         // Get count of assets that will be fully deleted
         let count = 0;
         try {
-          const cr = await fetch(`/admin/assets/list?folder=${f.slug}&limit=0`);
+          // limit=1: we only want `total`. limit=0 means *unlimited* in Mongo,
+          // so this used to drag the folder's entire document set over the wire.
+          const cr = await fetch(`/admin/assets/list?folder=${encodeURIComponent(f.slug)}&limit=1`);
           const cd = await cr.json();
           count = cd.total || 0;
         } catch {}
@@ -214,7 +310,7 @@
           if (data.success) {
             if (currentFolder === f.slug) {
               currentFolder = 'all';
-              document.querySelector('.folder-item[data-folder="all"]')?.classList.add('active');
+              syncFilterControls();
             }
             await loadCustomFolders();
             loadAssets();
@@ -283,39 +379,48 @@
   /* ── FOLDER COUNTS ── */
   async function loadFolderCounts() {
     try {
-      const allFolderSlugs = ['all', ...BUILTIN_FOLDERS, ...customFolders.map(f => f.slug)];
-      await Promise.all(allFolderSlugs.map(async (f) => {
-        const qs = f === 'all' ? '' : `?folder=${f}`;
-        const r = await fetch(`/admin/assets/list${qs}&limit=0`);
-        const data = await r.json();
+      // One aggregation for every badge. This used to be a full asset-list fetch
+      // per folder, and the "all" case built `/admin/assets/list&limit=0` — an
+      // `&` where a `?` belonged, so that request 404'd, rejected the whole
+      // Promise.all, and left every badge at "—" under "Error loading stats".
+      const r = await fetch('/admin/assets/counts');
+      if (!r.ok) throw new Error(`counts ${r.status}`);
+      const data = await r.json();
+
+      folderCounts = data.folders || {};
+      folderCounts.all = data.total ?? 0;
+
+      ['all', ...BUILTIN_FOLDERS, ...customFolders.map(f => f.slug)].forEach((f) => {
         const el = document.getElementById(`cnt-${f}`);
-        if (el) el.textContent = data.total ?? '—';
-        folderCounts[f] = data.total ?? 0;
-      }));
-      // Also count per active client
-      clientsList.filter(c => c.status !== 'inactive').forEach(async (c) => {
-        try {
-          const r = await fetch(`/admin/assets/list?clientId=${c._id}&limit=0`);
-          const data = await r.json();
-          const el = document.getElementById(`cnt-client-${c._id}`);
-          if (el) el.textContent = data.total ?? '—';
-        } catch {}
+        if (el) el.textContent = folderCounts[f] ?? 0;
       });
-      const total = folderCounts['all'] || 0;
+
+      Object.entries(data.clients || {}).forEach(([id, n]) => {
+        const el = document.getElementById(`cnt-client-${id}`);
+        if (el) el.textContent = n;
+      });
+      // Clients with no assets get no aggregation row — show a real zero.
+      clientsList.forEach((c) => {
+        const el = document.getElementById(`cnt-client-${c._id}`);
+        if (el && el.textContent === '—') el.textContent = '0';
+      });
+
+      const total = folderCounts.all || 0;
       folderStats.textContent = `${total} total asset${total !== 1 ? 's' : ''}`;
     } catch (e) {
       folderStats.textContent = 'Error loading stats';
     }
   }
 
-  /* ── FOLDER CLICKS ── */
+  /* ── FOLDER CLICKS ──
+     Selecting a folder narrows the folder only; the other filters stay put but
+     are now visible as chips, so a stale channel filter can't produce a
+     mysteriously empty grid the way it used to. */
   document.querySelectorAll('.folder-item').forEach((el) => {
     el.addEventListener('click', () => {
-      document.querySelectorAll('.folder-item').forEach(f => f.classList.remove('active'));
-      el.classList.add('active');
       currentFolder = el.dataset.folder;
       currentClientId = null; // reset client filter on main folder click
-      uploadFolderLabel.textContent = currentFolder === 'all' ? 'general' : currentFolder;
+      syncFilterControls();
       loadAssets();
     });
   });
@@ -323,9 +428,8 @@
   /* ── TYPE TABS ── */
   document.querySelectorAll('.type-tab').forEach((el) => {
     el.addEventListener('click', () => {
-      document.querySelectorAll('.type-tab').forEach(t => t.classList.remove('active'));
-      el.classList.add('active');
       currentType = el.dataset.type;
+      syncFilterControls();
       loadAssets();
     });
   });
@@ -713,6 +817,17 @@
     return thumbObserver;
   }
 
+  function renderFilterBar(count) {
+    if (!SAF()) return;
+    SAF().renderBar(document.getElementById('assetFilterBar'), filterState(), {
+      label: chipLabel,
+      onRemove: removeFilter,
+      onClearAll: clearAllFilters,
+      count,
+      alwaysShow: true,
+    });
+  }
+
   /* ── LOAD ASSETS ── */
   const PAGE_SIZE = 60;
   let allAssetsCache = [];
@@ -724,20 +839,25 @@
     // Reset observer so stale entries don't linger
     if (thumbObserver) { thumbObserver.disconnect(); thumbObserver = null; }
     try {
-      const params = new URLSearchParams({ limit: 500 });
-      if (currentFolder !== 'all') params.set('folder', currentFolder);
-      if (currentType !== 'all') params.set('type', currentType);
-      if (currentSearch) params.set('search', currentSearch);
-      if (currentSort !== 'newest') params.set('sort', currentSort);
-      if (currentClientId) params.set('clientId', currentClientId);
-      if (currentChannel) params.set('channel', currentChannel);
-      if (currentCampaign) params.set('campaign', currentCampaign);
+      const state = filterState();
+      const params = SAF()
+        ? SAF().buildParams(state, { limit: 500 })
+        : new URLSearchParams({ limit: 500 });
 
       const r = await fetch(`/admin/assets/list?${params}`);
       const data = await r.json();
 
+      syncUrl();
+      renderFilterBar({ shown: data.assets?.length || 0, total: data.total });
+
       if (!data.assets?.length) {
-        grid.innerHTML = '<div class="grid-empty">No assets found.<br><small>Upload files above to get started.</small></div>';
+        grid.innerHTML = '';
+        const fallback = 'No assets found.<br><small>Upload files above to get started.</small>';
+        const empty = SAF()
+          ? SAF().emptyMessage(state, clearAllFilters, fallback)
+          : Object.assign(document.createElement('div'), { innerHTML: fallback });
+        empty.classList.add('grid-empty');
+        grid.appendChild(empty);
         return;
       }
 
@@ -1239,18 +1359,16 @@
   };
 
   /* ── INIT ── */
-  // Read initial folder/client from URL params (sidebar deep links)
+  // Restore the full filter set from the URL, not just folder/clientId — the
+  // page writes every active filter back via syncUrl(), so a refresh, a back
+  // button or a shared link now lands on exactly the view you left.
   const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('folder')) {
-    currentFolder = urlParams.get('folder');
-    // Activate the correct folder item
-    document.querySelectorAll('.folder-item').forEach(f => {
-      f.classList.toggle('active', f.dataset.folder === currentFolder);
-    });
-    uploadFolderLabel.textContent = currentFolder;
-  }
-  if (urlParams.get('clientId')) {
-    currentClientId = urlParams.get('clientId');
+  if (SAF()) {
+    const restored = SAF().fromParams(urlParams);
+    Object.keys(restored).forEach((k) => setFilter(k, restored[k]));
+  } else {
+    if (urlParams.get('folder')) currentFolder = urlParams.get('folder');
+    if (urlParams.get('clientId')) currentClientId = urlParams.get('clientId');
   }
 
   Promise.all([loadClients(), loadCustomFolders(), loadChannels(), loadCampaigns()]).then(() => {
@@ -1277,15 +1395,16 @@
         el.innerHTML = `<span class="fi-icon" style="font-size:0.7rem;">·</span> ${escHtml(label)} <span class="fi-count" id="cnt-client-${c._id}">—</span>`;
         clientsFolder.insertAdjacentElement('afterend', el);
         el.addEventListener('click', () => {
-          document.querySelectorAll('.folder-item').forEach(f => f.classList.remove('active'));
-          el.classList.add('active');
           currentFolder = 'clients';
           currentClientId = c._id;
-          uploadFolderLabel.textContent = 'clients';
+          syncFilterControls();
           loadAssets();
         });
       });
     }
+    // Sync only once the custom folders and client rows exist, so a deep link
+    // to either highlights the right row instead of silently matching nothing.
+    syncFilterControls();
     loadFolderCounts();
     loadAssets();
   });

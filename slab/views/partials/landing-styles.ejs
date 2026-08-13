@@ -31,7 +31,19 @@
     --hero-text-align:   <%= design.hero_text_align || 'left' %>;
     --hero-btns-justify: <%= ({ left: 'flex-start', center: 'center', right: 'flex-end' })[design.hero_text_align] || 'flex-start' %>;
     --hero-vpos:         <%= ({ top: 'flex-start', middle: 'center', bottom: 'flex-end' })[design.hero_vpos] || 'center' %>;
-    --hero-min-height:   <%= design.hero_height || '100vh' %>;
+    <%
+      /* A viewport-height hero means "one screenful". When the header is NOT sticky
+         it sits in flow above the hero, so its height has to come off the top or the
+         hero runs past the fold by exactly the header's height. --nav-flow-h is the
+         header's in-flow height (0px while it floats) — header.ejs publishes it, and
+         custom properties resolve lazily, so declaring it later in the document is
+         fine. Only viewport units can be reduced; 'auto' and the like pass through. */
+      const _heroH = design.hero_height || '100vh';
+      const _heroMinH = /^[\d.]+(vh|svh|dvh|lvh)$/.test(_heroH)
+        ? `calc(${_heroH} - var(--nav-flow-h, 0px))`
+        : _heroH;
+    %>
+    --hero-min-height:   <%= _heroMinH %>;
     <% if (design.hero_heading_size) { %>--hero-heading-size: <%= design.hero_heading_size %>rem;<% } %>
     --contact-bg:         <%= design.contact_bg || 'var(--navy-deep)' %>;
     --contact-heading:    <%= design.contact_heading_color || '#FFFFFF' %>;
@@ -105,7 +117,7 @@
 
   /* ── HERO ── */
   .hero { min-height: var(--hero-min-height, 100vh); display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
-  .hero-left { background: var(--ivory); display: flex; align-items: center; padding: max(120px, calc(var(--nav-h, 0px) + 32px)) 64px 80px; }
+  .hero-left { background: var(--ivory); display: flex; align-items: center; padding: max(120px, var(--nav-clear)) 64px 80px; }
   .hero-text { max-width: 500px; text-align: var(--hero-text-align, left); }
   .hero-eyebrow { display: inline-flex; align-items: center; gap: 12px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: var(--navy); margin-bottom: 28px; }
   .hero-eyebrow::before { content: ''; display: block; width: 32px; height: 1px; background: var(--navy); }
@@ -135,7 +147,7 @@
   .hero.hero--slideshow a.hero-slide { cursor: pointer; }
   .hero.hero--slideshow .hero-slide-bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
   .hero.hero--slideshow .hero-slide-overlay { position: absolute; inset: 0; background: var(--hero-overlay, var(--navy-deep)); opacity: var(--hero-overlay-alpha, 0.55); }
-  .hero.hero--slideshow .hero-slide-text { position: relative; z-index: 2; max-width: 760px; padding: 140px 32px 100px; text-align: var(--hero-text-align, center); color: var(--on-navy-deep); }
+  .hero.hero--slideshow .hero-slide-text { position: relative; z-index: 2; max-width: 760px; padding: max(140px, var(--nav-clear)) 32px 100px; text-align: var(--hero-text-align, center); color: var(--on-navy-deep); }
   .hero.hero--slideshow .hero-slide-text .hero-eyebrow { color: var(--gold-light); }
   .hero.hero--slideshow .hero-slide-text .hero-eyebrow::before { background: var(--gold-light); }
   .hero.hero--slideshow .hero-slide-text .hero-heading { color: var(--on-navy-deep); font-size: var(--hero-heading-size, clamp(2.6rem, 6vw, 5rem)); margin-bottom: 20px; }
@@ -160,7 +172,7 @@
     .hero.hero--slideshow .hero-arrow { width: 36px; height: 36px; font-size: 1.4rem; }
     .hero.hero--slideshow .hero-arrow--prev { left: 10px; }
     .hero.hero--slideshow .hero-arrow--next { right: 10px; }
-    .hero.hero--slideshow .hero-slide-text { padding: 120px 20px 90px; }
+    .hero.hero--slideshow .hero-slide-text { padding: max(120px, var(--nav-clear)) 20px 90px; }
   }
 
   /* ── HERO IMAGE-CARD (data-hero-style="image_card") ── */
@@ -169,7 +181,7 @@
   .hero.hero--image-card .hero-bg-image { position: absolute; inset: 0; background-size: cover; background-position: center; background-repeat: no-repeat; }
   .hero.hero--image-card .hero-bg-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .hero.hero--image-card .hero-bg-overlay { position: absolute; inset: 0; background: var(--hero-overlay, var(--navy-deep)); opacity: var(--hero-overlay-alpha, 0.35); }
-  .hero.hero--image-card .hero-card-wrap { position: relative; z-index: 2; min-height: var(--hero-min-height, 100vh); display: flex; align-items: center; padding: 140px 6vw 100px; }
+  .hero.hero--image-card .hero-card-wrap { position: relative; z-index: 2; min-height: var(--hero-min-height, 100vh); display: flex; align-items: center; padding: max(140px, var(--nav-clear)) 6vw 100px; }
   .hero.hero--image-card[data-card-pos="left"]   .hero-card-wrap { justify-content: flex-start; }
   .hero.hero--image-card[data-card-pos="center"] .hero-card-wrap { justify-content: center; }
   .hero.hero--image-card[data-card-pos="right"]  .hero-card-wrap { justify-content: flex-end; }
@@ -191,7 +203,7 @@
   .hero.hero--image-card .hero-card .hero-sub { color: var(--on-surface-muted); max-width: 100%; }
   .hero.hero--image-card .hero-badge--floating { position: absolute; right: 24px; bottom: 24px; z-index: 3; }
   @media (max-width: 700px) {
-    .hero.hero--image-card .hero-card-wrap { padding: 100px 20px 80px; justify-content: center !important; }
+    .hero.hero--image-card .hero-card-wrap { padding: max(100px, var(--nav-clear)) 20px 80px; justify-content: center !important; }
     .hero.hero--image-card .hero-card { max-width: 100%; }
   }
 
@@ -201,7 +213,7 @@
   .hero.hero--full-bg .hero-bg-image { position: absolute; inset: 0; background-size: cover; background-position: center; background-repeat: no-repeat; }
   .hero.hero--full-bg .hero-bg-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .hero.hero--full-bg .hero-bg-overlay { position: absolute; inset: 0; background: var(--hero-overlay, var(--navy-deep)); opacity: var(--hero-overlay-alpha, 0.55); }
-  .hero.hero--full-bg .hero-left { position: relative; z-index: 1; background: transparent; padding: max(140px, calc(var(--nav-h, 0px) + 40px)) 64px 100px; min-height: var(--hero-min-height, 100vh); display: flex; align-items: center; }
+  .hero.hero--full-bg .hero-left { position: relative; z-index: 1; background: transparent; padding: max(140px, var(--nav-clear)) 64px 100px; min-height: var(--hero-min-height, 100vh); display: flex; align-items: center; }
   .hero.hero--full-bg .hero-text { max-width: 720px; width: 100%; margin: 0 auto; text-align: var(--hero-text-align, left); }
   .hero.hero--full-bg .hero-text { color: var(--on-navy-deep); }
   .hero.hero--full-bg .hero-eyebrow { color: var(--gold-light); }
@@ -213,7 +225,7 @@
   .hero.hero--full-bg .btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
   .hero.hero--full-bg .hero-badge--floating { position: absolute; right: 32px; bottom: 32px; z-index: 1; }
   @media (max-width: 900px) {
-    .hero.hero--full-bg .hero-left { padding: max(100px, calc(var(--nav-h, 0px) + 24px)) 28px 80px; }
+    .hero.hero--full-bg .hero-left { padding: max(100px, var(--nav-clear)) 28px 80px; }
   }
 
   /* ── MARQUEE / TICKER ── */
@@ -288,6 +300,11 @@
   .form-field input::placeholder, .form-field textarea::placeholder { color: var(--on-ivory-muted); opacity: 0.5; }
   .form-field input:focus, .form-field textarea:focus, .form-field select:focus { border-color: var(--navy); }
   .form-field textarea { resize: vertical; min-height: 110px; }
+  .form-consent { display: flex; flex-direction: column; gap: 6px; }
+  .consent-check { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+  .consent-check input { width: 16px; height: 16px; margin: 2px 0 0; flex: 0 0 auto; accent-color: var(--navy); cursor: pointer; }
+  .consent-check span { font-size: 0.84rem; font-weight: 300; line-height: 1.5; color: var(--contact-form-label); text-transform: none; letter-spacing: normal; }
+  .consent-terms { font-size: 0.72rem; font-weight: 300; line-height: 1.6; color: var(--on-ivory-muted); margin: 0 0 0 26px; opacity: 0.85; }
   .btn-submit { background: var(--contact-btn-bg); color: var(--contact-btn-color); border: none; padding: 16px 40px; border-radius: 2px; font-family: var(--font-body), sans-serif; font-size: 0.82rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; cursor: pointer; transition: background 0.2s, transform 0.2s; align-self: flex-start; }
   .btn-submit:hover { background: var(--navy-deep); transform: translateY(-2px); }
   #form-msg { display: none; font-size: 0.85rem; color: var(--navy); }
@@ -362,7 +379,7 @@
   @media (max-width: 900px) {
     .hero { grid-template-columns: 1fr; }
     .hero-right { min-height: 380px; }
-    .hero-left { padding: max(120px, calc(var(--nav-h, 0px) + 24px)) 32px 60px; }
+    .hero-left { padding: max(120px, var(--nav-clear)) 32px 60px; }
     .services-grid { grid-template-columns: 1fr; }
     .advisor-section { grid-template-columns: 1fr; }
     .advisor-left { padding: 72px 32px; }
@@ -385,3 +402,8 @@
   h1, h2, h3, h4, .hero-heading, .section-heading, .advisor-quote, .hero-name-large, .footer-brand-name, .nav-wordmark-top { font-family: var(--font-heading); }
 </style>
 <%- include('landing-layouts') %>
+<%# ── New-world looks (full-page re-themes; scoped under [data-layout="<world>"]) ── %>
+<%- include('looks/lowlight') %>
+<%- include('looks/terminal') %>
+<%- include('looks/arena') %>
+<%- include('looks/gallery') %>

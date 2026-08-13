@@ -225,7 +225,7 @@ export function createParlor(opts = {}) {
   function tickBarBoard(dt) {
     _bbCycle += dt; _bbPollS += dt; _bbPollK += dt;
     if (_bbCycle > 11) { _bbCycle = 0; boardMode = boardMode === 'sports' ? 'keno' : 'sports'; }
-    if (_bbPollS > 18) { _bbPollS = 0; fetch(API + '/book/sports', { credentials: 'include' }).then((r) => r.json()).then((d) => { if (d && d.games) bookSports = d.games; }).catch(() => {}); }
+    if (_bbPollS > 8) { _bbPollS = 0; fetch(API + '/book/sports', { credentials: 'include' }).then((r) => r.json()).then((d) => { if (d && d.games) bookSports = d.games; }).catch(() => {}); }
     if (_bbPollK > 1.4) { _bbPollK = 0; fetch(API + '/book/keno', { credentials: 'include' }).then((r) => r.json()).then((d) => { if (d && d.ok) bookKeno = d; }).catch(() => {}); }
     _bbRedraw += dt; if (_bbRedraw > 0.4) { _bbRedraw = 0; drawBarBoard(); }
   }
@@ -539,6 +539,13 @@ export function createParlor(opts = {}) {
   let _bookEl = null, _bookPoll = null, _bookTab = 'keno', _bookMine = null, _bookChips = null;
   const _kenoPick = new Set();
   function setChips(v) { if (v != null) _bookChips = v; const c = _bookEl && _bookEl.querySelector('#bkChips'); if (c) c.textContent = '🪙 ' + (_bookChips != null ? _bookChips : '—'); }
+  function setRecord(r) {
+    const el = _bookEl && _bookEl.querySelector('#bkRecord'); if (!el) return;
+    if (!r || (r.wins + r.losses + (r.pushes || 0)) === 0) { el.textContent = ''; return; }
+    const net = r.net || 0, sign = net > 0 ? '+' : '';
+    const col = net > 0 ? '#7ef9da' : net < 0 ? '#ff8a6a' : '#e3c567';
+    el.innerHTML = '<span style="color:#7e9388">session </span>' + r.wins + 'W-' + r.losses + 'L' + (r.pushes ? '-' + r.pushes + 'P' : '') + ' <b style="color:' + col + '">' + sign + net + '</b>';
+  }
   function bkToast(msg, good) { const t = _bookEl && _bookEl.querySelector('#bkMsg'); if (t) { t.textContent = msg; t.style.color = good === false ? '#ff8a6a' : '#7ef9da'; } }
 
   function openBook() {
@@ -549,7 +556,8 @@ export function createParlor(opts = {}) {
       '<div style="background:#0d1a14;border:1px solid #b8860b;border-radius:16px;width:min(700px,95vw);max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.6)">' +
         '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #1f3a2e">' +
           '<b style="color:#e3c567;letter-spacing:.08em">🍸 THE BAR</b>' +
-          '<span id="bkChips" style="margin-left:auto;color:#8fd6ad;font-weight:700">🪙 —</span>' +
+          '<span id="bkRecord" style="margin-left:auto;font-weight:700;font-size:12px"></span>' +
+          '<span id="bkChips" style="color:#8fd6ad;font-weight:700">🪙 —</span>' +
           '<button id="bkClose" style="border:none;background:#243a30;color:#cfe7d8;border-radius:8px;padding:6px 11px;cursor:pointer">✕</button>' +
         '</div>' +
         '<div style="display:flex;gap:8px;padding:10px 16px 4px"><button id="bkTabK" class="bkTab">KENO</button><button id="bkTabS" class="bkTab">SPORTSBOOK</button></div>' +
@@ -572,6 +580,7 @@ export function createParlor(opts = {}) {
   async function refreshBook() {
     try { const d = await (await fetch(API + '/book/mybets', { credentials: 'include' })).json(); _bookMine = d; if (d && d.chips != null) setChips(d.chips); } catch (e) {}
     try { bookKeno = await (await fetch(API + '/book/keno', { credentials: 'include' })).json(); } catch (e) {}
+    try { const s = await (await fetch(API + '/book/sports', { credentials: 'include' })).json(); if (s && s.games) bookSports = s.games; } catch (e) {}
     updateBookDynamic();
   }
 
@@ -651,6 +660,7 @@ export function createParlor(opts = {}) {
   function updateBookDynamic() {
     if (!_bookEl || _bookEl.style.display === 'none') return;
     if (_bookMine && _bookMine.chips != null) setChips(_bookMine.chips);
+    if (_bookMine) setRecord(_bookMine.record);
     if (_bookTab === 'keno') {
       const k = bookKeno || {};
       const stEl = _bookEl.querySelector('#bkKenoStatus');

@@ -1,0 +1,91 @@
+<%- include('../partials/head', { title: 'Field Route' }) %>
+<%- include('../partials/sidebar', { page: 'field', user: user }) %>
+
+<style>
+  .rt-wrap  { padding:16px 20px 80px; max-width:900px; margin:0 auto; }
+  .rt-back  { font-size:0.8rem; color:var(--slate); text-decoration:none; }
+  .rt-back:hover { color:var(--gold); }
+  .rt-title { font-size:1.35rem; font-weight:700; color:var(--on-surface); margin:10px 0 16px; }
+
+  .rt-controls { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:14px 16px; margin-bottom:20px; }
+  .rt-controls label { display:block; font-size:0.7rem; font-weight:600; color:var(--slate); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:5px; }
+  .rt-controls select, .rt-controls input {
+    padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:0.85rem;
+  }
+
+  .rt-totals { display:flex; gap:20px; font-size:0.85rem; color:var(--slate); margin-bottom:16px; }
+  .rt-totals strong { color:var(--on-surface); }
+
+  .leg      { display:flex; gap:14px; }
+  .leg-rail { display:flex; flex-direction:column; align-items:center; width:20px; flex-shrink:0; }
+  .leg-dot  { width:12px; height:12px; border-radius:50%; background:var(--gold); margin-top:20px; }
+  .leg-line { flex:1; width:2px; background:var(--border); }
+  .leg-body { flex:1; padding-bottom:6px; }
+  .leg-commute { font-size:0.72rem; color:var(--slate); padding:6px 0; }
+  .leg-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin:6px 0; }
+  .leg-name { font-size:0.92rem; font-weight:600; color:var(--text); }
+  .leg-meta { font-size:0.73rem; color:var(--slate); margin-top:3px; display:flex; flex-wrap:wrap; gap:12px; }
+  .leg-name a { color:inherit; text-decoration:none; }
+  .leg-name a:hover { color:var(--gold); }
+  .no-pin { color:#b91c1c; }
+  .rt-empty { padding:26px; text-align:center; color:var(--slate); font-size:0.88rem; border:1px dashed var(--border); border-radius:8px; }
+</style>
+
+<div class="rt-wrap">
+  <a class="rt-back" href="/admin/field"><%= t('field.back_to_board') %></a>
+  <div class="rt-title"><%= t('field.route_heading') %></div>
+
+  <form method="GET" action="/admin/field/route" class="rt-controls">
+    <div>
+      <label><%= t('field.techs_heading') %></label>
+      <select name="tech">
+        <option value=""><%= t('field.select_tech') %></option>
+        <% techs.forEach(function(u){ %>
+          <option value="<%= u._id %>" <%= selectedTech === u._id.toString() ? 'selected' : '' %>><%= u.displayName || u.email %></option>
+        <% }); %>
+      </select>
+    </div>
+    <div>
+      <label><%= t('field.date') %></label>
+      <input type="date" name="date" value="<%= selectedDate %>">
+    </div>
+    <button class="btn" type="submit"><%= t('field.view_route') %></button>
+  </form>
+
+  <% if (route) { %>
+    <% function fmt(d){ return d ? new Date(d).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '—'; } %>
+    <div class="rt-totals">
+      <span><%= t('field.total_drive') %>: <strong><%= route.totals.driveMinutes %> min</strong></span>
+      <span><%= t('field.total_onsite') %>: <strong><%= route.totals.onSiteMinutes %> min</strong></span>
+    </div>
+
+    <% if (!route.legs.length) { %>
+      <div class="rt-empty"><%= t('field.no_route_jobs') %></div>
+    <% } %>
+
+    <% route.legs.forEach(function(leg, i){ %>
+      <% if (i > 0 && leg.commuteFromPrev != null) { %>
+        <div class="leg">
+          <div class="leg-rail"><div class="leg-line" style="height:22px;"></div></div>
+          <div class="leg-commute">&#128663; <%= t('field.leg_commute') %>: ~<%= leg.commuteFromPrev %> min</div>
+        </div>
+      <% } %>
+      <div class="leg">
+        <div class="leg-rail"><div class="leg-dot"></div><div class="leg-line"></div></div>
+        <div class="leg-body">
+          <div class="leg-card">
+            <div class="leg-name"><a href="/admin/field/jobs/<%= leg.job._id %>"><%= leg.job.title %></a></div>
+            <div class="leg-meta">
+              <% if (leg.job.clientId && clientMap[leg.job.clientId.toString()]) { %><span>&#9673; <%= clientMap[leg.job.clientId.toString()] %></span><% } %>
+              <span><%= t('field.arrive') %>: <strong><%= fmt(leg.arrive) %></strong></span>
+              <% if (leg.job.estimatedMinutes) { %><span><%= t('field.depart') %>: <%= fmt(leg.depart) %></span><% } %>
+              <% if (!leg.pin) { %><span class="no-pin">&#9888; <%= t('field.no_pin') %></span><% } %>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% }); %>
+  <% } %>
+</div>
+
+</div></div></body></html>

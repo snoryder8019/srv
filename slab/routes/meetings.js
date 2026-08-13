@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'node:crypto';
 import QRCode from 'qrcode';
 import nodemailer from 'nodemailer';
 import { getDb } from '../plugins/mongo.js';
@@ -9,8 +10,41 @@ import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { wouldExceedQuota, getQuotaLabel } from '../plugins/storage.js';
 import { DESIGN_DEFAULTS } from './admin/design.js';
 import { enrichDesignContrast } from '../plugins/colorContrast.js';
+import { peekKnownSession } from '../plugins/socketio.js';
+import { resolveSmtp, getTenantTransporter } from '../plugins/mailer.js';
 
 const router = express.Router();
+
+/**
+ * ICE servers handed to the meeting client alongside the browser's built-in
+ * STUN list. Returns [] when no TURN is configured (STUN-only).
+ *
+ * With TURN_SECRET set we mint an ephemeral credential per call using coturn's
+ * REST/`use-auth-secret` scheme: the username is a unix expiry timestamp and
+ * the credential is base64(HMAC-SHA1(secret, username)). coturn recomputes the
+ * same HMAC to authenticate — no per-user accounts, and nothing reusable is
+ * left sitting in page source. Falls back to a static credential when only
+ * USERNAME/CREDENTIAL are set (e.g. a managed provider).
+ */
+function buildTurnIceServers() {
+  if (!config.TURN_URL) return [];
+  const urls = config.TURN_URL.split(',').map(u => u.trim()).filter(Boolean);
+  if (!urls.length) return [];
+
+  if (config.TURN_SECRET) {
+    const expiry = Math.floor(Date.now() / 1000) + config.TURN_TTL;
+    const username = `${expiry}:slab`;
+    const credential = crypto.createHmac('sha1', config.TURN_SECRET)
+      .update(username).digest('base64');
+    return [{ urls, username, credential }];
+  }
+
+  if (config.TURN_USERNAME) {
+    return [{ urls, username: config.TURN_USERNAME, credential: config.TURN_CREDENTIAL }];
+  }
+
+  return [{ urls }]; // credential-less; only meaningful if the server allows it
+}
 
 /** Load tenant design settings with defaults + contrast vars */
 async function loadDesign(db) {
@@ -38,31 +72,44 @@ router.get('/:token', async (req, res) => {
 
     if (!meeting) {
       return res.status(404).render('meeting-error', {
-        message: 'This meeting link is invalid.',
+        message: res.locals.t('meeting.err_invalid_link'),
       });
     }
 
     if (meeting.status === 'closed') {
       return res.status(410).render('meeting-error', {
-        message: 'This meeting has been closed by the host.',
+        message: res.locals.t('meeting.err_closed'),
       });
     }
 
     if (meeting.status === 'expired' || (meeting.expiresAt && new Date(meeting.expiresAt) < new Date())) {
       return res.status(410).render('meeting-error', {
-        message: 'This meeting link has expired.',
+        message: res.locals.t('meeting.err_expired'),
       });
     }
 
     if (meeting.maxUses && meeting.useCount >= meeting.maxUses) {
-      return res.status(410).render('meeting-error', {
-        message: 'This meeting link has reached its maximum uses.',
-      });
+      // A participant already in the meeting must be able to reload the page
+      // (or have the tab restored) even on a maxed-out link — the socket layer
+      // holds their session for a grace window and would readmit them, so the
+      // page-load gate has to defer to it or it locks its own occupant out.
+      // The cookie is set by the client on a successful join.
+      const sid = req.cookies && req.cookies['slab_mtg_' + meeting.token];
+      if (!(sid && peekKnownSession(meeting.token, sid))) {
+        return res.status(410).render('meeting-error', {
+          message: res.locals.t('meeting.err_max_uses'),
+        });
+      }
     }
+
+    // Extra ICE servers (TURN) handed to the client alongside the built-in
+    // STUN list. Ephemeral credentials are minted per page-load.
+    const iceServers = buildTurnIceServers();
 
     res.render('meeting', {
       token: meeting.token,
       title: meeting.title,
+      iceServers,
       domain: req.tenant?.domain ? 'https://' + req.tenant.domain : config.DOMAIN,
       tenantDb: req.tenant?.db || '',
       consent: meeting.consent || {},
@@ -73,7 +120,7 @@ router.get('/:token', async (req, res) => {
   } catch (err) {
     console.error('[meetings] public route error:', err);
     res.status(500).render('meeting-error', {
-      message: 'Something went wrong. Please try again.',
+      message: res.locals.t('booking.error_generic'),
     });
   }
 });
@@ -92,7 +139,7 @@ router.get('/:token/info', async (req, res) => {
           consent: 1,
         } }
     );
-    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    if (!meeting) return res.status(404).json({ error: res.locals.t('meeting.err_not_found') });
 
     const url = `${req.tenant?.domain ? 'https://' + req.tenant.domain : config.DOMAIN}/meeting/${meeting.token}`;
     const scheduledEnd = (meeting.scheduledAt && meeting.durationMinutes)
@@ -113,7 +160,7 @@ router.get('/:token/info', async (req, res) => {
     });
   } catch (err) {
     console.error('[meetings] info error:', err);
-    res.status(500).json({ error: 'Failed to load meeting info' });
+    res.status(500).json({ error: res.locals.t('meeting.err_load_info') });
   }
 });
 
@@ -129,7 +176,7 @@ router.get('/:token/qr', async (req, res) => {
     res.json({ qr: qrDataUrl, url });
   } catch (err) {
     console.error('[meetings] QR error:', err);
-    res.status(500).json({ error: 'Failed to generate QR code' });
+    res.status(500).json({ error: res.locals.t('meeting.err_qr') });
   }
 });
 
@@ -137,27 +184,39 @@ router.get('/:token/qr', async (req, res) => {
 router.post('/:token/invite', express.json(), async (req, res) => {
   try {
     const { email, name } = req.body;
-    if (!email) return res.status(400).json({ error: 'Email is required' });
+    if (!email) return res.status(400).json({ error: res.locals.t('meeting.err_email_required') });
 
     const db = req.db;
     const meeting = await db.collection('meetings').findOne({
       token: req.params.token,
       status: 'active',
     });
-    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    if (!meeting) return res.status(404).json({ error: res.locals.t('meeting.err_not_found') });
 
-    if (!config.ZOHO_USER || !config.ZOHO_PASS) {
-      return res.status(500).json({ error: 'Email not configured. Add ZOHO_USER and ZOHO_PASS to .env' });
+    // Send from the TENANT's own mailbox (Settings → Email: SMTP password or
+    // Gmail/Outlook OAuth). The platform .env credentials are only a fallback
+    // for tenants who haven't connected a mailbox yet — and that case is
+    // labelled in the from-line and footer so it never masquerades as the
+    // tenant's own domain.
+    const smtp = resolveSmtp(req.tenant);
+    const useTenantMailer = smtp.authMode === 'oauth' ? !!smtp.user : !!(smtp.user && smtp.pass);
+    const havePlatform = !!(config.ZOHO_USER && config.ZOHO_PASS);
+    if (!useTenantMailer && !havePlatform) {
+      return res.status(500).json({ error: res.locals.t('meeting.err_invite_failed') });
     }
 
     const meetingUrl = `${req.tenant?.domain ? 'https://' + req.tenant.domain : config.DOMAIN}/meeting/${meeting.token}`;
 
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.zoho.com',
-      port: 465,
-      secure: true,
-      auth: { user: config.ZOHO_USER, pass: config.ZOHO_PASS },
-    });
+    const fromUser = useTenantMailer ? smtp.user : config.ZOHO_USER;
+    const transporter = useTenantMailer
+      ? await getTenantTransporter(req.tenant)
+      : nodemailer.createTransport({
+          host: 'smtppro.zoho.com',
+          port: 465,
+          secure: true,
+          authMethod: 'LOGIN',
+          auth: { user: config.ZOHO_USER, pass: config.ZOHO_PASS },
+        });
 
     const greeting = name ? `Hi ${name},` : 'Hi,';
     const scheduleLine = meeting.scheduledAt
@@ -165,7 +224,10 @@ router.post('/:token/invite', express.json(), async (req, res) => {
       : '';
 
     await transporter.sendMail({
-      from: `"${req.tenant?.brand?.name || 'Meeting'}" <${config.ZOHO_USER}>`,
+      from: useTenantMailer
+        ? `"${req.tenant?.brand?.name || 'Meeting'}" <${fromUser}>`
+        : `"${req.tenant?.brand?.name || 'Meeting'} (via MadLadsLab)" <${fromUser}>`,
+      replyTo: fromUser,
       to: email,
       subject: `You're invited: ${meeting.title}`,
       html: `
@@ -198,6 +260,7 @@ router.post('/:token/invite', express.json(), async (req, res) => {
     <p style="text-align:center;font-size:12px;color:#6B7380;margin-top:20px;">
       ${req.tenant?.brand?.name || ''} &mdash; ${req.tenant?.brand?.location || ''}
     </p>
+    ${!useTenantMailer ? `<p style="text-align:center;font-size:11px;color:#999;margin-top:10px;">Sent via the MadLadsLab platform mailer. Connect your mailbox in Settings &rarr; Email to send from your own domain.</p>` : ''}
   </div>
 </body>
 </html>`,
@@ -206,7 +269,7 @@ router.post('/:token/invite', express.json(), async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('[meetings] invite email error:', err);
-    res.status(500).json({ error: 'Failed to send invite' });
+    res.status(500).json({ error: res.locals.t('meeting.err_invite_failed') });
   }
 });
 
@@ -215,15 +278,15 @@ router.post('/:token/upload', express.json(), meetingAssetUpload.single('file'),
   try {
     const db = req.db;
     const meeting = await db.collection('meetings').findOne({ token: req.params.token, status: 'active' });
-    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    if (!meeting) return res.status(404).json({ error: res.locals.t('meeting.err_not_found') });
 
     const file = req.file;
-    if (!file) return res.status(400).json({ error: 'No file uploaded' });
+    if (!file) return res.status(400).json({ error: res.locals.t('meeting.err_no_file') });
 
     // multer-s3's `file.location` returns a bare path-style URL (no scheme) on
     // Linode Object Storage, which breaks links. Always rebuild from the key.
     const url = file.key ? bucketUrl(file.key) : null;
-    if (!url) return res.status(500).json({ error: 'Upload failed' });
+    if (!url) return res.status(500).json({ error: res.locals.t('meeting.err_upload_failed') });
 
     const asset = {
       name: file.originalname,
@@ -243,7 +306,7 @@ router.post('/:token/upload', express.json(), meetingAssetUpload.single('file'),
     res.json({ ok: true, asset });
   } catch (err) {
     console.error('[meetings] upload error:', err);
-    res.status(500).json({ error: 'Upload failed' });
+    res.status(500).json({ error: res.locals.t('meeting.err_upload_failed') });
   }
 });
 
@@ -259,15 +322,15 @@ router.post('/:token/recording',
     try {
       const db = req.db;
       const meeting = await db.collection('meetings').findOne({ token: req.params.token, status: 'active' });
-      if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+      if (!meeting) return res.status(404).json({ error: res.locals.t('meeting.err_not_found') });
 
       const file = req.file;
-      if (!file) return res.status(400).json({ error: 'No file uploaded' });
+      if (!file) return res.status(400).json({ error: res.locals.t('meeting.err_no_file') });
 
       // multer-s3's `file.location` is path-style without a scheme on Linode,
       // which renders as a broken relative link. Always rebuild from the key.
       const url = file.key ? bucketUrl(file.key) : null;
-      if (!url) return res.status(500).json({ error: 'Upload failed' });
+      if (!url) return res.status(500).json({ error: res.locals.t('meeting.err_upload_failed') });
 
       // Post-upload quota check — race-safe rollback.
       if (req.tenant && file.size) {
@@ -284,7 +347,7 @@ router.post('/:token/recording',
               }
             }
             return res.status(413).json({
-              error: `Storage limit reached (${getQuotaLabel(req.tenant)}). Delete files or upgrade your plan for more space.`,
+              error: res.locals.t('meeting.err_storage_quota', { limit: getQuotaLabel(req.tenant) }),
               code: 'STORAGE_QUOTA_EXCEEDED',
             });
           }
@@ -313,7 +376,7 @@ router.post('/:token/recording',
       res.json({ ok: true, asset });
     } catch (err) {
       console.error('[meetings] recording upload error:', err);
-      res.status(500).json({ error: 'Recording upload failed' });
+      res.status(500).json({ error: res.locals.t('meeting.err_recording_failed') });
     }
   }
 );
@@ -323,14 +386,14 @@ router.get('/:token/data', async (req, res) => {
   try {
     const db = req.db;
     const meeting = await db.collection('meetings').findOne({ token: req.params.token });
-    if (!meeting) return res.status(404).json({ error: 'Not found' });
+    if (!meeting) return res.status(404).json({ error: res.locals.t('meeting.err_not_found') });
     res.json({
       notes: meeting.notes || [],
       assets: meeting.assets || [],
     });
   } catch (err) {
     console.error('[meetings] data fetch error:', err);
-    res.status(500).json({ error: 'Failed to load data' });
+    res.status(500).json({ error: res.locals.t('meeting.err_load_data') });
   }
 });
 
@@ -342,7 +405,7 @@ router.get('/agreement/:token', async (req, res) => {
     const db = req.db;
     const agreement = await db.collection('agreements').findOne({ token: req.params.token });
     if (!agreement) {
-      return res.status(404).render('meeting-error', { message: 'This agreement link is invalid.' });
+      return res.status(404).render('meeting-error', { message: res.locals.t('meeting.err_agreement_invalid') });
     }
 
     // Mark as viewed on first visit
@@ -360,7 +423,7 @@ router.get('/agreement/:token', async (req, res) => {
     res.render('agreement', { agreement, design, brand });
   } catch (err) {
     console.error('[agreements] view error:', err);
-    res.status(500).render('meeting-error', { message: 'Something went wrong.' });
+    res.status(500).render('meeting-error', { message: res.locals.t('booking.error_generic') });
   }
 });
 
@@ -370,7 +433,7 @@ router.post('/agreement/:token/accept', express.urlencoded({ extended: false }),
     const db = req.db;
     const agreement = await db.collection('agreements').findOne({ token: req.params.token });
     if (!agreement) {
-      return res.status(404).render('meeting-error', { message: 'This agreement link is invalid.' });
+      return res.status(404).render('meeting-error', { message: res.locals.t('meeting.err_agreement_invalid') });
     }
 
     if (!agreement.acceptedAt) {
@@ -391,7 +454,7 @@ router.post('/agreement/:token/accept', express.urlencoded({ extended: false }),
     res.render('agreement', { agreement, design, brand });
   } catch (err) {
     console.error('[agreements] accept error:', err);
-    res.status(500).render('meeting-error', { message: 'Something went wrong.' });
+    res.status(500).render('meeting-error', { message: res.locals.t('booking.error_generic') });
   }
 });
 

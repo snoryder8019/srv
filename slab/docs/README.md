@@ -1,30 +1,63 @@
 # Slab Documentation
 
+Tenant-facing guides. These render in-app at `/admin/docs` — the nav there is
+built from the `CATEGORIES` list in `routes/admin/docs.js`, so **a new doc must
+be added to both this index and that list** or it won't be reachable.
+
 ## Getting Started
-- [Overview](platform/overview.md) — What Slab is and how it works
-- [Admin Panel](platform/admin-panel.md) — Your dashboard, navigation, and workflow
+- [Overview](platform/overview.md) — What Slab is, plans and pricing, how it works
+- [Admin Panel](platform/admin-panel.md) — Dashboard, navigation, feature stages, Labs, permissions
 
 ## Platform
-- [Settings & Integrations](platform/settings.md) — API keys, email, payments, Google
-- [Advanced Settings](platform/advanced-settings.md) — White-label login, custom domains, DNS, email deliverability
-- [Design & Theming](modules/design.md) — Colors, fonts, visibility, themes
+- [Settings & Integrations](platform/settings.md) — Business profile, API keys, email, payments, language
+- [Advanced Settings](platform/advanced-settings.md) — White-label login, custom domains, DNS, deliverability
 - [AI Agents](platform/ai-agents.md) — How the AI assistant works across modules
 
-## Modules
+## Content
+- [Pages](modules/pages.md) — Custom pages built from content blocks
 - [Blog](modules/blog.md) — Create and manage blog posts
-- [Site Copy](modules/copy.md) — Edit landing page text
 - [Portfolio](modules/portfolio.md) — Showcase your work
-- [Pages](modules/pages.md) — Custom pages, landing pages, data lists
+- [Marketplace](modules/marketplace.md) — List and sell items
+- [Design & Theming](modules/design.md) — Colors, fonts, canvas editor, templates, themes
+- [Site Copy](modules/copy.md) — Edit landing page text
 - [Sections](modules/sections.md) — Custom landing page sections
-- [Clients](modules/clients.md) — Client records and portal
-- [Bookkeeping](modules/bookkeeping.md) — Invoices and payments
+- [Assets](modules/assets.md) — File library, media, and account resources
+- [Careers](modules/careers.md) — Job postings and applications *(experimental)*
+
+## Clients & CRM
+- [Inquiries](modules/inquiries.md) — Contact-form inbox, spam handling, converting leads
+- [Clients](modules/clients.md) — Client records, notes, quotes, and email
+- [Onboarding](modules/onboarding.md) — Client intake forms and questionnaires
+- [Help Requests](modules/tickets.md) — Raise and track support tickets
+- [In the Field](modules/field.md) — Mobile field ops, dispatch, GPS, client link *(experimental)*
+
+## Meetings
+- [Meetings](modules/meetings.md) — Video meetings, recording, and AI notes
+- [Notes](modules/notes.md) — Capture notes and route them to clients
+
+## Marketing
 - [Email Marketing](modules/email-marketing.md) — Campaigns, contacts, tracking
-- [Meetings](modules/meetings.md) — Video meetings with AI notes
-- [Assets](modules/assets.md) — File library and media management
-- [Users](modules/users.md) — Team members and permissions
+- [Social Media](modules/social.md) — Posting, scheduling, insights, Instagram grid mural
+- [Live Studio](modules/live-studio.md) — Live streaming *(experimental)*
+- [QR Codes & Card](modules/qr-codes.md) — QR codes and your digital business card
+- [Print Studio](modules/print-studio.md) — Print-ready designs
 
-## Superadmin
-- [Huginn](modules/huginn.md) — Platform AI assistant (chat, control center, MCP, webhooks)
+## Finance
+- [Bookkeeping](modules/bookkeeping.md) — Invoices, payments, receipts, refunds
+- [Ledger & P&L](modules/ledger.md) — Accounts, transactions, bank statements, P&L
+- [Calculators](modules/calculators.md) — Embeddable pricing calculators
+- [Analytics](modules/analytics.md) — Traffic, revenue, and social metrics
 
-## Delegate Portal
-- [Sales Sheets & Leads](modules/delegates.md) — Delegate referral codes, sales sheets, lead management, and commission tracking
+## Admin
+- [Users, Roles & Permissions](modules/users.md) — Team members, roles, and access
+
+---
+
+## Not rendered in-app
+
+These live here but are deliberately absent from `CATEGORIES` — different audience:
+
+- [Delegates](modules/delegates.md) — Delegate/referral portal (delegate audience; currently written developer-style)
+- [Huginn](modules/huginn.md) — Superadmin platform assistant (module is dormant)
+
+Internal engineering docs live in [claude/](claude/) and are not tenant-facing.

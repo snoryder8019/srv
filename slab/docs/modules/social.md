@@ -1,91 +1,130 @@
-# Social Media Portal
+# Social Media
 
-`/admin/social` — compose, schedule, and cross-post to social platforms from one panel, then export the post log.
+Compose, schedule, and publish to your social networks at `/admin/social`.
 
----
+## Tabs
 
-## Architecture
+| Tab | What it's for |
+|-----|---------------|
+| **Compose** | Write a post, attach media, publish or schedule it |
+| **Agent Studio** | AI drafting, your Voice Profile, and the review queue |
+| **Calendar** | Month view of everything scheduled |
+| **Posts** | Every post with its status, plus an archive |
+| **Analytics** | Follower and engagement figures per network |
 
-| Piece | File |
-|-------|------|
-| Routes | `routes/admin/social.js` (mounted `/admin/social` in `routes/admin.js`) |
-| Platform registry + publish adapters | `plugins/socialPublish.js` |
-| Scheduler cron | `plugins/socialCron.js` (started in `bin/www.js`, runs every minute) |
-| View | `views/admin/social/index.ejs` |
+Accounts are connected under **Settings → Social Media**, not in this section.
 
-### Data model (tenant DB — `req.db`)
+## Connecting Networks
 
-- **`social_accounts`** — one doc per platform: `{ platform, enabled, label, credentials:{...public}, secrets:{...encrypted}, connectedAt, lastTestOk, lastTestAt }`. Secret fields are AES-256-GCM encrypted via `plugins/crypto.js` (`encrypt`/`decrypt`) before storage and are never returned to the browser — only a masked hint and a "set" boolean (`maskAccount()`).
-- **`social_posts`** — `{ body, link, mediaUrls[], platforms[], status, scheduledAt, publishedAt, results[], createdBy, createdAt }`. Status: `draft → scheduled → publishing → published | partial | failed`.
+Some networks connect with a single sign-in button. The rest need a key or token pasted in.
 
-### Publishing flow
+| Network | How you connect |
+|---------|-----------------|
+| Facebook Page | Sign in with Facebook |
+| Instagram | Links itself once Facebook is connected |
+| Threads | Sign in with Threads |
+| LinkedIn | Sign in with LinkedIn |
+| Google Business | Sign in with Google |
+| Mastodon | Instance address and access token |
+| Bluesky | Handle and app password |
+| Discord | Channel webhook address |
+| Telegram | Bot token and channel ID |
+| X (Twitter) | Access token — text only, no images |
+| Reddit | App credentials and target subreddit |
 
-1. **Now** — POST `/social/posts` with `action=publish` → `publishPost()` fans out to each platform's adapter.
-2. **Scheduled** — `action=schedule` stores `status:'scheduled'` + `scheduledAt`. The cron claims due posts (atomic `scheduled→publishing` update to avoid double-send) and publishes them.
-3. Each adapter returns `{ ok, id, url, error }`, recorded per-platform in `results[]`.
+**YouTube** can be connected for analytics only — video publishing isn't available yet. **TikTok** and **Pinterest** appear with a "Soon" badge and can't be saved or posted to.
 
----
+Facebook, Instagram, and Threads all run through one Meta app, so you set that up once.
 
-## Two places to manage credentials (one store)
+## Writing a Post
 
-Both surfaces read/write the same `social_accounts` collection — no duplication:
+- **Post text** — up to 5,000 characters
+- **Link** — optional
+- **Media** — paste image links, upload, pick from Assets, or generate one
+- **Format** — single post, carousel, or story
+- **Post to** — tick each network; unconnected ones are greyed out
 
-1. **Settings → Social Media** (`/admin/settings`) — every platform listed alongside Stripe/PayPal/Zoho, each with an **Input keys** button, a **dev-portal link**, and two status checks: **Entered** (keys saved) and **Verified** (live connection confirmed). Save + Verify are AJAX against the endpoints below.
-2. **Social portal → Connections** (`/admin/social?tab=connections`) — the same forms in the portal context.
+**✦ Write with AI** drafts the text for you from a short brief.
 
-**Verify** calls a real **read-only** API check per platform (`verify()` adapters in `socialPublish.js` → `verifyPlatform()`), e.g. Graph `GET /{pageId}` for Facebook, `verify_credentials` for Mastodon, `getMe`+`getChat` for Telegram, `users/me` for X. It posts nothing. `lastTestOk` is stored and drives the green Verified check.
+### Limits worth knowing
 
-## Platform setup — what each account/key needs
+- The character counter warns above **280** so your text still fits X. Longer posts are allowed — each network trims to its own limit when publishing.
+- A single post takes up to **4** images; carousels and stories take up to **10**.
+- **Instagram always needs an image or video.** A post without one will fail.
+- Carousels go to Instagram and Threads only. Stories go to **Instagram only**.
 
-Secret fields show a masked hint once saved; leave blank to keep the existing value.
+## Scheduling
 
-### ✅ Live (manual token — works today)
+Pick a date and time, or use **⚡ Auto-slot** to drop the post into the next free slot. Auto-slot uses **9am, 1pm, and 6pm**, filling a day before moving to the next, and staggers a multi-network post so they don't all fire at once.
 
-| Platform | Account needed | Fields to enter | Where to get them |
-|----------|----------------|-----------------|-------------------|
-| **Mastodon** 🐘 | Any Mastodon account | Instance URL, Access Token | Instance → Preferences → Development → New Application (`write:statuses`, `write:media`) → copy access token |
-| **Bluesky** 🦋 | Bluesky account | Handle, App Password | App → Settings → Privacy & security → App Passwords. Use the **app password**, not your login |
-| **Discord** 💬 | A server you manage | Webhook URL | Channel → Edit → Integrations → Webhooks → New Webhook → Copy URL |
-| **Telegram** ✈️ | A bot + channel | Bot Token, Chat/Channel ID | @BotFather → `/newbot`. Add bot as channel admin; use `@channel` or numeric id |
-| **Facebook Page** 📘 | Meta Developer app + a Page | Page ID, Page Access Token | developers.facebook.com app with Pages product; long-lived Page token (`pages_manage_posts`, `pages_read_engagement`) |
-| **Instagram** 📷 | IG Business/Creator linked to a FB Page | IG User ID, Access Token | Same Meta app + Instagram Graph API (`instagram_content_publish`). **Posts require a public image URL** |
-| **LinkedIn** 💼 | LinkedIn Developer app | Author URN, Access Token | linkedin.com/developers, "Share on LinkedIn" product; OAuth2 token (`w_member_social`); URN = `urn:li:person:{id}` or `urn:li:organization:{id}` |
-| **X (Twitter)** 𝕏 | **Paid** Developer account (~$100/mo Basic) | OAuth2 Access Token | developer.x.com → project/app → OAuth2 (`tweet.write tweet.read users.read offline.access`) → user token |
+The scheduler checks for due posts **every minute**, and anything overdue publishes on the next check rather than being skipped.
 
-> **Token lifetimes:** LinkedIn member tokens (~60d) and X user tokens (short-lived) expire. When a publish fails with a 401, re-paste a fresh token under Connections. Facebook/Instagram should use **long-lived** Page tokens.
+A post moves through **draft → scheduled → publishing → published**. It ends as **partial** if some networks succeeded and others failed, or **failed** if none did. Deleting a post archives it; permanent deletion is offered from the archived view.
 
-### 🕓 Roadmap (registered, publishing not yet wired)
+## Autopilot
 
-**Threads** (Meta Threads API), **YouTube** (Google Cloud + YouTube Data API v3, video upload), **TikTok** (Content Posting API, requires app review), **Pinterest** (OAuth2 `pins:write`). These appear in Connections with their setup notes but currently return "not available yet" on publish.
+Found under **Agent Studio → 🛩️ Autopilot**, this generates posts for you on a repeating cadence. It writes copy in your brand voice, builds the image, and works in upcoming holidays and retail dates.
 
----
+- **Cadence** — off, daily, 3× per week, or weekly
+- **Posts per run** — 1 to 10
+- **Standing prompt** — a sentence describing what you want posted about
+- **Follow your site** — pull from your blog, portfolio, or open job listings
+- **Asset tags** — use tagged images from your library as backgrounds
 
-## Legal & compliance (Privacy Policy + Data Deletion)
+**Nothing goes out without you by default.** Drafts land in the review queue for approval. Turning on **Auto-slot** puts them on the calendar so you can cancel before they fire. Only **Auto-publish** skips review entirely.
 
-Meta and other platforms require a **Privacy Policy URL** and a **Data Deletion callback** to approve an app. Every tenant gets these automatically at stable URLs (resolved per tenant domain):
+## Agent Studio
 
-| URL | What |
-|-----|------|
-| `https://<domain>/privacy` | Privacy policy. Default rendered from `views/legal/privacy.ejs`; a tenant can override via the `copy` doc `privacy_content` (then `views/legal/custom.ejs` renders it). |
-| `https://<domain>/terms` | Terms (same pattern, `terms_content`). |
-| `https://<domain>/data-deletion` | **Meta callback (POST)** + **user status/instructions page (GET)**. |
+- **Voice Profile** — a short Q&A teaching the AI your tone, phrases to use, and things to avoid. Every edit you make to AI copy is saved as an example, so it drifts toward how you actually write.
+- **Review queue** — approve, edit, schedule, or dismiss pending drafts.
+- **Learning** — thumbs up or down on a layout steers future designs. A reliability figure grows as more of your live posts are scored on real engagement.
+- **Batch, Story, and Carousel builders** — generate a run of posts, a 2–8 frame story, or a seamless multi-slide carousel. These run in the background and never post on their own.
 
-These are surfaced with copy buttons in **Settings → Social Media** and the Social portal's **Compliance** tab.
+## Analytics
 
-### Data deletion flow (`routes/index.js`)
-- **POST `/data-deletion`** — Meta's callback. Body has `signed_request`. We parse it and, if the tenant saved their **Facebook App Secret** (optional field on the Facebook connection), verify the HMAC-SHA256 signature (`parseSignedRequest`). We insert a `deletion_requests` doc and respond with the required JSON `{ url, confirmation_code }`. Unsigned/unverifiable requests are still recorded (flagged `verified:false`) so Meta always gets a valid response.
-- **GET `/data-deletion?code=...`** — user-facing status page for a confirmation code.
-- **GET `/data-deletion`** (no code) — instructions + a manual email-based deletion request form (doubles as Meta's "Data Deletion Instructions URL").
-- **POST `/data-deletion/request`** — manual (non-Meta) request; records `source:'manual'` with the email.
+Live figures come from **Facebook, Instagram, Threads, LinkedIn, Bluesky, and YouTube**. Other networks don't publish an analytics API, so they won't appear.
 
-`deletion_requests` (tenant DB): `{ code, source:'meta'|'manual', platform, externalUserId, email, verified, status:'received'|'completed', createdAt, completedAt }`. Admins process them in the Social portal → **Compliance** tab (Mark done → `POST /admin/social/deletion/:id/complete`).
+The tiles across the top show **Total Followers, Reach, Impressions, Engagements, and Posts**, with a trend line per network below.
 
-> The Facebook connection has optional **App ID** + **App Secret** fields (ignored by `isAccountConfigured`). The App Secret is only used to verify deletion callbacks; without it, callbacks still work but are marked unverified.
+**Reach is Instagram-only.** Facebook removed its reach metric, and the other networks have no equivalent, so Instagram is the only source. If you haven't connected Instagram, the Reach tile stays at **0** no matter how well the others do. If it shows a dash instead, Instagram refused the request — reconnect it and grant the insights permission.
 
-## Notes & limits
+LinkedIn analytics need an organization page; personal profiles aren't supported.
 
-- **Test button** — for Discord/Telegram it posts a real connection-confirmation message; for the others it only validates that credentials are present (a real post is the true test).
-- **Media** — images are passed as public URLs. Instagram and (future) Pinterest **require** an image. Use an Asset Manager URL or any public image link.
-- **X character limit** — the composer flags posts over 280 chars so cross-posts stay within X's limit.
-- **Export** — `GET /social/export?format=csv|json` downloads the full post log.
-- **Encryption** — requires `MASTER_KEY` (64-char hex) in env, same key used by Settings secrets.
+## The 9-Grid Mural
+
+A mural is one large picture cut into nine posts that reassemble into a single image on your Instagram profile grid. You build it in the Asset Generator at `/admin/assets/social` using the **⊞ 9-Grid** button.
+
+### How it's built
+
+Instagram crops profile-grid thumbnails to a **4:5 portrait** shape, so a square design loses its left and right edges. Slab designs at that crop instead, then pads each tile back out to a square with softly blurred, darkened side margins. The grid shows exactly what you designed, and the post still looks like a deliberately framed square when someone taps it.
+
+Horizontal and vertical lines cross tiles cleanly. **Diagonals and text spanning two tiles will break at the seams** — keep text inside a single tile.
+
+### Reverse scheduling
+
+Instagram fills the grid newest-first from the top left, so the mural publishes backwards. The **bottom-right tile goes out first** and the **top-left goes last**, carrying the full caption and hashtags. The other eight get a short line each, all editable first.
+
+Tiles are spaced **90 seconds** apart by default, with a **60 second** minimum. A full mural takes about twelve minutes.
+
+### Daily cap
+
+**Four murals per rolling 24 hours.** That's already 36 posts in a day. Beyond it you risk Instagram's spam filters, and there's no benefit — only one mural can sit at the top of your grid at a time.
+
+### Grid lock
+
+Publishing a mural switches on **grid lock** automatically, and a banner appears on the Calendar tab.
+
+Your profile grid is three columns wide and reflows as you post. Adding one or two posts above a mural shifts every tile sideways and scrambles the picture. Adding exactly **three** pushes the mural down a row but keeps each tile in its column, so the image survives.
+
+While grid lock is on:
+
+- New Instagram feed posts are **held** rather than published.
+- As soon as **three** are waiting, they publish together as a complete row. Leftovers keep waiting for a third.
+- If a held post was also going to other networks, **those go out on time** — only the Instagram half waits.
+- Instagram **Stories** are unaffected, since they never appear on the grid.
+
+The banner shows how many posts are held and how many more complete the next row. **Turn off protection** releases everything held on the next cycle, which may pull your mural out of alignment.
+
+In your lists the nine tiles collapse into one card showing progress, and archiving the mural clears all nine from the queue at once. Tiles already live on Instagram stay up.
+
+A mural needs a connected Instagram account. Connect your accounts and set up an AI provider under [Settings](../platform/settings.md).

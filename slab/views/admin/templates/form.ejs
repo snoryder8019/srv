@@ -179,6 +179,18 @@
             <input type="text" name="tags" class="form-input" value="<%= tpl && tpl.tags ? tpl.tags.join(', ') : '' %>" placeholder="agency, bold, dark (comma-separated)">
             <div class="form-hint">Comma-separated tags for search and filtering.</div>
           </div>
+          <div class="form-group">
+            <label class="form-label">Skin</label>
+            <% const _curSkin = (tpl && tpl.skin) || 'classic'; %>
+            <select name="skin" class="form-select" onchange="if(typeof refreshPreview==='function')refreshPreview()">
+              <option value="classic"  <%= _curSkin === 'classic'  ? 'selected' : '' %>>Classic — standard blocks</option>
+              <option value="lowlight" <%= _curSkin === 'lowlight' ? 'selected' : '' %>>Lowlight — warm studio (dark, brass)</option>
+              <option value="terminal" <%= _curSkin === 'terminal' ? 'selected' : '' %>>Terminal — dev / CRT (mono, phosphor)</option>
+              <option value="arena"    <%= _curSkin === 'arena'    ? 'selected' : '' %>>Arena — esports HUD (neon)</option>
+              <option value="gallery"  <%= _curSkin === 'gallery'  ? 'selected' : '' %>>Gallery — editorial (light, serif)</option>
+            </select>
+            <div class="form-hint">The visual world this template renders through. Your blocks &amp; content stay the same — only the look changes.</div>
+          </div>
 
           <div style="border-top:1px solid var(--border);margin:20px 0;padding-top:16px;">
             <div class="form-label" style="margin-bottom:12px;">Design Snapshot</div>
@@ -407,9 +419,12 @@ function refreshPreview() {
   const tplId = '<%= tpl && tpl._id ? tpl._id : '' %>';
   const mode = document.getElementById('preview-design-mode').value;
   const frame = document.getElementById('preview-frame');
+  const skinSel = document.querySelector('select[name="skin"]');
+  const skin = skinSel ? skinSel.value : 'classic';
 
   if (tplId) {
-    frame.src = '/admin/templates/' + tplId + '/preview?designMode=' + mode + '&t=' + Date.now();
+    // Pass the currently-selected skin so the preview reflects it before saving.
+    frame.src = '/admin/templates/' + tplId + '/preview?designMode=' + mode + '&skin=' + encodeURIComponent(skin) + '&t=' + Date.now();
   } else {
     // For unsaved templates, POST the blocks JSON
     const form = document.createElement('form');
@@ -421,6 +436,11 @@ function refreshPreview() {
     input.name = 'blocksJson';
     input.value = JSON.stringify(tplBlocks);
     form.appendChild(input);
+    const skinInput = document.createElement('input');
+    skinInput.type = 'hidden';
+    skinInput.name = 'skin';
+    skinInput.value = skin;
+    form.appendChild(skinInput);
     document.body.appendChild(form);
     frame.name = 'preview-frame';
     form.submit();

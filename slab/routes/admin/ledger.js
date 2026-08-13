@@ -588,6 +588,13 @@ router.get('/entries/:id/receipt', async (req, res) => {
   return streamReceipt(res, e?.receiptKey, e?.receiptName);
 });
 
+// The receipt cross-referenced to this entry as audit proof (distinct from
+// receiptKey, which is the file attached when the entry itself was created).
+router.get('/entries/:id/receipt-ref', async (req, res) => {
+  const e = await req.db.collection('ledger_entries').findOne({ _id: oid(req.params.id) });
+  return streamReceipt(res, e?.receiptRef?.key, e?.receiptRef?.name);
+});
+
 router.post('/entries/sync-invoices', async (req, res) => {
   const mKey = req.body.month || monthKey();
   const back = `/admin/ledger/entries?month=${mKey}`;
@@ -673,19 +680,129 @@ async function extractReceiptData(buffer, mimetype) {
   };
 }
 
+// ── Receipt ↔ transaction cross-reference ────────────────────────────────────
+// A receipt is DOCUMENTATION, not a transaction. The bank statement is the book
+// of record, so an approved receipt normally cross-references the statement line
+// (or the ledger entry that line already posted) and files itself there as audit
+// proof — it does NOT create a second ledger row, which would double-count the
+// spend. Posting a receipt as its own ledger entry is the rare cash /
+// out-of-pocket path and has to be chosen explicitly.
+//
+// A receipt that matches nothing simply stays in the pending queue — it never
+// posts on its own. Uploading the statement it belongs to makes it matchable.
+const MATCH_WINDOW_DAYS = 21;
+
+const dayGap = (a, b) => (a && b ? Math.abs(new Date(a) - new Date(b)) / 86400000 : null);
+
+// 1 = to the penny, 0 = outside tolerance (2% of the receipt total, min $1).
+function amountScore(receiptTotal, lineAmount) {
+  const diff = Math.abs(receiptTotal - lineAmount);
+  if (diff < 0.005) return 1;
+  const tol = Math.max(1, receiptTotal * 0.02);
+  return diff > tol ? 0 : 1 - diff / tol;
+}
+
+// Fuzzy merchant agreement via the same normalization the vendor rules learn on.
+function vendorScore(a, b) {
+  const ka = merchantKey(a);
+  const kb = merchantKey(b);
+  if (!ka || !kb) return 0;
+  if (ka === kb) return 1;
+  const wa = new Set(ka.split(' '));
+  const wb = kb.split(' ');
+  const hits = wb.filter((w) => wa.has(w)).length;
+  return hits ? hits / Math.max(wa.size, wb.length) : 0;
+}
+
+// Rank the transactions this receipt could belong to: every statement line
+// (posted or still in review) plus non-statement ledger entries. Amount is the
+// strong signal, date proximity next, merchant text last. Statement-sourced
+// entries are reached through their line — matching the line stamps both.
+async function findReceiptMatches(db, scan, limit = 6) {
+  const total = moneyNum(scan.total);
+  if (!(total > 0)) return [];
+  const vendorText = [scan.vendor, scan.summary].filter(Boolean).join(' ');
+  const out = [];
+  const consider = (cand) => {
+    const amt = amountScore(total, cand.amount);
+    if (!amt) return;
+    const gap = dayGap(scan.date, cand.date);
+    if (gap != null && gap > MATCH_WINDOW_DAYS) return;
+    const dscore = gap == null ? 0.3 : 1 - gap / MATCH_WINDOW_DAYS;
+    out.push({
+      ...cand,
+      exact: amt === 1,
+      score: amt * 0.6 + dscore * 0.25 + vendorScore(vendorText, cand.description) * 0.15,
+    });
+  };
+
+  const [stmts, entries] = await Promise.all([
+    db.collection('ledger_statements')
+      .find({ status: { $in: ['pending', 'posted'] } }).sort({ createdAt: -1 }).limit(24).toArray(),
+    db.collection('ledger_entries')
+      .find({ source: { $ne: 'statement' }, receiptRef: { $exists: false } })
+      .sort({ date: -1 }).limit(400).toArray(),
+  ]);
+
+  for (const s of stmts) {
+    for (const l of s.lineItems || []) {
+      if (l.receiptRef?.scanId) continue; // already documented by another receipt
+      consider({
+        ref: `stmt:${s._id}:${l.lid}`,
+        kind: 'line',
+        date: l.date ? parseDate(l.date) : (s.periodEnd || null),
+        amount: Math.abs(moneyNum(l.amount)),
+        description: l.description || '',
+        posted: !!l.posted,
+        context: `${s.bank || 'Statement'}${s.accountLast4 ? ` ••••${s.accountLast4}` : ''}`,
+      });
+    }
+  }
+  for (const e of entries) {
+    consider({
+      ref: `entry:${e._id}`,
+      kind: 'entry',
+      date: e.date,
+      amount: Math.abs(moneyNum(e.amount)),
+      description: e.description || e.vendor || '',
+      posted: true,
+      context: 'Ledger entry',
+    });
+  }
+  return out.sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+// The audit stamp a matched receipt leaves on the line/entry it documents.
+const receiptRefOf = (scan, req) => ({
+  scanId: scan._id,
+  key: scan.receiptKey || null,
+  name: scan.receiptName || null,
+  type: scan.receiptType || null,
+  vendor: scan.vendor || '',
+  total: moneyNum(scan.total) || 0,
+  matchedAt: new Date(),
+  matchedBy: req.adminUser?.displayName || 'admin',
+});
+
 router.get('/scan', async (req, res) => {
   const db = req.db;
   await seedDefaultCategoriesIfEmpty(db);
   const [categories, pending, recent] = await Promise.all([
     listCategories(db),
     db.collection('ledger_scans').find({ status: 'pending' }).sort({ createdAt: -1 }).toArray(),
-    db.collection('ledger_scans').find({ status: { $in: ['approved', 'rejected'] } }).sort({ reviewedAt: -1 }).limit(15).toArray(),
+    db.collection('ledger_scans').find({ status: { $in: ['matched', 'approved', 'rejected'] } }).sort({ reviewedAt: -1 }).limit(15).toArray(),
   ]);
+  // Candidate transactions per pending receipt — the default resolution is a
+  // cross-reference, so the queue leads with what each receipt likely documents.
+  const matches = {};
+  for (const s of pending) {
+    matches[String(s._id)] = await findReceiptMatches(db, s).catch(() => []);
+  }
   res.render('admin/ledger/scan', {
     user: req.adminUser,
     page: 'ledger', activeTab: 'scan',
     categories, catMap: categoryMap(categories),
-    pending, recent,
+    pending, recent, matches,
     allTags: await distinctTags(db),
     todayInput: dateInput(new Date()),
     money,
@@ -729,7 +846,105 @@ router.post('/scan', receiptUpload.single('receipt'), async (req, res) => {
   }
 });
 
-// Approve a pending scan → create the real ledger entry (human-edited fields win).
+// Cross-reference a receipt onto the transaction it documents. Nothing posts —
+// the statement line (and, if it already posted, its ledger entry) simply gains
+// the receipt as proof. This is the normal way a receipt is resolved.
+router.post('/scan/:id/match', async (req, res) => {
+  const back = '/admin/ledger/scan';
+  try {
+    const db = req.db;
+    const scan = await db.collection('ledger_scans').findOne({ _id: oid(req.params.id) });
+    if (!scan || scan.status !== 'pending') return flash(res, back, 'error', 'Scan not found or already handled');
+
+    const ref = String(req.body.ref || '').trim();
+    const mStmt = /^stmt:([a-f\d]{24}):([\w-]+)$/i.exec(ref);
+    const mEntry = /^entry:([a-f\d]{24})$/i.exec(ref);
+    if (!mStmt && !mEntry) return flash(res, back, 'error', 'Pick a transaction to cross-reference this receipt to');
+
+    const now = new Date();
+    const rr = receiptRefOf(scan, req);
+    let label = '';
+
+    if (mStmt) {
+      const stmtId = oid(mStmt[1]);
+      const stmt = await db.collection('ledger_statements').findOne({ _id: stmtId });
+      const line = (stmt?.lineItems || []).find((l) => l.lid === mStmt[2]);
+      if (!line) return flash(res, back, 'error', 'That statement line no longer exists');
+      await db.collection('ledger_statements').updateOne(
+        { _id: stmtId, 'lineItems.lid': line.lid },
+        { $set: { 'lineItems.$.receiptRef': rr, updatedAt: now } },
+      );
+      // Already on the books → stamp the entry too, so the ledger carries the proof.
+      if (line.entryId) {
+        await db.collection('ledger_entries').updateOne({ _id: line.entryId }, { $set: { receiptRef: rr, updatedAt: now } });
+      }
+      // The line's own categorization teaches us how this receipt's merchant is charged.
+      if (line.categoryId) {
+        await learnVendor(db, { description: scan.vendor || scan.summary, categoryId: line.categoryId, disposition: line.disposition, allocPct: line.allocPct });
+      }
+      label = `${(line.description || 'statement line').slice(0, 80)} · ${money(line.amount)}`;
+    } else {
+      const entryId = oid(mEntry[1]);
+      const entry = await db.collection('ledger_entries').findOne({ _id: entryId });
+      if (!entry) return flash(res, back, 'error', 'That ledger entry no longer exists');
+      await db.collection('ledger_entries').updateOne({ _id: entryId }, { $set: { receiptRef: rr, updatedAt: now } });
+      if (entry.categoryId) {
+        await learnVendor(db, { description: scan.vendor || scan.summary, categoryId: entry.categoryId, disposition: 'business' });
+      }
+      label = `${(entry.description || entry.vendor || 'ledger entry').slice(0, 80)} · ${money(entry.amount)}`;
+    }
+
+    await db.collection('ledger_scans').updateOne({ _id: scan._id }, {
+      $set: {
+        status: 'matched', matchRef: ref, matchLabel: label,
+        reviewedAt: now, reviewedBy: req.adminUser?.displayName || 'admin', updatedAt: now,
+      },
+    });
+    flash(res, back, 'success', `Cross-referenced to ${label} — filed as proof, nothing posted to the ledger.`);
+  } catch (err) {
+    console.error('[ledger] scan match error:', err);
+    flash(res, back, 'error', 'Could not cross-reference this receipt');
+  }
+});
+
+// Undo a cross-reference: pull the proof off the line/entry, receipt back to pending.
+router.post('/scan/:id/unmatch', async (req, res) => {
+  const back = '/admin/ledger/scan';
+  try {
+    const db = req.db;
+    const scan = await db.collection('ledger_scans').findOne({ _id: oid(req.params.id) });
+    if (!scan || scan.status !== 'matched') return flash(res, back, 'error', 'That receipt is not cross-referenced');
+    const now = new Date();
+    const mStmt = /^stmt:([a-f\d]{24}):([\w-]+)$/i.exec(scan.matchRef || '');
+    const mEntry = /^entry:([a-f\d]{24})$/i.exec(scan.matchRef || '');
+    if (mStmt) {
+      const stmtId = oid(mStmt[1]);
+      const stmt = await db.collection('ledger_statements').findOne({ _id: stmtId });
+      const line = (stmt?.lineItems || []).find((l) => l.lid === mStmt[2]);
+      await db.collection('ledger_statements').updateOne(
+        { _id: stmtId, 'lineItems.lid': mStmt[2] },
+        { $unset: { 'lineItems.$.receiptRef': '' }, $set: { updatedAt: now } },
+      );
+      if (line?.entryId) {
+        await db.collection('ledger_entries').updateOne({ _id: line.entryId }, { $unset: { receiptRef: '' }, $set: { updatedAt: now } });
+      }
+    } else if (mEntry) {
+      await db.collection('ledger_entries').updateOne({ _id: oid(mEntry[1]) }, { $unset: { receiptRef: '' }, $set: { updatedAt: now } });
+    }
+    await db.collection('ledger_scans').updateOne({ _id: scan._id }, {
+      $set: { status: 'pending', updatedAt: now },
+      $unset: { matchRef: '', matchLabel: '', reviewedAt: '', reviewedBy: '' },
+    });
+    flash(res, back, 'success', 'Cross-reference removed — the receipt is back in the pending queue');
+  } catch (err) {
+    console.error('[ledger] scan unmatch error:', err);
+    flash(res, back, 'error', 'Could not undo the cross-reference');
+  }
+});
+
+// RARE path: post a receipt as its own ledger entry. Only correct when the spend
+// never hits a bank statement (cash / personal out-of-pocket) — otherwise the
+// statement will post the same transaction again and it double-counts.
 router.post('/scan/:id/approve', async (req, res) => {
   const back = '/admin/ledger/scan';
   try {
@@ -742,6 +957,15 @@ router.post('/scan/:id/approve', async (req, res) => {
     if (!categoryId) return flash(res, back, 'error', 'Pick a GL category to approve into');
     if (amount <= 0) return flash(res, back, 'error', 'Amount must be greater than zero');
 
+    // Double-count guard: if this receipt lines up with a transaction we already
+    // know about, posting it as a second entry is almost always a mistake.
+    if (req.body.force !== '1') {
+      const dupes = await findReceiptMatches(db, { ...scan, total: amount, date: parseDate(req.body.date) }, 1);
+      if (dupes.length && dupes[0].exact) {
+        return flash(res, back, 'error', `This receipt matches “${dupes[0].description.slice(0, 60)}” already on record — cross-reference it instead, or tick "post anyway" to force a separate entry.`);
+      }
+    }
+
     const now = new Date();
     const entry = {
       date: parseDate(req.body.date),
@@ -751,6 +975,7 @@ router.post('/scan/:id/approve', async (req, res) => {
       vendor: (req.body.vendor || scan.vendor || '').trim().slice(0, 160),
       tags: parseTags(req.body.tags),
       source: 'scan',
+      postedFromReceipt: true, // flags this row as a receipt that became a ledger item
       sourceId: scan._id,
       receiptKey: scan.receiptKey || null,
       receiptName: scan.receiptName || null,
@@ -766,7 +991,7 @@ router.post('/scan/:id/approve', async (req, res) => {
     });
     // Learn this vendor → category so statement/receipt reviews pre-fill it.
     await learnVendor(db, { description: entry.vendor || entry.description, categoryId, disposition: 'business' });
-    flash(res, back, 'success', 'Approved and posted to the ledger');
+    flash(res, back, 'success', 'Posted as its own ledger entry — watch for the same charge on your next statement.');
   } catch (err) {
     console.error('[ledger] scan approve error:', err);
     flash(res, back, 'error', 'Could not approve this scan');
@@ -1231,6 +1456,8 @@ router.post('/statements/:id/post', async (req, res) => {
         receiptKey: stmt.receiptKey || null,
         receiptName: stmt.receiptName || null,
         receiptType: stmt.receiptType || null,
+        // A receipt cross-referenced during review follows the line onto the books.
+        ...(l.receiptRef ? { receiptRef: l.receiptRef } : {}),
         createdAt: now, updatedAt: now,
         createdBy: req.adminUser?.displayName || 'admin',
       };

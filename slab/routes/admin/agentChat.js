@@ -19,6 +19,62 @@ import { createThread, addMember, THREAD_KINDS } from '../../plugins/chat.js';
 
 const router = express.Router();
 
+// Resolve an agent's configured engine/model into what it will ACTUALLY run on,
+// for display. Mirrors resolveEngine's real decision (a tenant without a valid
+// Anthropic key silently degrades to house), so the modal never claims Claude
+// when the request is really going to the house model.
+async function describeRuntime(tenant, engine, model) {
+  const { resolveEngine } = await import('../../plugins/agentEngine.js');
+  const chosen = resolveEngine({ tenant, engine, model });
+  // `engineLabel`, not `label` — these fields get spread alongside an agent's own
+  // `label` in /scope, and a plain `label` would silently overwrite the agent name.
+  return chosen.engine === 'anthropic'
+    ? { engine: 'anthropic', engineLabel: 'Claude', model: chosen.model }
+    : { engine: 'house', engineLabel: 'House', model: config.OLLAMA_MODEL };
+}
+
+// ── Surface scope disclosure — GET /admin/agent-chat/scope?module=blog ────────
+// Per-agent engine/model settings live in Agent Control (/admin/chat), which left
+// the ✦ modal unable to show which agent handles a request or what it runs on —
+// the settings felt disconnected from the runtime. This reports the surface's
+// real scope: the agents reachable from THIS ✦ (after MODULE_DEPARTMENTS
+// hard-scoping) and each one's effective engine/model after the full inheritance
+// chain, so the modal can list it inline.
+router.get('/scope', async (req, res) => {
+  try {
+    const db = req.db, tenant = req.tenant;
+    const module = req.query.module ? String(req.query.module).slice(0, 40) : null;
+    const { AGENT_REGISTRY, getAgentConfigMap, getTenantDefault } = await import('../../plugins/agentRegistry.js');
+    const { departmentsForModule, MODULE_PRIMARY } = await import('../../plugins/agentRouter.js');
+    const [cfgMap, def] = await Promise.all([getAgentConfigMap(db), getTenantDefault(db)]);
+
+    const scope = departmentsForModule(module);
+    const agents = await Promise.all(AGENT_REGISTRY
+      .filter((a) => a.scope === 'private' && a.tool !== '—' && (!scope || scope.has(a.key)))
+      .map(async (a) => {
+        const ac = cfgMap[a.key] || {};
+        const rt = await describeRuntime(tenant, ac.engine || def.engine, ac.model || def.model);
+        return {
+          key: a.key, label: a.label, tool: a.tool, desc: a.desc,
+          enabled: ac.enabled !== false, ...rt,
+          // Where this agent's engine/model came from — so "why is this on House?"
+          // is answerable without cross-referencing three settings screens.
+          source: (ac.engine || ac.model) ? 'agent' : ((def.engine || def.model) ? 'tenant' : 'platform'),
+        };
+      }));
+
+    res.json({
+      ok: true, module, scoped: !!scope,
+      primary: MODULE_PRIMARY[module] || null,
+      tenantDefault: await describeRuntime(tenant, def.engine, def.model),
+      agents, settingsUrl: '/admin/chat',
+    });
+  } catch (err) {
+    console.error('[agent-chat/scope] error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ── Ephemeral agentic turn — POST /admin/agent-chat/run ───────────────────────
 // The admin personal-agent model: NO persistent thread. Short memory is the
 // client-held `messages` array (last few turns); the server is stateless. A task
@@ -61,12 +117,21 @@ router.post('/run', async (req, res) => {
       try {
         const { MCP_TOOLS, runTool } = await import('../../plugins/agentMcp.js');
         const { AGENT_REGISTRY, getAgentConfigMap } = await import('../../plugins/agentRegistry.js');
+        const { departmentsForModule } = await import('../../plugins/agentRouter.js');
         const cfgMap = await getAgentConfigMap(db);
         // Orchestrator (coordinator turn) model — Sonnet by default so Opus
         // doesn't run on every agentic turn; overridable via the 'coordinator'
         // agent config. The per-agent inner-generation models are separate.
         const orchModel = (cfgMap.coordinator && cfgMap.coordinator.model) || def.model || config.ANTHROPIC_COORDINATOR_MODEL || chosen.model;
-        const allowed = AGENT_REGISTRY.filter((a) => a.scope === 'private' && a.tool !== '—' && (cfgMap[a.key]?.enabled !== false));
+        // HARD-SCOPE the orchestrator to the ✦ launcher's module. Without this the
+        // Blog Agent would receive fill_site_copy / update_design / write_page too
+        // and could propose changes that overwrite the homepage. null module (the
+        // dashboard coordinator) stays unrestricted. See MODULE_DEPARTMENTS.
+        const deptScope = departmentsForModule(module);
+        const allowed = AGENT_REGISTRY.filter((a) =>
+          a.scope === 'private' && a.tool !== '—' &&
+          (cfgMap[a.key]?.enabled !== false) &&
+          (!deptScope || deptScope.has(a.key)));
         const toolToDept = {}; allowed.forEach((a) => { toolToDept[a.tool] = a.key; });
         const names = new Set(allowed.map((a) => a.tool));
         const tools = MCP_TOOLS.filter((t) => names.has(t.name)).map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema }));
@@ -109,23 +174,50 @@ ${brand}${viewCtx ? '\n\n' + viewCtx : ''}`.trim();
               page_type: hasBlocks ? 'landing' : (t.result.page_type || (t.input && t.input.page_type) || null),
             };
           });
-        return res.json({ ok: true, reply: out.reply || 'Done.', fills, agentic: true });
+        return res.json({
+          ok: true, reply: out.reply || 'Done.', fills, agentic: true,
+          // Orchestrator runtime. Each fill's own agent may run a different inner
+          // model — the /scope list shows those per-agent.
+          runtime: { ...(await describeRuntime(tenant, 'anthropic', orchModel)), agent: 'coordinator' },
+        });
       } catch (e) {
         console.warn('[agent-chat/run] agentic loop failed, falling back to router:', e.message);
         // fall through to the house router path below
       }
     }
 
-    const { routeMessage, runDepartment } = await import('../../plugins/agentRouter.js');
-    const route = await routeMessage(text, { contextModule: module });
+    const { routeMessage, runDepartment, departmentsForModule, MODULE_PRIMARY, isSmallTalk, isNavCommand } =
+      await import('../../plugins/agentRouter.js');
+    const deptScope = departmentsForModule(module);
+    const primary = MODULE_PRIMARY[module];
+
+    // Single-purpose surface (blog, pages, email, print, assets, onboarding): a
+    // real request just runs the job. The house router model misclassifies even
+    // explicit asks to 'assist', which is why the blog ✦ kept "going
+    // conversational" and never wrote. Only defer to the LLM router for genuine
+    // small talk or a navigation command; everything else does the job directly.
+    let route;
+    if (primary && !isSmallTalk(text) && !isNavCommand(text)) {
+      route = { department: primary, task: text, section_type: 'text', page_type: 'content' };
+    } else {
+      route = await routeMessage(text, { contextModule: module });
+    }
+
+    // Same hard-scope as the agentic path: the router only BIASES toward a
+    // module's department, so a blog-surface ask that "clearly names" copy can
+    // still route to copy. If the routed department is outside this ✦'s module
+    // scope, don't run its tool — drop to the conversational reply below, which
+    // points the user at the right agent instead of mutating another surface.
+    const inScope = !deptScope || deptScope.has(route.department);
 
     // Task → run the scoped department agent (engine/model/config resolved inside).
-    if (route.department && route.department !== 'assist') {
+    if (route.department && route.department !== 'assist' && inScope) {
       const out = await runDepartment(db, tenant, { ...route, audience: 'admin' });
       return res.json({
         ok: true,
         reply: out.message || 'Done.',
         department: out.department || null,
+        runtime: { ...(await describeRuntime(tenant, out.engine, out.model)), agent: out.department || null },
         fill: out.fill && Object.keys(out.fill).length ? out.fill : null,
         action: out.action || null,
         navigate: out.navigate || null,
@@ -140,7 +232,10 @@ ${brand}${viewCtx ? '\n\n' + viewCtx : ''}`.trim();
     const sys = `You are the ${module ? module + ' ' : ''}operations agent inside ${bizName}'s admin panel, talking to the owner/staff — peer-to-peer, direct, brief. ${viewCtx ? 'Answer their question DIRECTLY using the live data below — break it down with the real figures, call out what stands out (over/under budget, biggest lines), and be specific. Do not draft an invoice or any document unless they explicitly ask for one. ' : 'You coordinate the business\'s agents (blog, copy, design, social, email, invoices, clients, etc.). When they name a task, say exactly which agent will do it or ask for the one missing specific; keep replies short. '}Treat the brand context as reference, not your speaking style.
 ${brand}${viewCtx ? '\n\n' + viewCtx : ''}`.trim();
     const reply = await callLLM(msgs.length ? msgs : [{ role: 'user', content: text }], sys, 90000, { tenant, engine: def.engine, model: def.model });
-    return res.json({ ok: true, reply: reply || 'How can I help?' });
+    return res.json({
+      ok: true, reply: reply || 'How can I help?',
+      runtime: { ...(await describeRuntime(tenant, def.engine, def.model)), agent: 'conversation' },
+    });
   } catch (err) {
     console.error('[agent-chat/run] error:', err);
     res.status(500).json({ ok: false, error: err.message });

@@ -8,7 +8,7 @@
   </div>
 </div>
 
-<div class="content" data-agent-scope="bookkeeping" data-agent-kind="agent" data-agent-title="Receipt Scan" data-agent-suggest="Turn this receipt into a ledger entry|Extract the vendor, date and total|Suggest a GL category for this receipt|Check if this duplicates an entry">
+<div class="content" data-agent-scope="bookkeeping" data-agent-kind="agent" data-agent-title="Receipt Scan" data-agent-suggest="Which transaction does this receipt document?|Extract the vendor, date and total|Should this post to the ledger or just cross-reference?|Check if this duplicates an entry">
   <%- include('_tabs', { active: 'scan' }) %>
 
   <% if (success) { %><div class="alert alert-success"><%= success %></div><% } %>
@@ -19,7 +19,7 @@
     <div class="scan-hero-copy">
       <div class="scan-kicker">AI Receipt &amp; Invoice Scanner</div>
       <h2 class="scan-title">Snap it, we read it, you approve it.</h2>
-      <p class="text-slate" style="font-size:0.82rem;margin:0;">Upload a photo of a receipt or invoice. The AI drafts the vendor, date, amount and a category guess — nothing posts to your books until you review and approve it.</p>
+      <p class="text-slate" style="font-size:0.82rem;margin:0;">Upload a photo of a receipt or invoice. The AI drafts the vendor, date and amount, then finds the bank transaction it belongs to. Receipts are filed as <strong>proof against a statement line</strong> — they only become their own ledger entry when the spend never hits a statement.</p>
     </div>
     <form data-guard class="scan-drop" method="POST" action="/admin/ledger/scan" enctype="multipart/form-data" id="scanForm">
       <label class="dropzone" id="dropzone">
@@ -67,13 +67,55 @@
           </div>
         </div>
 
-        <form data-guard class="scan-card-form" method="POST" action="/admin/ledger/scan/<%= s._id %>/approve">
+        <% const cands = (matches || {})[String(s._id)] || []; %>
+
+        <div class="scan-card-form">
           <% if (s.needsManual && s.aiNote) { %>
             <div class="ai-note"><%= s.aiNote %></div>
           <% } else if (s.summary) { %>
             <div class="ai-note ai-note-quote">&ldquo;<%= s.summary %>&rdquo;</div>
           <% } %>
 
+          <!-- Primary path: file this receipt against the transaction it documents -->
+          <form data-guard method="POST" action="/admin/ledger/scan/<%= s._id %>/match" class="match-block">
+            <div class="match-head">
+              <span class="match-title">Cross-reference to a transaction</span>
+              <span class="match-hint">Files the receipt as proof — nothing posts to the ledger</span>
+            </div>
+            <% if (!cands.length) { %>
+              <div class="ai-note match-empty">
+                No matching transaction on record yet. Leave it here — it stays out of your books until the
+                statement it belongs to is uploaded, then it becomes matchable.
+              </div>
+            <% } else { %>
+              <div class="match-list">
+                <% cands.forEach(function(m, i){ %>
+                <label class="match-opt <%= m.exact ? 'is-exact' : '' %>">
+                  <input type="radio" name="ref" value="<%= m.ref %>" <%= i === 0 ? 'checked' : '' %> required>
+                  <span class="match-body">
+                    <span class="match-line">
+                      <span class="match-desc"><%= (m.description || '—').slice(0, 68) %></span>
+                      <span class="match-amt"><%= money(m.amount) %></span>
+                    </span>
+                    <span class="match-meta">
+                      <%= m.date ? new Date(m.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : 'no date' %>
+                      &middot; <%= m.context %>
+                      &middot; <%= m.posted ? 'on the ledger' : 'in review' %>
+                      <% if (m.exact) { %><span class="match-exact">exact amount</span><% } %>
+                    </span>
+                  </span>
+                </label>
+                <% }) %>
+              </div>
+              <button type="submit" class="btn btn-navy btn-sm">&#128279; Cross-reference &amp; file</button>
+            <% } %>
+          </form>
+
+          <!-- Rare path: this spend never hits a bank statement (cash / out-of-pocket) -->
+          <details class="post-block">
+            <summary>Cash or out-of-pocket &mdash; post as its own ledger entry</summary>
+            <p class="post-warn">Only when this charge will never appear on a bank or card statement. Otherwise the statement posts it again and it double-counts.</p>
+            <form data-guard method="POST" action="/admin/ledger/scan/<%= s._id %>/approve">
           <div class="form-grid cols-2">
             <div class="form-field">
               <label>Date</label>
@@ -119,13 +161,19 @@
           </div>
 
           <div class="scan-card-actions">
-            <button type="submit" class="btn btn-navy btn-sm">&#10003; Approve &amp; Post</button>
-            <span class="scan-mini-actions">
-              <button type="submit" formaction="/admin/ledger/scan/<%= s._id %>/reject" formnovalidate class="btn btn-ghost btn-sm">Reject</button>
-              <button type="submit" formaction="/admin/ledger/scan/<%= s._id %>/delete" formnovalidate class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="return confirm('Delete this scan?')">Delete</button>
-            </span>
-          </div>
-        </form>
+                <button type="submit" class="btn btn-ghost btn-sm">Post to ledger</button>
+                <% if (cands.length) { %>
+                  <label class="force-lbl"><input type="checkbox" name="force" value="1"> post anyway (I know it matches)</label>
+                <% } %>
+              </div>
+            </form>
+          </details>
+
+          <form data-guard="button" method="POST" action="/admin/ledger/scan/<%= s._id %>/reject" class="scan-mini-actions">
+            <button type="submit" class="btn btn-ghost btn-sm">Reject</button>
+            <button type="submit" formaction="/admin/ledger/scan/<%= s._id %>/delete" class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="return confirm('Delete this scan?')">Delete</button>
+          </form>
+        </div>
       </div>
       <% }) %>
     </div>
@@ -136,15 +184,31 @@
   <h3 class="section-h" style="margin:28px 0 12px;">Recently handled</h3>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Date</th><th>Vendor</th><th style="text-align:right;">Amount</th><th>Result</th><th>Reviewed by</th></tr></thead>
+      <thead><tr><th>Date</th><th>Vendor</th><th style="text-align:right;">Amount</th><th>Result</th><th>Reviewed by</th><th></th></tr></thead>
       <tbody>
         <% recent.forEach(function(s){ %>
         <tr>
           <td><%= s.date ? new Date(s.date).toLocaleDateString('en-US') : '—' %></td>
           <td><%= s.vendor || '—' %></td>
           <td style="text-align:right;"><%= money(s.total || 0) %></td>
-          <td><span class="badge <%= s.status === 'approved' ? 'badge-active' : 'badge-inactive' %>" style="text-transform:capitalize;"><%= s.status %></span></td>
+          <td>
+            <% if (s.status === 'matched') { %>
+              <span class="badge badge-active">cross-referenced</span>
+              <% if (s.matchLabel) { %><div class="text-slate" style="font-size:0.72rem;margin-top:3px;"><%= s.matchLabel %></div><% } %>
+            <% } else if (s.status === 'approved') { %>
+              <span class="badge badge-featured" title="This receipt became its own ledger line">posted to ledger</span>
+            <% } else { %>
+              <span class="badge badge-inactive" style="text-transform:capitalize;"><%= s.status %></span>
+            <% } %>
+          </td>
           <td class="text-slate" style="font-size:0.8rem;"><%= s.reviewedBy || '' %></td>
+          <td style="text-align:right;">
+            <% if (s.status === 'matched') { %>
+            <form data-guard="button" method="POST" action="/admin/ledger/scan/<%= s._id %>/unmatch" style="margin:0;">
+              <button class="btn btn-ghost btn-sm" style="font-size:0.66rem;padding:4px 10px;">Undo</button>
+            </form>
+            <% } %>
+          </td>
         </tr>
         <% }) %>
       </tbody>
@@ -182,8 +246,36 @@
   .ai-note{font-size:0.75rem;color:var(--slate);background:var(--ivory);border-radius:6px;padding:8px 10px;}
   .ai-note-quote{font-style:italic;color:var(--navy);}
   .guess{font-weight:400;text-transform:none;letter-spacing:0;color:var(--gold);font-size:0.66rem;margin-left:6px;}
-  .scan-card-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px;}
-  .scan-mini-actions{display:flex;gap:4px;}
+  .scan-card-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px;flex-wrap:wrap;}
+  .scan-mini-actions{display:flex;gap:4px;justify-content:flex-end;margin:0;border-top:1px solid var(--border);padding-top:10px;}
+  /* Cross-reference (the default resolution) */
+  .match-block{display:flex;flex-direction:column;gap:10px;margin:0;}
+  .match-head{display:flex;flex-direction:column;gap:2px;}
+  .match-title{font-size:0.78rem;font-weight:600;color:var(--navy);}
+  .match-hint{font-size:0.7rem;color:var(--slate);}
+  .match-empty{font-size:0.72rem;line-height:1.45;}
+  .match-list{display:flex;flex-direction:column;gap:6px;}
+  .match-opt{display:flex;gap:9px;align-items:flex-start;padding:8px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .12s,background .12s;}
+  .match-opt:hover{border-color:var(--gold);}
+  .match-opt:has(input:checked){border-color:var(--navy);background:rgba(28,43,74,0.04);}
+  .match-opt.is-exact{border-left:3px solid var(--success);}
+  .match-opt input{margin-top:3px;}
+  .match-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+  .match-line{display:flex;justify-content:space-between;gap:10px;align-items:baseline;}
+  .match-desc{font-size:0.78rem;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .match-amt{font-size:0.78rem;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .match-meta{font-size:0.68rem;color:var(--slate);}
+  .match-exact{color:var(--success);font-weight:600;margin-left:5px;}
+  /* Post-as-entry (the rare escape hatch) */
+  .post-block{border-top:1px solid var(--border);padding-top:10px;}
+  .post-block summary{font-size:0.74rem;color:var(--slate);cursor:pointer;list-style:none;}
+  .post-block summary::-webkit-details-marker{display:none;}
+  .post-block summary::before{content:'\25B8 ';}
+  .post-block[open] summary::before{content:'\25BE ';}
+  .post-block summary:hover{color:var(--navy);}
+  .post-block form{display:flex;flex-direction:column;gap:12px;margin-top:10px;}
+  .post-warn{font-size:0.7rem;line-height:1.45;color:var(--slate);background:rgba(201,168,72,0.09);border-radius:6px;padding:8px 10px;margin:8px 0 0;}
+  .force-lbl{display:flex;align-items:center;gap:5px;font-size:0.68rem;color:var(--slate);}
   @media print { .scan-hero, .topbar-actions { display:none !important; } }
 </style>
 

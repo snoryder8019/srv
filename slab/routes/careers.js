@@ -215,7 +215,7 @@ router.post('/:slug/apply', resumeUpload.single('resume'), async (req, res, next
 
     const name = (req.body.name || '').trim();
     const email = (req.body.email || '').trim().toLowerCase();
-    if (!name || !email) return rerender('Name and email are required.');
+    if (!name || !email) return rerender(res.locals.t('careers.err_name_email_required'));
 
     // Honeypot — silent success (see /contact rationale).
     const honeypot = !!(req.body.website2 || req.body._hp || '').trim();

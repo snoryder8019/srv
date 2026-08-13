@@ -7,6 +7,20 @@ import { enrichDesignContrast } from '../../plugins/colorContrast.js';
 
 const router = express.Router();
 
+// Visual skins a template can render through (see views/partials/skins/*.ejs).
+// 'classic' = the built-in block renderer; the rest are full design worlds.
+const VALID_SKINS = ['classic', 'lowlight', 'terminal', 'arena', 'gallery'];
+const cleanSkin = (s) => (VALID_SKINS.includes(s) ? s : 'classic');
+
+// Homepage "looks" = landing_layout themes. Switching a look is carbon-copy: index.ejs
+// renders ALL the tenant's content/modules; [data-layout="<look>"] only re-styles it.
+const VALID_LOOKS = [
+  'classic', 'bold', 'minimal', 'magazine', 'dark', 'startup', 'showcase', 'industrial',
+  'split', 'editorial', 'agency', 'clean', 'brutalist',
+  'lowlight', 'terminal', 'arena', 'gallery',
+];
+const cleanLook = (s) => (VALID_LOOKS.includes(s) ? s : null);
+
 function toSlug(str) {
   return str.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
@@ -115,6 +129,7 @@ router.post('/', async (req, res) => {
       description: (description || '').trim(),
       category: ['landing', 'page'].includes(category) ? category : 'landing',
       tags: (tags || '').split(',').map(t => t.trim()).filter(Boolean),
+      skin: cleanSkin(req.body.skin),
       blocks,
       designSnapshot,
       thumbnail: '',
@@ -180,6 +195,7 @@ router.post('/:id', async (req, res) => {
         description: (description || '').trim(),
         category: ['landing', 'page'].includes(category) ? category : 'landing',
         tags: (tags || '').split(',').map(t => t.trim()).filter(Boolean),
+        skin: cleanSkin(req.body.skin),
         blocks,
         designSnapshot,
         updatedAt: new Date(),
@@ -255,13 +271,36 @@ router.post('/:id/activate', async (req, res) => {
     // Snapshot current state before switching render mode (recoverable).
     await snapshotBeforeSwitch(db, 'activate: ' + (tpl.name || tpl._id));
 
+    // Preserve per-template content edits across switches. Overrides live on the
+    // singleton active_template doc keyed by block id, so naively re-activating a
+    // template used to blank them out (silent data loss). We stash every template's
+    // overrides under overridesByTemplate.<templateId> and restore this template's
+    // slice, so A → B → A brings A's edits back instead of erasing them.
+    const cur = await db.collection('active_template').findOne({});
+    const tid = tpl._id.toString();
+    const stash = { ...(cur?.overridesByTemplate || {}) };
+    if (cur?.templateId && cur.contentOverrides && Object.keys(cur.contentOverrides).length) {
+      stash[cur.templateId.toString()] = cur.contentOverrides;
+    }
+    const restored = stash[tid] || {};
+
     await db.collection('active_template').updateOne(
       {},
       { $set: {
         templateId: tpl._id,
         appliedAt: new Date(),
-        contentOverrides: {},
+        contentOverrides: restored,
+        overridesByTemplate: stash,
       }},
+      { upsert: true },
+    );
+
+    // Activating a template means "show it now" — force the render mode to 'slab'
+    // so activation is never a silent no-op for a tenant whose home_source was
+    // 'custom'/'auto' (they can switch the Homepage Source back explicitly).
+    await db.collection('design').updateOne(
+      { key: 'home_source' },
+      { $set: { key: 'home_source', value: 'slab', updatedAt: new Date() } },
       { upsert: true },
     );
 
@@ -300,7 +339,10 @@ router.post('/:id/content', async (req, res) => {
 
     await db.collection('active_template').updateOne(
       { templateId: new ObjectId(req.params.id) },
-      { $set: { contentOverrides: overrides } },
+      { $set: {
+        contentOverrides: overrides,
+        ['overridesByTemplate.' + req.params.id]: overrides,
+      } },
     );
 
     res.redirect('/admin/templates?msg=Content+mapping+saved');
@@ -324,7 +366,10 @@ router.post('/:id/content-field', async (req, res) => {
     const value = String(req.body.value ?? '').slice(0, 20000);
     const r = await req.db.collection('active_template').updateOne(
       { templateId: new ObjectId(req.params.id) },
-      { $set: { ['contentOverrides.' + blockId + '.' + field]: value } },
+      { $set: {
+        ['contentOverrides.' + blockId + '.' + field]: value,
+        ['overridesByTemplate.' + req.params.id + '.' + blockId + '.' + field]: value,
+      } },
     );
     if (!r.matchedCount) return res.status(404).json({ error: 'No active template' });
     res.json({ ok: true });
@@ -338,11 +383,73 @@ router.post('/:id/content-field', async (req, res) => {
 router.post('/:id/deactivate', async (req, res) => {
   try {
     await snapshotBeforeSwitch(req.db, 'deactivate');
-    await req.db.collection('active_template').deleteMany({});
+    // Keep the singleton (and its overridesByTemplate stash) so re-activating a
+    // template later restores its edits; just clear the active pointer so the
+    // homepage falls through to the standard layout.
+    const r = await req.db.collection('active_template').updateOne(
+      {},
+      { $set: { templateId: null, appliedAt: null, contentOverrides: {} } },
+    );
+    if (!r.matchedCount) await req.db.collection('active_template').deleteMany({});
     res.redirect('/admin/templates?msg=deactivated');
   } catch (err) {
     console.error('[templates]', err);
     res.redirect('/admin/templates?err=1');
+  }
+});
+
+// ── Switch to the Standard Layout ────────────────────────────────────────────
+// Unified look-switcher action: makes the built-in landing layout the live
+// homepage — clears any active template AND forces home_source:'slab' so it's a
+// one-click switch alongside the template cards (no separate Homepage Source step).
+router.post('/use-standard', async (req, res) => {
+  try {
+    const db = req.db;
+    await snapshotBeforeSwitch(db, 'use-standard');
+    const r = await db.collection('active_template').updateOne(
+      {}, { $set: { templateId: null, appliedAt: null, contentOverrides: {} } },
+    );
+    if (!r.matchedCount) await db.collection('active_template').deleteMany({});
+    await db.collection('design').updateOne(
+      { key: 'home_source' },
+      { $set: { key: 'home_source', value: 'slab', updatedAt: new Date() } },
+      { upsert: true },
+    );
+    res.redirect('/admin/design?msg=Standard+layout+is+now+live#tab=source');
+  } catch (err) {
+    console.error('[templates] use-standard:', err);
+    res.redirect('/admin/design?err=1#tab=source');
+  }
+});
+
+// ── Switch the homepage LOOK (landing_layout theme) — CARBON-COPY, lossless ──
+// index.ejs renders ALL the tenant's content/modules; the look only re-styles via
+// [data-layout]. Clears any active block template + forces home_source:slab so the
+// full standard layout renders. Remembers the previous look so the design panel can
+// offer a 20-second accept/undo.
+router.post('/use-look', async (req, res) => {
+  try {
+    const db = req.db;
+    const look = cleanLook(String(req.body.look || ''));
+    if (!look) return res.redirect('/admin/design?err=Unknown+look#tab=source');
+    const prev = (await db.collection('design').findOne({ key: 'landing_layout' }))?.value || 'classic';
+    await snapshotBeforeSwitch(db, 'use-look: ' + look);
+    const r = await db.collection('active_template').updateOne(
+      {}, { $set: { templateId: null, appliedAt: null, contentOverrides: {} } },
+    );
+    if (!r.matchedCount) await db.collection('active_template').deleteMany({});
+    await db.collection('design').updateOne(
+      { key: 'home_source' },
+      { $set: { key: 'home_source', value: 'slab', updatedAt: new Date() } }, { upsert: true },
+    );
+    await db.collection('design').updateOne(
+      { key: 'landing_layout' },
+      { $set: { key: 'landing_layout', value: look, updatedAt: new Date() } }, { upsert: true },
+    );
+    res.redirect(`/admin/design?look_to=${encodeURIComponent(look)}&look_from=${encodeURIComponent(prev)}#tab=source`);
+  } catch (err) {
+    console.error('[templates] use-look:', err);
+    res.redirect('/admin/design?err=1#tab=source');
   }
 });
 
@@ -485,13 +592,14 @@ router.get('/:id/preview', async (req, res) => {
     const tpl = await db.collection('templates').findOne({ _id: new ObjectId(req.params.id) });
     if (!tpl) return res.status(404).send('Template not found');
 
-    const useSnapshot = req.query.designMode === 'snapshot';
-    let design;
-    if (useSnapshot && tpl.designSnapshot) {
-      design = enrichDesignContrast({ ...DESIGN_DEFAULTS, ...tpl.designSnapshot });
-    } else {
-      design = await getDesign(db);
-    }
+    // Default: render the template in its OWN captured look (designSnapshot over the
+    // tenant base) so library previews look distinct, not homogenized to one palette.
+    // ?designMode=live forces the tenant's current live tokens instead.
+    const forceLive = req.query.designMode === 'live';
+    const baseDesign = await getDesign(db);
+    const design = (!forceLive && tpl.designSnapshot && Object.keys(tpl.designSnapshot).length)
+      ? enrichDesignContrast({ ...baseDesign, ...tpl.designSnapshot })
+      : baseDesign;
 
     // Merge any active content overrides
     const active = await db.collection('active_template').findOne({ templateId: tpl._id });
@@ -500,7 +608,28 @@ router.get('/:id/preview', async (req, res) => {
       return { ...b, fields: { ...b.fields, ...overrides } };
     });
 
-    res.render('admin/templates/preview', { design, blocks, tpl });
+    // Extra locals so skinned previews match the live render.
+    const [logoRows, navLinks] = await Promise.all([
+      db.collection('brand_images').find({ slot: { $in: ['logo_primary', 'logo_white'] } }).toArray(),
+      db.collection('nav_links').find({}).sort({ order: 1, createdAt: 1 }).toArray(),
+    ]);
+    const logos = {};
+    for (const r of logoRows) logos[r.slot] = r.url;
+    const visibility = {
+      header: design.vis_header !== 'false',
+      footer: design.vis_footer !== 'false',
+      blog: design.vis_blog === 'true',
+    };
+
+    // Allow the form's skin picker to preview a not-yet-saved skin via ?skin=.
+    const previewTpl = req.query.skin ? { ...tpl, skin: cleanSkin(req.query.skin) } : tpl;
+
+    res.render('admin/templates/preview', {
+      design, blocks, tpl: previewTpl,
+      brand: res.locals.brand || {},
+      logos, navLinks, visibility,
+      centralAuthUrl: '/admin/login',
+    });
   } catch (err) {
     console.error('[templates/preview]', err);
     res.status(500).send('Preview error');
@@ -516,7 +645,13 @@ router.post('/preview', async (req, res) => {
     blocks = blocks.filter(b => b && VALID_BLOCK_TYPES.includes(b.type));
 
     const design = await getDesign(db);
-    res.render('admin/templates/preview', { design, blocks, tpl: { name: 'Preview' } });
+    const visibility = { header: design.vis_header !== 'false', footer: design.vis_footer !== 'false', blog: design.vis_blog === 'true' };
+    res.render('admin/templates/preview', {
+      design, blocks,
+      tpl: { name: 'Preview', skin: req.body.skin || 'classic' },
+      brand: res.locals.brand || {}, logos: {}, navLinks: [], visibility,
+      centralAuthUrl: '/admin/login',
+    });
   } catch (err) {
     console.error('[templates/preview]', err);
     res.status(500).send('Preview error');

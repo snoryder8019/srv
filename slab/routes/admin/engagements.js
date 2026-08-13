@@ -1,7 +1,7 @@
 import express from 'express';
 import { ObjectId } from 'mongodb';
 import { generateInvoiceNumber } from '../../plugins/invoiceHelpers.js';
-import { sendClientEmail } from '../../plugins/mailer.js';
+import { sendClientEmail, resolveSmtp, trackingEnabled } from '../../plugins/mailer.js';
 import { clientFileUpload } from '../../middleware/upload.js';
 import { config } from '../../config/config.js';
 import { callLLM, tryParseAgentResponse } from '../../plugins/agentMcp.js';
@@ -12,7 +12,7 @@ import {
   generateEngagementNumber, generateEngagementToken,
   materializeTemplates, freezeDraftPackages, normalizeTermSections,
   DEFAULT_TERM_SECTIONS, hashDocument, logEvent, validateSelections,
-  selectedItems, engagementToInvoice, timeframeLabel, priceLabel,
+  selectedItems, engagementToInvoice, timeframeLabel, priceLabel, safeJson,
 } from '../../plugins/engagements.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -33,7 +33,7 @@ catalogRouter.get('/', async (req, res) => {
   for (const c of clients) clientMap[c._id.toString()] = c.name || c.company || 'Client';
   res.render('admin/engagements/index', {
     user: req.adminUser, services, templates, engagements, clients, clientMap,
-    timeframeLabel, priceLabel, qs: req.query,
+    timeframeLabel, priceLabel, safeJson, qs: req.query,
   });
 });
 
@@ -179,7 +179,7 @@ clientRouter.get('/:eid', async (req, res) => {
   const clientNotes = await buildClientNotes(db, client);
   res.render('admin/engagements/editor', {
     user: req.adminUser, c: client, e: engagement, services, templates,
-    timeframeLabel, priceLabel, qs: req.query, clientNotes,
+    timeframeLabel, priceLabel, safeJson, qs: req.query, clientNotes,
     publicUrl: `${req.tenant?.domain ? 'https://' + req.tenant.domain : config.DOMAIN}/engage/${engagement.accessToken}`,
   });
 });
@@ -529,11 +529,15 @@ clientRouter.post('/:eid/acknowledge', async (req, res) => {
 <p>Next step from our side: your welcome package with onboarding and requirements. Watch for it shortly.</p>
 <p>Thank you — looking forward to it.</p>
 <p>— ${brandName}</p>`;
-    const info = await sendClientEmail(client.email, [], subject, body, null, req.tenant);
-    const emailDoc = await db.collection('client_emails').insertOne({
+    const emailId = new ObjectId();
+    const info = await sendClientEmail(client.email, [], subject, body, null, req.tenant, null, { trackId: emailId });
+    await db.collection('client_emails').insertOne({
+      _id: emailId,
+      threadId: emailId,
+      tracked: trackingEnabled(req.tenant),
       clientId: client._id.toString(),
       direction: 'outbound',
-      from: config.ZOHO_USER,
+      from: resolveSmtp(req.tenant).user || config.ZOHO_USER,
       to: client.email, cc: [],
       subject, baseSubject: subject, body,
       attachments: [],
@@ -542,7 +546,6 @@ clientRouter.post('/:eid/acknowledge', async (req, res) => {
       sentBy: req.adminUser?.displayName || 'admin',
       sentAt: new Date(),
     });
-    await db.collection('client_emails').updateOne({ _id: emailDoc.insertedId }, { $set: { threadId: emailDoc.insertedId } });
     await db.collection('engagements').updateOne(
       { _id: engagement._id },
       { $set: { status: 'acknowledged', acknowledgedAt: new Date(), acknowledgedBy: req.adminUser?.email || 'admin', updatedAt: new Date() } }

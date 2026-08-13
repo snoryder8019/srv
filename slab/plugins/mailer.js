@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 import { readFile } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { ObjectId } from 'mongodb';
 import { getTenantDb } from './mongo.js';
 import { contrastRatio, mixHex, readableTextColor, enrichDesignContrast } from './colorContrast.js';
 import { sanitizeEmailHtml } from './emailHtml.js';
@@ -73,6 +74,23 @@ export function resolveSmtp(tenant) {
   const pass = sec.zohoPass || null;
 
   return { provider, authMode, user, pass, host, port, secure, requireTLS, oauth };
+}
+
+/**
+ * Non-throwing "can this tenant actually send email?" check — the shared
+ * safeguard behind the admin advisory banners (marketing + client email).
+ *
+ * Mirrors the validity logic in `tenantSmtp()` exactly so the banner and the
+ * real send path never disagree: OAuth is ready once a mailbox is connected
+ * (resolveSmtp only reports authMode 'oauth' when the client/refresh material
+ * is present), password mode needs both a user and a password. Recognizing the
+ * OAuth path is what keeps the banner from crying "Setup Required" at tenants
+ * who send via Gmail/Outlook OAuth instead of SMTP credentials.
+ */
+export function emailConfigured(tenant) {
+  const cfg = resolveSmtp(tenant);
+  if (cfg.authMode === 'oauth') return !!cfg.user;
+  return !!(cfg.user && cfg.pass);
 }
 
 function getTransporter(smtp) {
@@ -504,15 +522,95 @@ async function tenantSmtp(tenant) {
   return cfg;
 }
 
+// Local copy of imapPoller's subject normalizer (kept in sync) so invoice emails
+// thread with inbound replies by baseSubject without an import cycle back into
+// imapPoller (which imports resolveSmtp from here).
+function normalizeSubjectLocal(subject) {
+  return (subject || '').replace(/^(re|fwd?|fw)\s*:\s*/gi, '').trim().toLowerCase();
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * OPEN / CLICK TRACKING — shared by campaign sends and 1:1 client mail.
+ * `payload` rides inside every token so routes/tracking.js knows what the
+ * event belongs to: {c,r} = campaign + recipient, {e} = a client_emails _id.
+ * ────────────────────────────────────────────────────────────────── */
+
+/** Tracking needs an absolute, publicly reachable URL — i.e. a tenant domain. */
+export function trackingEnabled(tenant) {
+  return !!tenant?.domain;
+}
+
+/** Rewrite links through /t/c/ and append the /t/o/ open pixel. */
+async function withTracking(html, domain, payload) {
+  if (!domain) return html;
+  const { encodeTrackingToken } = await import('../routes/tracking.js');
+  let out = html.replace(/<a\s([^>]*?)href="(https?:\/\/[^"]+)"([^>]*?)>/gi, (match, pre, url, post) => {
+    if (url.includes('/unsubscribe') || url.includes('/t/c/')) return match;
+    return `<a ${pre}href="${domain}/t/c/${encodeTrackingToken({ ...payload, u: url })}"${post}>`;
+  });
+  const pixel = `<img src="${domain}/t/o/${encodeTrackingToken(payload)}" width="1" height="1" alt="" style="border:0;width:1px;height:1px;overflow:hidden;">`;
+  out = out.includes('</body>') ? out.replace('</body>', `${pixel}</body>`) : out + pixel;
+  return out;
+}
+
+/**
+ * Record a sent invoice email into the tenant's `client_emails` history so it
+ * shows inline in the client's Emails tab and inbound replies thread onto it.
+ * Best-effort: a logging failure must never break the actual send. Threads to
+ * its own _id as the root, mirroring the outbound path in routes/admin/clients.js.
+ */
+async function logInvoiceEmail(tenant, { invoice, clientDoc, subject, summaryHtml, from, info, emailId }) {
+  try {
+    if (!tenant?.db || !clientDoc?._id) return;
+    const db = getTenantDb(tenant.db);
+    const _id = emailId || new ObjectId();
+    await db.collection('client_emails').insertOne({
+      _id,
+      threadId: _id,
+      tracked: trackingEnabled(tenant),
+      clientId: clientDoc._id.toString(),
+      direction: 'outbound',
+      from: from || null,
+      to: clientDoc.email,
+      cc: [],
+      subject,
+      baseSubject: normalizeSubjectLocal(subject),
+      body: summaryHtml,
+      messageId: info?.messageId || null,
+      source: 'invoice',
+      invoiceId: invoice?._id ? invoice._id.toString() : null,
+      invoiceNumber: invoice?.invoiceNumber || null,
+      amount: invoice?.amount ?? null,
+      sentBy: 'system',
+      sentAt: new Date(),
+    });
+  } catch (e) {
+    console.error('[mailer] logInvoiceEmail failed (non-fatal):', e.message);
+  }
+}
+
 export async function sendInvoiceEmail(invoice, clientDoc, paymentUrl, tenant) {
   const smtp = await tenantSmtp(tenant);
-  const { html, subject } = await renderInvoiceEmail({ invoice, clientDoc, paymentUrl, tenant });
-  await getTransporter(smtp).sendMail({
+  let { html, subject } = await renderInvoiceEmail({ invoice, clientDoc, paymentUrl, tenant });
+  // Reserve the history _id up front so the pixel/link tokens can point at the
+  // very row the Emails tab renders — "did they open it / did they click Pay".
+  const emailId = new ObjectId();
+  html = await withTracking(html, tenant?.domain ? `https://${tenant.domain}` : '', { e: emailId.toString() });
+  const info = await getTransporter(smtp).sendMail({
     from: `"${tenant?.brand?.name || 'Our Team'}" <${smtp.user}>`,
     to: clientDoc.email,
     subject,
     html,
   });
+  // History entry (best-effort) — a compact summary, not the full invoice HTML,
+  // so it renders cleanly inline in the client thread.
+  const amount = Number(invoice?.amount);
+  const summaryHtml =
+    `<p style="margin:0 0 8px;"><strong>Invoice ${invoice?.invoiceNumber || ''}</strong>`
+    + `${Number.isFinite(amount) ? ' — $' + amount.toFixed(2) : ''} emailed to the client.</p>`
+    + (paymentUrl ? `<p style="margin:0;"><a href="${paymentUrl}">View / pay invoice &rarr;</a></p>` : '');
+  await logInvoiceEmail(tenant, { invoice, clientDoc, subject, summaryHtml, from: smtp.user, info, emailId });
+  return info;
 }
 
 export async function sendCampaignEmail(toEmail, toName, subject, preheader, body, campaignId = null, contactId = null, tenant = null) {
@@ -521,24 +619,23 @@ export async function sendCampaignEmail(toEmail, toName, subject, preheader, bod
   let { html } = await renderCampaignEmail({ toEmail, toName, subject, preheader, body, brandDomain: domain, tenant });
 
   if (campaignId && contactId) {
-    const { encodeTrackingToken } = await import('../routes/tracking.js');
-    const cid = campaignId.toString();
-    const rid = contactId.toString();
-    html = html.replace(/<a\s([^>]*?)href="(https?:\/\/[^"]+)"([^>]*?)>/gi, (match, pre, url, post) => {
-      if (url.includes('/unsubscribe')) return match;
-      const token = encodeTrackingToken({ c: cid, r: rid, u: url });
-      return `<a ${pre}href="${domain}/t/c/${token}"${post}>`;
-    });
-    const openToken = encodeTrackingToken({ c: cid, r: rid });
-    const pixel = `<img src="${domain}/t/o/${openToken}" width="1" height="1" alt="" style="border:0;width:1px;height:1px;overflow:hidden;">`;
-    html = html.replace('</body>', `${pixel}</body>`);
+    html = await withTracking(html, domain, { c: campaignId.toString(), r: contactId.toString() });
   }
+
+  // One-click unsubscribe (RFC 8058) alongside the in-body link, so the mailbox
+  // provider's own Unsubscribe button works — the "unsubscribe at any time"
+  // promise on the opt-in form has to hold without hunting through the footer.
+  const unsubHeaders = domain ? {
+    'List-Unsubscribe': `<${domain}/t/unsubscribe?email=${encodeURIComponent(toEmail || '')}>`,
+    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+  } : {};
 
   await getTransporter(smtp).sendMail({
     from: `"${tenant?.brand?.name || 'Our Team'}" <${smtp.user}>`,
     to: toEmail,
     subject,
     html,
+    headers: unsubHeaders,
   });
 }
 
@@ -595,10 +692,12 @@ export function formatEmailBody(body, opts = {}) {
     .join('');
 }
 
-export async function sendClientEmail(to, cc, subject, body, threadHeaders = null, tenant = null, attachments = null) {
+// opts.trackId — the client_emails _id this send will be logged under. Pass it
+// (reserve the ObjectId before sending) to get open/click tracking on the row.
+export async function sendClientEmail(to, cc, subject, body, threadHeaders = null, tenant = null, attachments = null, opts = {}) {
   const smtp = await tenantSmtp(tenant);
   const theme = await loadTenantTheme(tenant);
-  const { html } = await renderCampaignEmail({
+  let { html } = await renderCampaignEmail({
     toEmail: to,
     body: formatEmailBody(body, { accent: theme.c_accent }),
     preheader: '',
@@ -606,6 +705,9 @@ export async function sendClientEmail(to, cc, subject, body, threadHeaders = nul
     tenant,
     theme,
   });
+  if (opts.trackId) {
+    html = await withTracking(html, tenant?.domain ? `https://${tenant.domain}` : '', { e: opts.trackId.toString() });
+  }
 
   const mailOpts = {
     from: `"${tenant?.brand?.name || 'Our Team'}" <${smtp.user}>`,

@@ -334,10 +334,10 @@ app.get('/book/sports', async (req, res) => {
 app.get('/book/keno', (req, res) => res.json({ ok: true, ...book.kenoState() }));
 app.get('/book/mybets', async (req, res) => {
   const u = req.session.user;
-  if (!u) return res.json({ ok: true, signedIn: false, sports: [], keno: { open: [], result: null } });
+  if (!u) return res.json({ ok: true, signedIn: false, sports: [], keno: { open: [], result: null }, record: null });
   let chips = null;
   try { const w = await wallet.getChips(u.platformId, u.displayName); chips = w && w.chips; } catch (e) {}
-  res.json({ ok: true, signedIn: true, chips, sports: book.mySportsBets(u.platformId), keno: book.myKeno(u.platformId) });
+  res.json({ ok: true, signedIn: true, chips, sports: book.mySportsBets(u.platformId), keno: book.myKeno(u.platformId), record: book.myRecord(u.platformId) });
 });
 app.post('/book/sports/bet', async (req, res) => {
   const u = req.session.user;

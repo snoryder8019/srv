@@ -126,11 +126,20 @@ function moduleSuggestions(module, brand = {}) {
       'Summarize our P&L and what stands out', 'What’s driving our net profit up or down?',
       'Flag any category with no spend that should have some', `Draft an invoice for ${s0}`,
     ],
+    // Every chip here must be ONE writable post — the Blog agent's only tool is
+    // write_blog_post, so asks like "5 title ideas" or "outline a content
+    // calendar" silently came back as a full article instead. Chips also name a
+    // real customer-facing SUBJECT: "write a local-SEO post targeting Greeley"
+    // read as a post ABOUT SEO and produced "Optimize Your Lawn for Local SEO
+    // Success in Greeley" — say the topic, let the post be locally targeted.
     blog: [
-      `Write a 700-word how-to on ${s0}`, `Give me 5 blog title ideas about ${s0}`,
-      'Turn our FAQ into a blog post', 'Write a case study from a recent project',
-      `Write a local-SEO post targeting ${loc}`, 'Outline a 4-week content calendar',
-      `Compare ${s0} vs ${s1} for a buyer’s guide`,
+      `Write a 700-word how-to on ${s0}`,
+      `Write a post about ${s0} for ${loc} customers`,
+      `Compare ${s0} vs ${s1} as a buyer’s guide`,
+      `Write a seasonal tips post about ${s0}`,
+      `Answer the question customers most often ask about ${s0}`,
+      `Write a post on common ${s0} mistakes and how to avoid them`,
+      `Write a beginner’s guide to ${s1}`,
     ],
     social: [
       `Draft a week of posts about ${s0}`, 'Write a promo post with a strong CTA',

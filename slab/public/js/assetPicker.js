@@ -17,19 +17,41 @@
 
   let modalEl = null;
   let currentCallback = null;
-  let pickerFolder = 'all';
-  let pickerType = 'all';
   let searchTimeout = null;
   let foldersLoaded = false;
+  let filtersPromise = null;
+  let folderNames = {};   // slug → display name, for chip labels
 
-  // Short memory — remember the last folder/type the user filtered to so the
-  // picker reopens where they left off.
-  const MEM_FOLDER = 'assetPicker.folder';
-  const MEM_TYPE = 'assetPicker.type';
-  function rememberFolder(v) { try { localStorage.setItem(MEM_FOLDER, v); } catch {} }
-  function rememberType(v) { try { localStorage.setItem(MEM_TYPE, v); } catch {} }
-  function recallFolder() { try { return localStorage.getItem(MEM_FOLDER); } catch { return null; } }
-  function recallType() { try { return localStorage.getItem(MEM_TYPE); } catch { return null; } }
+  // Filter state for the open modal. Deliberately NOT persisted: the picker
+  // used to remember the last folder/type in localStorage and let that override
+  // whatever the calling surface asked for, so choosing a folder once on the
+  // blog form silently scoped every other picker in the app — forever, and with
+  // nothing on screen saying so. Caller scoping now wins, and shows as a chip
+  // the user can dismiss.
+  let pickerState = { folder: 'all', type: 'all', search: '' };
+
+  const SAF = () => window.SlabAssetFilters;
+
+  // The chip bar lives in a shared module; load it on demand so every view that
+  // includes the picker gets it without needing its own <script> tag.
+  function ensureFilters() {
+    if (SAF()) return Promise.resolve();
+    if (filtersPromise) return filtersPromise;
+    filtersPromise = new Promise((resolve) => {
+      const s = document.createElement('script');
+      s.src = '/js/assetFilters.js';
+      s.onload = resolve;
+      s.onerror = resolve; // degrade to a chip-less picker rather than no picker
+      document.head.appendChild(s);
+    });
+    return filtersPromise;
+  }
+
+  function chipLabel(key, value) {
+    if (key === 'folder') return folderNames[value] || value;
+    if (key === 'type') return value === 'image' ? 'Images' : value === 'video' ? 'Videos' : value;
+    return value;
+  }
 
   /* ── BUILD MODAL ── */
   function buildModal() {
@@ -60,6 +82,7 @@
             <option value="clients">Clients</option>
           </select>
         </div>
+        <div class="apm-filterbar"><div id="apmFilterBar" hidden></div></div>
         <div class="apm-grid" id="apmGrid">
           <div class="apm-loading">Loading assets...</div>
         </div>
@@ -131,6 +154,8 @@
         color:#0F1B30;background:#FDFCFA;cursor:pointer;flex-shrink:0;
       }
       .apm-folder-select:focus { outline:none; }
+      .apm-filterbar { padding:0 16px;background:#F5F3EF;flex-shrink:0; }
+      .apm-filterbar .saf-bar:not([hidden]) { border-bottom:1px solid #E6E1D6; }
       .apm-grid {
         flex:1;overflow-y:auto;padding:14px 16px;
         display:grid;
@@ -174,30 +199,52 @@
     // Search
     document.getElementById('apmSearch').addEventListener('input', e => {
       clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => loadPickerAssets(e.target.value.trim()), 300);
+      pickerState.search = e.target.value.trim();
+      searchTimeout = setTimeout(loadPickerAssets, 300);
     });
 
     // Type tabs
     modalEl.querySelectorAll('.apm-tab').forEach(tab => {
       tab.addEventListener('click', () => {
-        modalEl.querySelectorAll('.apm-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        pickerType = tab.dataset.type;
-        loadPickerAssets(document.getElementById('apmSearch').value.trim());
+        pickerState.type = tab.dataset.type;
+        syncControls();
+        loadPickerAssets();
       });
-    });
-
-    // Type tabs also remember the choice
-    modalEl.querySelectorAll('.apm-tab').forEach(tab => {
-      tab.addEventListener('click', () => rememberType(tab.dataset.type));
     });
 
     // Folder
     document.getElementById('apmFolder').addEventListener('change', e => {
-      pickerFolder = e.target.value;
-      rememberFolder(pickerFolder);
-      loadPickerAssets(document.getElementById('apmSearch').value.trim());
+      pickerState.folder = e.target.value;
+      syncControls();
+      loadPickerAssets();
     });
+  }
+
+  /* Push pickerState back onto the toolbar controls. Every filter change goes
+     through here so the chips and the controls can never disagree. */
+  function syncControls() {
+    if (!modalEl) return;
+    const sel = document.getElementById('apmFolder');
+    if (sel) sel.value = sel.querySelector(`option[value="${pickerState.folder}"]`) ? pickerState.folder : 'all';
+    modalEl.querySelectorAll('.apm-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.type === pickerState.type);
+    });
+    const search = document.getElementById('apmSearch');
+    if (search && search.value.trim() !== pickerState.search) search.value = pickerState.search;
+  }
+
+  function clearPickerFilters() {
+    pickerState.folder = 'all';
+    pickerState.type = 'all';
+    pickerState.search = '';
+    syncControls();
+    loadPickerAssets();
+  }
+
+  function removePickerFilter(key) {
+    pickerState[key] = SAF() ? SAF().emptyValue(key) : (key === 'search' ? '' : 'all');
+    syncControls();
+    loadPickerAssets();
   }
 
   // Load custom folders from the API and append them to the folder <select>
@@ -207,6 +254,8 @@
     foldersLoaded = true;
     const sel = document.getElementById('apmFolder');
     if (!sel) return;
+    // Seed chip labels from the built-in options already in the markup.
+    sel.querySelectorAll('option').forEach(o => { folderNames[o.value] = o.textContent; });
     try {
       const r = await fetch('/admin/assets/folders');
       const data = await r.json();
@@ -218,24 +267,46 @@
         opt.textContent = f.name;
         opt.dataset.custom = '1';
         sel.appendChild(opt);
+        folderNames[f.slug] = f.name;
       });
     } catch { /* non-fatal — built-in folders still work */ }
   }
 
-  async function loadPickerAssets(search) {
+  function buildPickerParams() {
+    if (SAF()) return SAF().buildParams(pickerState, { limit: 200 });
+    const p = new URLSearchParams({ limit: 200 });
+    if (pickerState.folder !== 'all') p.set('folder', pickerState.folder);
+    if (pickerState.type !== 'all') p.set('type', pickerState.type);
+    if (pickerState.search) p.set('search', pickerState.search);
+    return p;
+  }
+
+  function renderPickerBar(count) {
+    if (!SAF()) return;
+    SAF().renderBar(document.getElementById('apmFilterBar'), pickerState, {
+      label: chipLabel,
+      onRemove: removePickerFilter,
+      onClearAll: clearPickerFilters,
+      count,
+    });
+  }
+
+  async function loadPickerAssets() {
     const grid = document.getElementById('apmGrid');
     grid.innerHTML = '<div class="apm-loading">Loading...</div>';
     try {
-      const params = new URLSearchParams({ limit: 200 });
-      if (pickerFolder !== 'all') params.set('folder', pickerFolder);
-      if (pickerType !== 'all') params.set('type', pickerType);
-      if (search) params.set('search', search);
-
-      const r = await fetch(`/admin/assets/list?${params}`);
+      const r = await fetch(`/admin/assets/list?${buildPickerParams()}`);
       const data = await r.json();
 
+      renderPickerBar({ shown: data.assets?.length || 0, total: data.total });
+
       if (!data.assets?.length) {
-        grid.innerHTML = '<div class="apm-empty">No assets found.</div>';
+        grid.innerHTML = '';
+        const empty = SAF()
+          ? SAF().emptyMessage(pickerState, clearPickerFilters, 'No assets found.')
+          : Object.assign(document.createElement('div'), { textContent: 'No assets found.' });
+        empty.classList.add('apm-empty');
+        grid.appendChild(empty);
         return;
       }
 
@@ -270,32 +341,29 @@
 
   async function openModal(opts) {
     opts = opts || {};
+    await ensureFilters();
     buildModal();
     currentCallback = opts.onSelect || null;
 
     // Make sure custom folders are in the dropdown before we set its value.
     await loadPickerFolders();
 
-    // Default to the last-used filter (short memory); otherwise show all/all so
-    // the user can browse everything and filter down. opts.folder/opts.type act
-    // only as a fallback when there's nothing remembered.
+    // Every open starts from a clean slate seeded by the CALLING surface — no
+    // memory, no leakage between surfaces. The scoping is soft: it shows up as
+    // a dismissable chip, so a picker opened from the blog form starts helpful
+    // but is one click away from the whole library.
     const sel = document.getElementById('apmFolder');
-    const remembered = recallFolder();
-    // Guard against a remembered folder whose option no longer exists.
     const folderExists = (v) => !!sel.querySelector(`option[value="${v}"]`);
-    pickerFolder = (remembered && folderExists(remembered)) ? remembered : (opts.folder || 'all');
-    pickerType = recallType() || opts.type || 'all';
+    const wanted = opts.folder || 'all';
+    pickerState = {
+      folder: folderExists(wanted) ? wanted : 'all',
+      type: opts.type || 'all',
+      search: '',
+    };
 
-    // Reset UI
-    document.getElementById('apmSearch').value = '';
-    sel.value = folderExists(pickerFolder) ? pickerFolder : 'all';
-    pickerFolder = sel.value;
-    modalEl.querySelectorAll('.apm-tab').forEach(t => {
-      t.classList.toggle('active', t.dataset.type === pickerType);
-    });
-
+    syncControls();
     modalEl.style.display = '';
-    loadPickerAssets('');
+    loadPickerAssets();
   }
 
   function closeModal() {

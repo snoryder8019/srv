@@ -11,11 +11,12 @@
   Social targets, QR, native share-sheet and clipboard are all built from the
   one canonical URL, so previews and analytics stay consistent everywhere.
 -->
+<% const _t = (typeof t === 'function') ? t : (k => k); %>
 <div id="shareModal" class="sm-overlay" style="display:none;" aria-hidden="true">
-  <div class="sm-dialog" role="dialog" aria-modal="true" aria-label="Share">
+  <div class="sm-dialog" role="dialog" aria-modal="true" aria-label="<%= _t('share.title') %>">
     <div class="sm-head">
-      <div class="sm-title" id="smHeadTitle">Share</div>
-      <button type="button" class="sm-close" onclick="closeShareModal()" aria-label="Close">&times;</button>
+      <div class="sm-title" id="smHeadTitle"><%= _t('share.title') %></div>
+      <button type="button" class="sm-close" onclick="closeShareModal()" aria-label="<%= _t('share.close') %>">&times;</button>
     </div>
     <div class="sm-body">
       <div class="sm-preview">
@@ -28,26 +29,26 @@
 
       <div class="sm-copyrow">
         <input id="smUrlInput" class="sm-url-input" type="text" readonly onclick="this.select()">
-        <button type="button" class="sm-copy-btn" id="smCopyBtn" onclick="smCopy()">Copy</button>
+        <button type="button" class="sm-copy-btn" id="smCopyBtn" onclick="smCopy()"><%= _t('share.copy') %></button>
       </div>
 
       <div class="sm-targets" id="smTargets"><!-- built by JS --></div>
 
       <div class="sm-extras">
         <button type="button" class="sm-extra" id="smNativeBtn" onclick="smNative()" style="display:none;">
-          <span class="sm-extra-ic">⇪</span> Share via device…
+          <span class="sm-extra-ic">⇪</span> <%= _t('share.native') %>
         </button>
         <button type="button" class="sm-extra" id="smQrBtn" onclick="smToggleQr()">
-          <span class="sm-extra-ic">▦</span> QR code
+          <span class="sm-extra-ic">▦</span> <%= _t('share.qr') %>
         </button>
         <a href="#" target="_blank" rel="noopener" class="sm-extra" id="smCrossPost" style="display:none;">
-          <span class="sm-extra-ic">✦</span> Cross-post to your channels
+          <span class="sm-extra-ic">✦</span> <%= _t('share.crosspost') %>
         </a>
       </div>
 
       <div class="sm-qr" id="smQr" style="display:none;">
         <img id="smQrImg" alt="QR code" width="180" height="180">
-        <div class="sm-qr-hint">Scan to open on a phone</div>
+        <div class="sm-qr-hint"><%= _t('share.scan_hint') %></div>
       </div>
     </div>
   </div>
@@ -96,6 +97,13 @@
 (function(){
   var modal   = document.getElementById('shareModal');
   if (!modal) return;
+  // Localized labels for JS-set text (the copy button and header are rewritten
+  // in JS, so they need the active locale's strings, not the initial markup).
+  var SM_I18N = {
+    share:  <%- JSON.stringify(_t('share.title')) %>,
+    copy:   <%- JSON.stringify(_t('share.copy')) %>,
+    copied: <%- JSON.stringify(_t('share.copied')) %>
+  };
   var urlInput  = document.getElementById('smUrlInput');
   var copyBtn   = document.getElementById('smCopyBtn');
   var targetsEl = document.getElementById('smTargets');
@@ -144,7 +152,7 @@
     state.title = opts.title || document.title || '';
     state.text = opts.text || '';
 
-    document.getElementById('smHeadTitle').textContent = 'Share';
+    document.getElementById('smHeadTitle').textContent = SM_I18N.share;
     document.getElementById('smPreviewTitle').textContent = state.title;
     document.getElementById('smPreviewUrl').textContent = state.url.replace(/^https?:\/\//,'');
     var img = document.getElementById('smPreviewImg');
@@ -152,7 +160,7 @@
     else { img.style.display = 'none'; img.removeAttribute('src'); }
 
     urlInput.value = state.url;
-    copyBtn.textContent = 'Copy'; copyBtn.classList.remove('ok');
+    copyBtn.textContent = SM_I18N.copy; copyBtn.classList.remove('ok');
     renderTargets();
 
     // QR is served by the share link itself: /s/:token/qr
@@ -176,8 +184,8 @@
   };
 
   window.smCopy = function(){
-    var done = function(){ copyBtn.textContent = 'Copied'; copyBtn.classList.add('ok');
-      setTimeout(function(){ copyBtn.textContent='Copy'; copyBtn.classList.remove('ok'); }, 1600); };
+    var done = function(){ copyBtn.textContent = SM_I18N.copied; copyBtn.classList.add('ok');
+      setTimeout(function(){ copyBtn.textContent=SM_I18N.copy; copyBtn.classList.remove('ok'); }, 1600); };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(state.url).then(done, function(){ urlInput.select(); document.execCommand('copy'); done(); });
     } else { urlInput.select(); document.execCommand('copy'); done(); }

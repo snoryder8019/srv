@@ -5,6 +5,13 @@
   <div class="topbar-title">Writer</div>
   <div class="topbar-actions">
     <% var _newType = (typeof activeType !== 'undefined' && activeType && activeType !== 'all') ? ('?type=' + activeType) : ''; %>
+    <% var _draftCount = (posts || []).filter(function(p){ return p.status === 'draft' && p.title && p.content; }).length; %>
+    <% if (_draftCount > 0) { %>
+      <%# Auto-slot: drop every ready draft onto the calendar at the next open
+          reading hours — the content mirror of social's ⚡ Auto-slot. %>
+      <button type="button" id="autoSlotBtn" class="btn btn-ghost" title="Schedule ready drafts onto the calendar at the next open slots">⚡ Auto-slot <%= _draftCount %></button>
+    <% } %>
+    <a href="/admin/calendar?src=blog" class="btn btn-ghost" title="See scheduled content on the platform calendar">📅 Calendar</a>
     <a href="/admin/blog/new<%= _newType %>" class="btn btn-navy">+ New Content</a>
   </div>
 </div>
@@ -27,6 +34,9 @@
   <% if (msg === 'updated') { %><div class="alert alert-success">Post updated successfully.</div><% } %>
   <% if (msg === 'deleted') { %><div class="alert alert-success">Post deleted.</div><% } %>
   <% if (msg === 'published') { %><div class="alert alert-success">Post published.</div><% } %>
+  <% if (msg === 'scheduled') { %><div class="alert alert-success">Scheduled — it'll go live automatically. See it on the <a href="/admin/calendar?src=blog">calendar</a>.</div><% } %>
+  <% if (msg === 'unscheduled') { %><div class="alert alert-success">Pulled off the calendar, back to draft.</div><% } %>
+  <% if (msg && msg.indexOf('Scheduled ') === 0) { %><div class="alert alert-success"><%= msg %> onto the calendar. <a href="/admin/calendar?src=blog">View</a>.</div><% } %>
   <% if (err) { %><div class="alert alert-error">Something went wrong. Please try again.</div><% } %>
 
   <% if (!posts || posts.length === 0) { %>
@@ -66,10 +76,14 @@
               <td><span class="badge"><%= (_t.icon ? _t.icon + ' ' : '') + _t.label %></span></td>
               <td><%= post.category || '—' %></td>
               <td>
-                <span class="badge <%= post.status === 'published' ? 'badge-active' : 'badge-draft' %>"><%= post.status %></span>
+                <span class="badge <%= post.status === 'published' ? 'badge-active' : (post.status === 'scheduled' ? 'badge-prospect' : 'badge-draft') %>"><%= post.status %></span>
               </td>
               <td style="font-size:0.82rem;color:var(--slate);">
-                <%= post.publishedAt ? new Date(post.publishedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—' %>
+                <% if (post.status === 'scheduled' && post.scheduledAt) { %>
+                  <span title="Scheduled to go live">🕑 <%= new Date(post.scheduledAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) %>, <%= new Date(post.scheduledAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) %></span>
+                <% } else { %>
+                  <%= post.publishedAt ? new Date(post.publishedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—' %>
+                <% } %>
               </td>
               <td style="font-size:0.82rem;color:var(--slate);">
                 <%= new Date(post.updatedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) %>
@@ -79,6 +93,13 @@
                   <button type="button" class="btn btn-ghost btn-sm" style="margin-right:6px;" title="Share"
                     onclick="shareAdminContent('blog', '<%= post._id %>', { title: <%= JSON.stringify(post.title) %>, crossPost: true })">⤴ Share</button>
                   <a href="<%= _t.publicBase %>/<%= post.slug %>" target="_blank" class="btn btn-ghost btn-sm" style="margin-right:6px;">View</a>
+                <% } else if (post.status === 'scheduled') { %>
+                  <form method="POST" action="/admin/blog/<%= post._id %>/unschedule" style="display:inline;" title="Pull off the calendar, back to draft">
+                    <button type="submit" class="btn btn-ghost btn-sm" style="margin-right:6px;">Unschedule</button>
+                  </form>
+                  <form method="POST" action="/admin/blog/<%= post._id %>/publish" style="display:inline;">
+                    <button type="submit" class="btn btn-navy btn-sm" style="margin-right:6px;">Publish now</button>
+                  </form>
                 <% } else if (post.status !== 'published') { %>
                   <form method="POST" action="/admin/blog/<%= post._id %>/publish" style="display:inline;">
                     <button type="submit" class="btn btn-navy btn-sm" style="margin-right:6px;">Publish</button>
@@ -98,5 +119,33 @@
 
 </div>
 <%- include('../../partials/_share-modal') %>
+<script>
+// ⚡ Auto-slot — schedule every ready draft onto the calendar at the next open
+// reading hours, then reload so the new dates show. Mirrors social's auto-slot.
+(function() {
+  var btn = document.getElementById('autoSlotBtn');
+  if (!btn) return;
+  btn.addEventListener('click', function() {
+    var n = btn.textContent.replace(/\D/g, '');
+    if (!confirm('Schedule ' + n + ' ready draft(s) onto the calendar at the next open slots?')) return;
+    btn.disabled = true; btn.textContent = 'Scheduling…';
+    fetch('/admin/blog/auto-slot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({}),
+    }).then(function(r){ return r.json(); }).then(function(d){
+      if (d.ok) {
+        window.location = '/admin/blog?msg=' + encodeURIComponent('Scheduled ' + d.scheduled.length + ' post(s)');
+      } else {
+        btn.disabled = false; btn.textContent = '⚡ Auto-slot';
+        alert('Could not auto-slot: ' + (d.error || 'unknown error'));
+      }
+    }).catch(function(){
+      btn.disabled = false; btn.textContent = '⚡ Auto-slot';
+      alert('Could not reach the server. Try again.');
+    });
+  });
+})();
+</script>
 <script src="/js/tours/blog.js"></script>
 </div></body></html>

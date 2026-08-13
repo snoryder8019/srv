@@ -155,9 +155,20 @@
   }
   function buildBlockIndex() {
     safeAll(S.doc, '[data-slab-block]').forEach(function (sec) {
+      var blockId = sec.getAttribute('data-slab-block');
+      // Preferred, skin-agnostic path: any descendant tagged data-slab-field is
+      // editable, regardless of the skin's own class names. Skip nodes that belong
+      // to a nested block so parent/child blocks don't cross-bind.
+      var tagged = safeAll(sec, '[data-slab-field]').filter(function (n) {
+        return n.closest('[data-slab-block]') === sec;
+      });
+      if (tagged.length) {
+        tagged.forEach(function (n) { bindBlock(n, blockId, n.getAttribute('data-slab-field')); });
+        return;
+      }
+      // Fallback: legacy class-selector map (the built-in 'classic' skin).
       var map = BLOCK_FIELDS[sec.getAttribute('data-slab-type')];
       if (!map) return;
-      var blockId = sec.getAttribute('data-slab-block');
       Object.keys(map).forEach(function (field) {
         bindBlock(sec.querySelector(map[field]), blockId, field);
       });
@@ -612,7 +623,8 @@
     document.head.appendChild(ps);
   } catch (e) {}
 
-  // TODO(block-model): when home_source=slab renders an activated template
-  // (views/template-live.ejs), bindings come from block ids, not copyMap. Add a
-  // block-aware buildIndex() branch + per-block save via /admin/templates/:id/content.
+  // Block-model editing IS implemented: when home_source=slab renders an activated
+  // template (views/template-live.ejs), buildBlockIndex()/bindBlock()/commitBlockValue()
+  // bind by block id and save per-field to POST /admin/templates/:id/content-field.
+  // (Per-template overrides are preserved across template switches — see templates.js.)
 })();

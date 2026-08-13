@@ -301,11 +301,11 @@ router.get('/', async (req, res) => {
 // ── Check subdomain availability ────────────────────────────────────────────
 router.get('/check-subdomain', async (req, res) => {
   const slug = (req.query.s || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
-  if (!slug || slug.length < 2) return res.json({ available: false, reason: 'Too short (min 2 chars)' });
-  if (slug.length > 30) return res.json({ available: false, reason: 'Too long (max 30 chars)' });
+  if (!slug || slug.length < 2) return res.json({ available: false, reason: res.locals.t('onboarding.err_subdomain_short') });
+  if (slug.length > 30) return res.json({ available: false, reason: res.locals.t('onboarding.err_subdomain_long') });
 
   const reserved = ['admin', 'api', 'www', 'mail', 'ftp', 'slab', 'start', 'superadmin'];
-  if (reserved.includes(slug)) return res.json({ available: false, reason: 'Reserved name' });
+  if (reserved.includes(slug)) return res.json({ available: false, reason: res.locals.t('onboarding.err_subdomain_reserved') });
 
   const slab = getSlabDb();
   const exists = await slab.collection('tenants').findOne({ 'meta.subdomain': slug });
@@ -339,16 +339,16 @@ router.post('/google-signup', async (req, res) => {
   try {
     if (!credential) {
       logSignupStage('signup_rejected', { slug, brandName: brandName?.trim(), method: 'google', reason: 'missing_credential', req });
-      return res.status(400).json({ error: 'Missing Google credential' });
+      return res.status(400).json({ error: res.locals.t('onboarding.err_missing_google_credential') });
     }
 
     if (!slug || slug.length < 2) {
       logSignupStage('signup_rejected', { slug, brandName: brandName?.trim(), method: 'google', reason: 'invalid_subdomain', req });
-      return res.status(400).json({ error: 'Invalid subdomain' });
+      return res.status(400).json({ error: res.locals.t('onboarding.err_invalid_subdomain') });
     }
     if (!brandName?.trim()) {
       logSignupStage('signup_rejected', { slug, method: 'google', reason: 'missing_brand', req });
-      return res.status(400).json({ error: 'Business name required' });
+      return res.status(400).json({ error: res.locals.t('onboarding.err_business_name_required') });
     }
 
     // Verify Google token
@@ -356,14 +356,14 @@ router.post('/google-signup', async (req, res) => {
     const profile = await tokenInfo.json();
     if (!profile.email || profile.aud !== config.GGLCID) {
       logSignupStage('signup_rejected', { slug, brandName: brandName?.trim(), method: 'google', reason: 'invalid_google_credential', req });
-      return res.status(401).json({ error: 'Invalid Google credential' });
+      return res.status(401).json({ error: res.locals.t('onboarding.err_invalid_google_credential') });
     }
 
     const slab = getSlabDb();
     const exists = await slab.collection('tenants').findOne({ 'meta.subdomain': slug });
     if (exists) {
       logSignupStage('signup_rejected', { slug, email: profile.email, brandName: brandName?.trim(), method: 'google', reason: 'subdomain_taken', req });
-      return res.status(409).json({ error: 'Subdomain taken' });
+      return res.status(409).json({ error: res.locals.t('onboarding.err_subdomain_taken') });
     }
 
     const result = await provisionTenant({
@@ -504,7 +504,7 @@ router.post('/google-signup', async (req, res) => {
   } catch (err) {
     console.error('[onboarding] Google signup failed:', err);
     logSignupStage('signup_failed', { slug, brandName: brandName?.trim(), method: 'google', error: err.message, req });
-    res.status(500).json({ error: err.message || 'Signup failed' });
+    res.status(500).json({ error: err.message || res.locals.t('onboarding.err_signup_failed') });
   }
 });
 
@@ -518,16 +518,14 @@ router.post('/signup', async (req, res) => {
     logSignupStage('signup_rejected', { slug, email: email?.trim(), brandName: brandName?.trim(), method: 'email', reason, req });
     return res.status(reason === 'subdomain_taken' ? 409 : 400).json({ error: msg });
   };
-  if (!slug || slug.length < 2) return reject('invalid_subdomain', 'Invalid subdomain');
-  if (!brandName?.trim()) return reject('missing_brand', 'Business name required');
-  if (!email?.trim()) return reject('missing_email', 'Email required');
-  if (!password || password.length < 8) return reject('weak_password', 'Password must be at least 8 characters');
-  if (!/[A-Z]/.test(password)) return reject('weak_password', 'Password must include an uppercase letter');
-  if (!/[0-9]/.test(password)) return reject('weak_password', 'Password must include a number');
+  if (!slug || slug.length < 2) return reject('invalid_subdomain', res.locals.t('onboarding.err_invalid_subdomain'));
+  if (!brandName?.trim()) return reject('missing_brand', res.locals.t('onboarding.err_business_name_required'));
+  if (!email?.trim()) return reject('missing_email', res.locals.t('onboarding.err_email_required'));
+  if (!password || password.length < 8) return reject('weak_password', res.locals.t('onboarding.err_password_min'));
 
   const slab = getSlabDb();
   const exists = await slab.collection('tenants').findOne({ 'meta.subdomain': slug });
-  if (exists) return reject('subdomain_taken', 'Subdomain taken');
+  if (exists) return reject('subdomain_taken', res.locals.t('onboarding.err_subdomain_taken'));
 
   try {
     const result = await provisionTenant({
@@ -705,22 +703,22 @@ router.post('/signup', async (req, res) => {
   } catch (err) {
     console.error('[onboarding] Signup failed:', err);
     logSignupStage('signup_failed', { slug, email: email?.trim(), brandName: brandName?.trim(), method: 'email', error: err.message, req });
-    res.status(500).json({ error: err.message || 'Signup failed' });
+    res.status(500).json({ error: err.message || res.locals.t('onboarding.err_signup_failed') });
   }
 });
 
 // ── Go Live — PayPal checkout to activate ───────────────────────────────────
 router.post('/go-live', async (req, res) => {
   if (!config.PAYPAL_CID || !config.PAYPAL_SEC) {
-    return res.status(500).json({ error: 'Billing not configured' });
+    return res.status(500).json({ error: res.locals.t('onboarding.err_billing_not_configured') });
   }
 
   const { plan } = req.body;
   const planInfo = PP_PLANS[plan || 'monthly'];
-  if (!planInfo) return res.status(400).json({ error: 'Unknown plan' });
+  if (!planInfo) return res.status(400).json({ error: res.locals.t('onboarding.err_unknown_plan') });
 
   const tenant = req.tenant;
-  if (!tenant) return res.status(400).json({ error: 'No tenant context' });
+  if (!tenant) return res.status(400).json({ error: res.locals.t('onboarding.err_no_tenant') });
 
   try {
     // Apply multi-slab discount if this email already has other slabs
@@ -764,12 +762,12 @@ router.post('/go-live', async (req, res) => {
     if (!orderRes.ok) {
       const err = await orderRes.text();
       console.error('[onboarding] PayPal order error:', err);
-      return res.status(500).json({ error: 'Payment setup failed' });
+      return res.status(500).json({ error: res.locals.t('onboarding.err_payment_setup_failed') });
     }
 
     const order = await orderRes.json();
     const approveLink = order.links?.find(l => l.rel === 'payer-action' || l.rel === 'approve');
-    if (!approveLink) return res.status(500).json({ error: 'No PayPal approval link' });
+    if (!approveLink) return res.status(500).json({ error: res.locals.t('onboarding.err_no_paypal_link') });
 
     logActivity({
       category: 'payment', action: 'go_live_initiated',
@@ -788,7 +786,7 @@ router.post('/go-live', async (req, res) => {
       details: { plan: plan || 'monthly' },
       error: err.message, ip: req.ip,
     });
-    res.status(500).json({ error: 'Payment setup failed' });
+    res.status(500).json({ error: res.locals.t('onboarding.err_payment_setup_failed') });
   }
 });
 
@@ -894,14 +892,14 @@ router.get('/paypal-return', async (req, res) => {
 // same access window. Uses the MadLadsLab platform Stripe account (config keys).
 router.post('/go-live-stripe', async (req, res) => {
   const stripe = getStripe();
-  if (!stripe) return res.status(500).json({ error: 'Card billing not configured' });
+  if (!stripe) return res.status(500).json({ error: res.locals.t('onboarding.err_card_billing_not_configured') });
 
   const { plan } = req.body;
   const planInfo = PP_PLANS[plan || 'monthly'];
-  if (!planInfo || parseFloat(planInfo.amount) <= 0) return res.status(400).json({ error: 'Unknown plan' });
+  if (!planInfo || parseFloat(planInfo.amount) <= 0) return res.status(400).json({ error: res.locals.t('onboarding.err_unknown_plan') });
 
   const tenant = req.tenant;
-  if (!tenant) return res.status(400).json({ error: 'No tenant context' });
+  if (!tenant) return res.status(400).json({ error: res.locals.t('onboarding.err_no_tenant') });
 
   try {
     const ownerEmail = tenant.meta?.ownerEmail;
@@ -909,19 +907,29 @@ router.post('/go-live-stripe', async (req, res) => {
     const otherSlabs = Math.max(0, existingCount - 1);
     const pricing = calcSlabPrice(plan || 'monthly', otherSlabs);
 
+    // Recurring subscription: Stripe saves the card, creates a Customer +
+    // Subscription, and auto-charges every interval. The discounted amount
+    // becomes the recurring price, so a multi-slab discount persists each cycle.
+    const interval = planInfo.interval || { unit: 'month', count: 1 };
     const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
+      mode: 'subscription',
       line_items: [{
         price_data: {
           currency: 'usd',
-          product_data: { name: `sLab ${planInfo.label} — Go Live` + (pricing.discount ? ` (${pricing.label})` : '') },
+          product_data: { name: `sLab ${planInfo.label}` + (pricing.discount ? ` (${pricing.label})` : '') },
           unit_amount: Math.round(parseFloat(pricing.amount) * 100),
+          recurring: { interval: interval.unit, interval_count: interval.count },
         },
         quantity: 1,
       }],
       customer_email: ownerEmail || undefined,
       client_reference_id: tenant.domain,
       metadata: { domain: tenant.domain, plan: plan || 'monthly', discount: String(pricing.discount) },
+      // Mirror the metadata onto the Subscription so webhook events (which carry
+      // the subscription, not the checkout session) can resolve the tenant.
+      subscription_data: {
+        metadata: { domain: tenant.domain, plan: plan || 'monthly', discount: String(pricing.discount) },
+      },
       success_url: `https://${tenant.domain}/start/stripe-return?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `https://${tenant.domain}/admin?cancelled=1`,
     });
@@ -943,7 +951,7 @@ router.post('/go-live-stripe', async (req, res) => {
       details: { plan: plan || 'monthly', processor: 'stripe' },
       error: err.message, ip: req.ip,
     });
-    res.status(500).json({ error: 'Payment setup failed' });
+    res.status(500).json({ error: res.locals.t('onboarding.err_payment_setup_failed') });
   }
 });
 
@@ -968,9 +976,17 @@ router.get('/stripe-return', async (req, res) => {
       const slab = getSlabDb();
       const now = new Date();
       const planInfo = PP_PLANS[plan] || PP_PLANS.monthly;
-      const expiresAt = planInfo.days
-        ? new Date(now.getTime() + planInfo.days * 24 * 60 * 60 * 1000)
-        : null;
+
+      // Subscription mode: the authoritative expiry is the subscription's current
+      // period end (the webhook rolls it forward on each renewal). Fall back to
+      // the plan window only if the subscription can't be read.
+      let subscription = null;
+      if (session.subscription) {
+        try { subscription = await stripe.subscriptions.retrieve(session.subscription); } catch { /* fall back */ }
+      }
+      const expiresAt = subscription?.current_period_end
+        ? new Date(subscription.current_period_end * 1000)
+        : (planInfo.days ? new Date(now.getTime() + planInfo.days * 24 * 60 * 60 * 1000) : null);
 
       await slab.collection('tenants').updateOne(
         { domain: tenantDomain },
@@ -980,12 +996,24 @@ router.get('/stripe-return', async (req, res) => {
             isPreview: false,
             'meta.plan': plan,
             'meta.isTrial': false,
+            'meta.recurring': true, // auto-renewing subscription (not a one-time capture)
+            'meta.billingState': 'active',
             'meta.stripeSessionId': sessionId,
+            'meta.stripeSubscriptionId': session.subscription || null,
+            'meta.stripeCustomerId': session.customer || null,
+            'meta.subscriptionStatus': subscription?.status || 'active',
             'meta.stripePaymentIntent': session.payment_intent || null,
             'meta.activatedAt': now,
             'meta.expiresAt': expiresAt,
             'perks.trialEndsAt': null, // paid → trial over, delegate commission starts
             updatedAt: now,
+          },
+          // Clear lapse/warning flags AND grandfathering: going through the new
+          // recurring checkout is an explicit opt-in to real subscription billing,
+          // so this tenant is now subject to renewal/lapse like any new signup.
+          $unset: {
+            'meta.lapsedAt': '', 'meta.renewalWarn7At': '', 'meta.renewalWarn1At': '',
+            'meta.billingGrandfathered': '', 'meta.grandfatheredAt': '',
           },
         }
       );
@@ -1021,14 +1049,182 @@ router.get('/stripe-return', async (req, res) => {
   }
 });
 
+// ── Platform Stripe Webhook — keeps recurring subscriptions in sync ─────────
+// Mounted at /start/webhook with express.raw (app.js) so the signature verifies.
+// This is the PLATFORM account webhook (config.SLAB_STRIPE_WEBHOOK_SECRET), not
+// the per-tenant client-invoice webhook at /webhooks/stripe.
+//
+// Handles the full recurring lifecycle:
+//   invoice.paid            → renewal succeeded: roll meta.expiresAt forward
+//   invoice.payment_failed  → mark past_due (cron enforces after the grace window)
+//   customer.subscription.updated/deleted → track status + cancellation
+router.post('/webhook', async (req, res) => {
+  const stripe = getStripe();
+  const secret = config.SLAB_STRIPE_WEBHOOK_SECRET;
+  if (!stripe || !secret) {
+    // Not configured yet — ack so Stripe doesn't retry-storm, but log loudly.
+    console.warn('[platform-webhook] received but SLAB_STRIPE_WEBHOOK_SECRET not set — ignoring');
+    return res.json({ received: true, configured: false });
+  }
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], secret);
+  } catch (err) {
+    console.error('[platform-webhook] signature failed:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Resolve the tenant for a subscription id via its metadata.domain (set at
+  // checkout). Falls back to a stored-id lookup so it works even if metadata is
+  // missing on an older subscription.
+  const slab = getSlabDb();
+  async function tenantForSubscription(subscriptionId, metaDomain) {
+    if (metaDomain) {
+      const t = await slab.collection('tenants').findOne({ domain: metaDomain });
+      if (t) return t;
+    }
+    if (subscriptionId) {
+      return slab.collection('tenants').findOne({ 'meta.stripeSubscriptionId': subscriptionId });
+    }
+    return null;
+  }
+
+  try {
+    switch (event.type) {
+      case 'invoice.paid':
+      case 'invoice.payment_succeeded': {
+        const invoice = event.data.object;
+        const subId = invoice.subscription;
+        if (!subId) break;
+        let sub = null;
+        try { sub = await stripe.subscriptions.retrieve(subId); } catch { /* best effort */ }
+        const domain = sub?.metadata?.domain || invoice.lines?.data?.[0]?.metadata?.domain;
+        const tenant = await tenantForSubscription(subId, domain);
+        if (!tenant) { console.warn(`[platform-webhook] invoice.paid: no tenant for sub ${subId}`); break; }
+
+        const now = new Date();
+        const periodEnd = sub?.current_period_end
+          ? new Date(sub.current_period_end * 1000)
+          : (invoice.lines?.data?.[0]?.period?.end ? new Date(invoice.lines.data[0].period.end * 1000) : null);
+
+        await slab.collection('tenants').updateOne(
+          { _id: tenant._id },
+          {
+            $set: {
+              status: 'active',
+              'meta.recurring': true,
+              'meta.billingState': 'active',
+              'meta.subscriptionStatus': sub?.status || 'active',
+              'meta.stripeSubscriptionId': subId,
+              'meta.stripeCustomerId': invoice.customer || tenant.meta?.stripeCustomerId || null,
+              'meta.lastRenewalAt': now,
+              ...(periodEnd ? { 'meta.expiresAt': periodEnd } : {}),
+              updatedAt: now,
+            },
+            $unset: {
+              'meta.lapsedAt': '', 'meta.renewalWarn7At': '', 'meta.renewalWarn1At': '',
+              'meta.billingGrandfathered': '', 'meta.grandfatheredAt': '',
+            },
+          }
+        );
+        bustTenantCache(tenant.domain);
+
+        // Record revenue for RENEWALS only. The very first charge
+        // (billing_reason: 'subscription_create') is posted by /stripe-return,
+        // so posting here too would double-count it. Idempotent on invoice id.
+        if (invoice.billing_reason && invoice.billing_reason !== 'subscription_create') {
+          recordPlatformSubscriptionRevenue({
+            processor: 'stripe', txnId: invoice.id, amount: (invoice.amount_paid || 0) / 100,
+            plan: tenant.meta?.plan || sub?.metadata?.plan || 'monthly',
+            subscriberDomain: tenant.domain, subscriberEmail: invoice.customer_email || tenant.meta?.ownerEmail,
+            paidAt: now,
+          }).catch(() => {});
+        }
+        logActivity({
+          category: 'payment', action: 'subscription_renewed',
+          tenantDomain: tenant.domain, status: 'success',
+          details: { plan: tenant.meta?.plan, amount: (invoice.amount_paid || 0) / 100, invoiceId: invoice.id, reason: invoice.billing_reason },
+        });
+        console.log(`[platform-webhook] ${tenant.domain} renewed → expires ${periodEnd?.toISOString().slice(0, 10)}`);
+        break;
+      }
+
+      case 'invoice.payment_failed': {
+        const invoice = event.data.object;
+        const subId = invoice.subscription;
+        const tenant = await tenantForSubscription(subId, invoice.lines?.data?.[0]?.metadata?.domain);
+        if (!tenant) break;
+        await slab.collection('tenants').updateOne(
+          { _id: tenant._id },
+          { $set: { 'meta.subscriptionStatus': 'past_due', 'meta.lastPaymentFailedAt': new Date(), updatedAt: new Date() } }
+        );
+        bustTenantCache(tenant.domain);
+        logActivity({
+          category: 'payment', action: 'subscription_payment_failed',
+          tenantDomain: tenant.domain, status: 'failed',
+          details: { invoiceId: invoice.id, attempt: invoice.attempt_count },
+        });
+        // Tell the owner + platform admin; the sweep cron enforces after grace.
+        notifyAdmin({ type: 'subscription_payment_failed', app: 'slab', email: tenant.meta?.ownerEmail, name: tenant.brand?.name, data: { domain: tenant.domain } }).catch(() => {});
+        console.warn(`[platform-webhook] ${tenant.domain} payment failed (attempt ${invoice.attempt_count})`);
+        break;
+      }
+
+      case 'customer.subscription.updated': {
+        const sub = event.data.object;
+        const tenant = await tenantForSubscription(sub.id, sub.metadata?.domain);
+        if (!tenant) break;
+        await slab.collection('tenants').updateOne(
+          { _id: tenant._id },
+          {
+            $set: {
+              'meta.subscriptionStatus': sub.status,
+              'meta.cancelAtPeriodEnd': !!sub.cancel_at_period_end,
+              ...(sub.current_period_end ? { 'meta.expiresAt': new Date(sub.current_period_end * 1000) } : {}),
+              updatedAt: new Date(),
+            },
+          }
+        );
+        bustTenantCache(tenant.domain);
+        break;
+      }
+
+      case 'customer.subscription.deleted': {
+        const sub = event.data.object;
+        const tenant = await tenantForSubscription(sub.id, sub.metadata?.domain);
+        if (!tenant) break;
+        // Subscription ended at Stripe. Keep access until expiresAt (already the
+        // period end); the sweep cron downgrades to read-only once it lapses.
+        await slab.collection('tenants').updateOne(
+          { _id: tenant._id },
+          { $set: { 'meta.subscriptionStatus': 'canceled', 'meta.canceledAt': new Date(), updatedAt: new Date() } }
+        );
+        bustTenantCache(tenant.domain);
+        logActivity({ category: 'payment', action: 'subscription_canceled', tenantDomain: tenant.domain, status: 'success', details: { subId: sub.id } });
+        console.log(`[platform-webhook] ${tenant.domain} subscription canceled — access until ${tenant.meta?.expiresAt}`);
+        break;
+      }
+
+      default:
+        break; // ignore unrelated events
+    }
+  } catch (err) {
+    console.error('[platform-webhook] handler error:', err.message);
+    // Ack anyway — a 500 makes Stripe retry, which won't help a code bug.
+  }
+
+  res.json({ received: true });
+});
+
 // ── Free Trial — activate live with no payment (try free → pay → add domain) ─
 router.post('/trial', async (req, res) => {
   const tenant = req.tenant;
-  if (!tenant) return res.status(400).json({ error: 'No tenant context' });
+  if (!tenant) return res.status(400).json({ error: res.locals.t('onboarding.err_no_tenant') });
 
   // One free trial per slab.
   if (tenant.meta?.trialUsedAt) {
-    return res.status(400).json({ error: 'Free trial already used — choose a paid plan to go live.' });
+    return res.status(400).json({ error: res.locals.t('onboarding.err_trial_used') });
   }
 
   try {
@@ -1064,7 +1260,7 @@ router.post('/trial', async (req, res) => {
     res.json({ url: '/admin?trial=1' });
   } catch (err) {
     console.error('[onboarding] Free-trial activation error:', err);
-    res.status(500).json({ error: 'Could not start free trial' });
+    res.status(500).json({ error: res.locals.t('onboarding.err_trial_failed') });
   }
 });
 

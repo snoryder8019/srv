@@ -1,110 +1,86 @@
 # Advanced Settings
 
-## White-Label Google Login
+Optional setup for businesses that want their own domain, their own branding on the sign-in screen, and reliable email delivery.
 
-By default, all tenants share the platform's Google OAuth app. Your users see "Slab" on Google's consent screen during sign-in.
+## White-Label Sign-In
 
-To show **your brand name** instead, set up your own Google OAuth app:
+By default every workspace shares the platform's Google app, so your team sees "Slab" on Google's consent screen when they sign in. You can put **your** brand there instead by registering your own app.
 
-### Setup Steps
+### Google
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project (or use an existing one)
-3. Navigate to **APIs & Services > OAuth consent screen**
-   - Set your **App name** to your business name
-   - Upload your logo
-   - Add your domain to authorized domains
-4. Go to **Credentials > Create Credentials > OAuth 2.0 Client ID**
-   - Application type: **Web application**
-   - Authorized redirect URI: `https://yourdomain.com/auth/google/callback`
-   - If you use both a subdomain and custom domain, add both:
-     - `https://yourbrand.madladslab.com/auth/google/callback`
-     - `https://yourdomain.com/auth/google/callback`
-5. Copy the **Client ID** and **Client Secret**
-6. In your admin panel, go to **Settings & Keys > Google OAuth**
-7. Paste the Client ID and Client Secret
-8. Save — the secret is encrypted at rest
+1. Go to the Google Cloud Console and create a project
+2. Under **APIs & Services → OAuth consent screen**, set your app name to your business name and upload your logo
+3. Under **Credentials**, create an **OAuth 2.0 Client ID** of type *Web application*
+4. Add your sign-in redirect address. If you use both a subdomain and a custom domain, add both:
+   - `https://yourbrand.madladslab.com/auth/google/callback`
+   - `https://yourdomain.com/auth/google/callback`
+5. Copy the Client ID and Client Secret into **Settings & Keys → Google OAuth** and save
 
-### How It Works
+Once saved, sign-in runs through your app and returns straight to your domain. Remove the credentials and it falls back to the platform default — nobody gets locked out.
 
-When your OAuth credentials are configured:
-- Login redirects through **your** Google app (your brand on the consent screen)
-- The callback returns to **your** domain directly (no cross-domain redirect)
-- If your credentials are removed, login falls back to the platform default
+### Microsoft
+
+The same is available for Microsoft work accounts. Register an app in Azure, then paste the Client ID, Secret, and directory setting into Settings. The exact redirect address to register is displayed on the settings page — copy it from there rather than typing it.
 
 ## Custom Domains
 
-Your site runs on `yourbrand.madladslab.com` by default. To use your own domain (e.g. `yourdomain.com`):
+Your site runs on `yourbrand.madladslab.com` out of the box. To serve it from your own domain instead:
 
-### DNS Setup
+1. Point your domain at the platform with **A records** for both `@` and `www` — the target address is shown on your settings page
+2. Ask the platform team to activate it
 
-Add an **A record** pointing to the platform server:
-
-| Type | Name | Value |
-|------|------|-------|
-| A | `@` | `104.237.138.28` |
-| A | `www` | `104.237.138.28` |
-
-### Activation
-
-Contact the platform administrator to:
-1. Verify your DNS is pointing correctly
-2. Generate the Apache virtual host configuration
-3. Issue an SSL certificate via Let's Encrypt
-4. Create the domain alias in the tenant registry
-
-Once activated, both your subdomain and custom domain will serve the same site with the same data.
-
-## Email Deliverability
-
-If you send email through Zoho (invoices, campaigns, contact forms), proper DNS records prevent your messages from landing in spam.
-
-### Required DNS Records
-
-| Record | Purpose | Value |
-|--------|---------|-------|
-| **SPF** | Authorizes Zoho to send on your behalf | `v=spf1 include:zoho.com ~all` |
-| **DKIM** | Cryptographic email signature | Get from Zoho Mail Admin > DKIM |
-| **DMARC** | Tells receivers how to handle failures | `v=DMARC1; p=none; rua=mailto:dmarc@yourdomain.com` |
-
-### Checking Your Records
-
-1. Go to **Settings & Keys**
-2. Enter your Zoho email address
-3. Click **Check DNS** — the system verifies SPF, DKIM, DMARC, and MX records
-4. For `*.madladslab.com` subdomains, click **Auto-Create DNS** to set up SPF, DMARC, and return-path records automatically
-
-### MX Records (Receiving Email)
-
-If you want to **receive** email at your domain through Zoho:
-
-| Priority | Server |
-|----------|--------|
-| 10 | `mx.zoho.com` |
-| 20 | `mx2.zoho.com` |
-| 50 | `mx3.zoho.com` |
+Activation is a manual step on our side: we confirm your DNS has propagated, add the web server configuration, issue your certificate, and register the domain against your workspace. After that, your subdomain and your custom domain serve the same site and the same data.
 
 ## SSL Certificates
 
-All `*.madladslab.com` subdomains are covered by a wildcard SSL certificate. Custom domains get individual certificates issued via Let's Encrypt, automatically renewed.
+Every `*.madladslab.com` subdomain is covered by a wildcard certificate. Custom domains get their own certificate, renewed automatically. There is nothing for you to install or renew.
+
+## Email Deliverability
+
+If you send invoices, campaigns or form notifications from your own address, your domain needs the right DNS records or your mail will land in spam.
+
+| Record | Purpose |
+|--------|---------|
+| **SPF** | Authorizes your provider to send on your behalf |
+| **DKIM** | Cryptographic signature proving the message wasn't tampered with |
+| **DMARC** | Tells receiving servers what to do when a check fails |
+| **MX** | Required only if you also want to *receive* mail at the domain |
+
+### Checking and fixing your records
+
+1. Go to **Settings & Keys** and make sure your sending address is filled in
+2. Click **Check DNS** — you get a per-record pass or fail with the exact value expected
+3. If your site is on a `*.madladslab.com` subdomain, click **Auto-Create DNS** and the SPF, DMARC and return-path records are created for you
+4. On a custom domain, add the values shown at your own DNS provider, then re-run the check
+
+DKIM always has to be generated in your mail provider's admin console and pasted into DNS — it can't be created for you.
+
+## Need a Hand Wiring Things Up?
+
+If connecting accounts is not how you want to spend your afternoon, the settings page has a **setup request** form. Tell us which accounts you need connected and add any detail, and the platform team picks it up and gets in touch. It's the fastest path when you're stuck on DNS or OAuth.
 
 ## Data Isolation
 
-Each tenant's data is completely isolated:
-- **Database** — Separate MongoDB database per tenant
-- **Files** — Separate prefix in shared S3 bucket (files are never mixed)
-- **Credentials** — Encrypted per-tenant, decrypted only in memory
-- **Sessions** — Separate session collection per tenant database
+Each workspace is separated from every other one:
 
-No tenant can access another tenant's data through any route or API.
+- **Database** — your own database, not a shared table with a tenant column
+- **Files** — your own storage area; uploads are never mixed with another business's
+- **Credentials** — encrypted per workspace and decrypted only in memory, at the moment they're used
+- **Sessions** — stored inside your own database
 
-## Subscription Plans
+There is no route or API through which one workspace can read another's data.
 
-| Plan | Duration | Expiry |
-|------|----------|--------|
-| Free | Preview only | No public access |
-| Monthly | 30 days | Auto-renews via Stripe |
-| Annual | 365 days | Auto-renews via Stripe |
-| Lifetime | Forever | No expiry |
+## Plans & Status
 
-Plan management is handled by the platform superadmin. Status can be: `preview`, `active`, `suspended`, or `cancelled`.
+Plan pricing is covered in [Overview](overview.md). Every plan unlocks a fixed number of days of live access:
+
+| Plan | Access granted |
+|------|----------------|
+| Free Trial | 14 days, once per workspace |
+| Monthly | 30 days |
+| Quarterly | 90 days |
+| Annual | 365 days |
+
+Your workspace also carries a status. **Preview** means you can build and see everything privately but the public site isn't served yet. **Active** means you're live. **Suspended** and **cancelled** are set by the platform team.
+
+Building your site before you pay is expected — the intended order is *build, then start the trial, then go live, then add your domain*.

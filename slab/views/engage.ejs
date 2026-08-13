@@ -1,4 +1,16 @@
 <!DOCTYPE html>
+<% const _t = (typeof t === 'function') ? t : (k => k); %>
+<%
+  // Translucent brand tints, resolved server-side. color-mix() can't be used here:
+  // it holds var()s, so on an unsupporting browser the whole declaration would
+  // resolve to unset rather than fall back — and the selected state would vanish.
+  const _rgba = (hex, a) => {
+    const h = String(hex || '').replace('#', '');
+    const f = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    const n = parseInt(/^[0-9a-f]{6}$/i.test(f) ? f : '000000', 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  };
+%>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -7,7 +19,20 @@
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    :root { --navy:<%= design.color_primary %>; --gold:<%= design.color_accent %>; --ivory:<%= design.color_bg %>; --slate:#6B7380; --white:#FDFCFA; --gold-light:<%= design.color_accent_light %>; }
+    :root {
+      --navy:<%= design.color_primary %>; --gold:<%= design.color_accent %>; --ivory:<%= design.color_bg %>;
+      --slate:#6B7380; --white:#FDFCFA; --gold-light:<%= design.color_accent_light %>;
+      /* These were referenced page-wide but never declared — an undefined var makes
+         the whole declaration unset, so .opt's border silently resolved to none and
+         the letter card lost its background. */
+      --surface:<%= design._surface %>; --on-surface:<%= design._on_surface %>;
+      --on-surface-muted:<%= design._on_surface_muted %>; --border:<%= design._border %>;
+      --on-navy:<%= design._on_primary %>; --on-gold:<%= design._on_accent %>;
+      /* selection tints — accent over surface, so they track the tenant's palette */
+      --sel-tint:<%= _rgba(design.color_accent, .13) %>;
+      --sel-ring:<%= _rgba(design.color_accent, .28) %>;
+      --surface-lift:<%= _rgba(design._on_surface, .05) %>;
+    }
     body { font-family:'<%= design.font_body || 'Jost' %>',sans-serif; background:var(--ivory); color:var(--on-surface); min-height:100vh; padding:24px; display:flex; justify-content:center; }
     .letter { background:var(--surface); max-width:760px; width:100%; border-radius:6px; overflow:hidden; box-shadow:0 2px 20px rgba(0,0,0,.07); height:fit-content; }
     .hdr { background:var(--navy); padding:28px 36px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
@@ -33,10 +58,46 @@
     /* Packages */
     .pkg { margin-bottom:24px; }
     .pkg-label { font-size:11px; color:var(--slate); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px; }
-    .opt { border:2px solid var(--border); border-radius:6px; padding:16px 18px; margin-bottom:10px; cursor:pointer; transition:border-color .15s, background .15s; position:relative; display:block; }
-    .opt:hover { border-color:var(--gold); }
-    .opt.selected { border-color:var(--gold); background:rgba(201,168,72,.06); }
+    /* An option is a choice, so it reads as one before it is picked: a real
+       control, a real border. Selected then stacks four redundant signals —
+       filled mark, accent border, ring, tinted fill — so it never rests on hue
+       alone, and hover can never be mistaken for chosen. */
+    .opt { display:grid; grid-template-columns:22px 1fr; gap:14px; align-items:start;
+           border:2px solid var(--border); border-radius:8px; padding:16px 18px; margin-bottom:10px;
+           background:var(--surface); position:relative;
+           transition:border-color .15s, background .15s, box-shadow .15s, opacity .15s; }
+    .signable .opt { cursor:pointer; }
     .opt input { position:absolute; opacity:0; pointer-events:none; }
+
+    /* circle for pick-one, rounded square for pick-any — the shape states the rule */
+    .opt-mark { width:22px; height:22px; border:2px solid var(--border); border-radius:50%;
+                background:var(--surface); display:grid; place-items:center; margin-top:1px;
+                transition:border-color .15s, background .15s; }
+    .pkg[data-mode="many"] .opt-mark { border-radius:6px; }
+    .opt-mark::after { content:''; width:9px; height:9px; border-radius:50%;
+                       background:var(--on-gold); transform:scale(0); transition:transform .15s; }
+    .pkg[data-mode="many"] .opt-mark::after { border-radius:2px; }
+
+    .signable .opt:not(.selected):hover { border-color:var(--on-surface-muted); background:var(--surface-lift); }
+    .signable .opt:not(.selected):hover .opt-mark { border-color:var(--on-surface-muted); }
+
+    /* The real input is visually hidden, so keyboard focus needs a home. Dropped
+       whole by browsers without :has() — the mouse path is unaffected either way. */
+    .opt:has(input:focus-visible) { border-color:var(--gold); box-shadow:0 0 0 3px var(--sel-ring); }
+    .opt.selected { border-color:var(--gold); background:var(--sel-tint); box-shadow:0 0 0 3px var(--sel-ring); }
+    .opt.selected .opt-mark { border-color:var(--gold); background:var(--gold); }
+    .opt.selected .opt-mark::after { transform:scale(1); }
+
+    /* Once a package has a pick, the rest step back so the choice reads at a glance */
+    .pkg.has-pick .opt:not(.selected) { opacity:.6; }
+    .signable .pkg.has-pick .opt:not(.selected):hover { opacity:1; }
+
+    /* Navy, not gold — a gold pill here would read as a second Recommended badge */
+    .sel-flag { display:none; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px;
+                background:var(--navy); color:var(--on-navy); padding:2px 9px; border-radius:10px;
+                margin-left:8px; vertical-align:middle; white-space:nowrap; }
+    .opt.selected .sel-flag { display:inline-block; }
+
     .opt-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; }
     .opt-name { font-size:15px; font-weight:600; }
     .opt-total { font-family:'<%= design.font_heading || 'Cormorant Garamond' %>',serif; font-size:22px; color:var(--navy); white-space:nowrap; }
@@ -46,7 +107,15 @@
     .item-name { font-size:13px; font-weight:600; }
     .item-price { font-size:12px; color:var(--slate); }
     .item-tf { font-size:12px; color:var(--slate); }
-    .item-deliv { font-size:12px; color:var(--slate); margin-top:3px; line-height:1.6; }
+    /* Inclusions are what the client is actually buying — one per line, not a
+       middot run-on that reads as a single sentence. */
+    .deliv-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1.2px;
+                   color:var(--on-surface-muted); margin-top:8px; }
+    .deliv { list-style:none; margin:4px 0 0; padding:0; }
+    .deliv li { position:relative; padding-left:16px; font-size:12.5px; line-height:1.6; color:var(--on-surface-muted); }
+    .deliv li + li { margin-top:4px; }
+    .deliv li::before { content:''; position:absolute; left:2px; top:.6em; width:5px; height:5px;
+                        border-radius:50%; background:var(--gold); }
     .expired .opt-total, .expired .item-price { text-decoration:line-through; opacity:.55; }
     .expired .opt { cursor:default; }
 
@@ -103,62 +172,71 @@
   </style>
 </head>
 <body>
-<div class="letter <%= expired ? 'expired' : '' %>">
+<div class="letter <%= expired ? 'expired' : '' %> <%= signable ? 'signable' : '' %>">
   <div class="hdr">
     <div class="hdr-brand"><%- brand?.name || '' %></div>
-    <div class="hdr-label">Letter of Engagement</div>
+    <div class="hdr-label"><%= _t('engage.letter_of_engagement') %></div>
   </div>
   <div class="gold-bar"></div>
 
   <div class="body">
     <div class="meta">
-      <div><div class="meta-label">Reference</div><div class="meta-value"><%= e.engagementNumber %></div></div>
-      <div><div class="meta-label">Prepared for</div><div class="meta-value"><%= cl?.name || '—' %><%= cl?.company ? ' · ' + cl.company : '' %></div></div>
+      <div><div class="meta-label"><%= _t('engage.reference') %></div><div class="meta-value"><%= e.engagementNumber %></div></div>
+      <div><div class="meta-label"><%= _t('engage.prepared_for') %></div><div class="meta-value"><%= cl?.name || '—' %><%= cl?.company ? ' · ' + cl.company : '' %></div></div>
       <% if (e.validUntil) { %>
-      <div><div class="meta-label">Valid through</div><div class="meta-value"><%= new Date(e.validUntil).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) %></div></div>
+      <div><div class="meta-label"><%= _t('engage.valid_through') %></div><div class="meta-value"><%= new Date(e.validUntil).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) %></div></div>
       <% } %>
     </div>
 
     <% if (e.status === 'signed' || e.status === 'acknowledged') { %>
-      <div class="status-banner sb-signed">✓ Signed<%= e.status === 'acknowledged' ? ' & Confirmed' : '' %> — <%= new Date(e.signature.signedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) %></div>
+      <div class="status-banner sb-signed">✓ <%= _t('engage.signed') %><%= e.status === 'acknowledged' ? ' & ' + _t('engage.confirmed') : '' %> — <%= new Date(e.signature.signedAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) %></div>
     <% } else if (e.status === 'declined') { %>
-      <div class="status-banner sb-declined">This engagement was declined.</div>
+      <div class="status-banner sb-declined"><%= _t('engage.declined_msg') %></div>
     <% } else if (expired) { %>
-      <div class="status-banner sb-expired">These terms have expired. The letter remains for your reference — pricing shown is no longer on offer. A renewed letter can be issued on request below.</div>
+      <div class="status-banner sb-expired"><%= _t('engage.expired_msg') %></div>
     <% } else if (e.status === 'revision_requested') { %>
-      <div class="status-banner sb-revision">Revision requested — we're on it. You can still sign the letter as written if you're ready.</div>
+      <div class="status-banner sb-revision"><%= _t('engage.revision_msg') %></div>
     <% } %>
 
     <% if (e.intro) { %><div class="intro" style="white-space:pre-line;"><%= e.intro %></div><% } %>
 
     <% (e.packages || []).forEach(pkg => { %>
-    <div class="pkg" data-pkg="<%= pkg.key %>" data-mode="<%= pkg.selectMode %>">
+    <% const pkgPicked = (e.selections?.[pkg.key] || []).length > 0; %>
+    <div class="pkg <%= pkgPicked ? 'has-pick' : '' %>" data-pkg="<%= pkg.key %>" data-mode="<%= pkg.selectMode %>">
       <h2 class="section"><%= pkg.label %></h2>
-      <div class="pkg-label"><%= pkg.selectMode === 'many' ? 'Select any that apply' : 'Select one' %></div>
+      <div class="pkg-label"><%= pkg.selectMode === 'many' ? _t('engage.select_any') : _t('engage.select_one') %></div>
       <% (pkg.options || []).forEach(opt => {
            const chosen = (e.selections?.[pkg.key] || []).includes(opt.key); %>
       <label class="opt <%= chosen ? 'selected' : '' %>" data-opt="<%= opt.key %>">
         <input type="<%= pkg.selectMode === 'many' ? 'checkbox' : 'radio' %>" name="pkg-<%= pkg.key %>" value="<%= opt.key %>" <%= chosen ? 'checked' : '' %> <%= (signable) ? '' : 'disabled' %>>
-        <div class="opt-head">
-          <div class="opt-name"><%= opt.name %><% if (opt.recommended) { %><span class="rec-badge">Recommended</span><% } %></div>
-          <% if (opt.total > 0) { %><div class="opt-total">$<%= opt.total.toFixed(2) %></div><% } %>
+        <span class="opt-mark" aria-hidden="true"></span>
+        <div>
+          <div class="opt-head">
+            <div class="opt-name"><%= opt.name %><% if (opt.recommended) { %><span class="rec-badge"><%= _t('engage.recommended') %></span><% } %><span class="sel-flag">✓ <%= _t('engage.selected') %></span></div>
+            <% if (opt.total > 0) { %><div class="opt-total">$<%= opt.total.toFixed(2) %></div><% } %>
+          </div>
+          <% if (opt.recommendedNote) { %><div class="rec-note"><%= opt.recommendedNote %></div><% } %>
+          <% (opt.items || []).forEach(item => { %>
+          <div class="item">
+            <span class="item-name"><%= item.name %></span>
+            <span class="item-price"> — <%= priceLabel(item.pricing) %></span>
+            <% if (item.timeframe && timeframeLabel(item.timeframe)) { %><div class="item-tf">⏱ <%= item.timeframe.label ? item.timeframe.label + ': ' : '' %><%= timeframeLabel(item.timeframe) %></div><% } %>
+            <% if (item.deliverables?.length) { %>
+            <div class="deliv-label"><%= _t('engage.includes') %></div>
+            <ul class="deliv">
+              <% item.deliverables.forEach(d => { %><li><%= d %></li><% }) %>
+            </ul>
+            <% } %>
+          </div>
+          <% }) %>
         </div>
-        <% if (opt.recommendedNote) { %><div class="rec-note"><%= opt.recommendedNote %></div><% } %>
-        <% (opt.items || []).forEach(item => { %>
-        <div class="item">
-          <span class="item-name"><%= item.name %></span>
-          <span class="item-price"> — <%= priceLabel(item.pricing) %></span>
-          <% if (item.timeframe && timeframeLabel(item.timeframe)) { %><div class="item-tf">⏱ <%= item.timeframe.label ? item.timeframe.label + ': ' : '' %><%= timeframeLabel(item.timeframe) %></div><% } %>
-          <% if (item.deliverables?.length) { %><div class="item-deliv"><%= item.deliverables.join(' · ') %></div><% } %>
-        </div>
-        <% }) %>
       </label>
       <% }) %>
     </div>
     <% }) %>
 
     <% if (e.termsSections && e.termsSections.length) { %>
-      <h2 class="section">Terms</h2>
+      <h2 class="section"><%= _t('engage.terms') %></h2>
       <ol class="terms-list">
         <% e.termsSections.forEach(s => { %>
         <li>
@@ -171,52 +249,52 @@
 
     <% if (e.signature) { %>
     <div class="sig-block">
-      <div class="meta-label">Signed by</div>
+      <div class="meta-label"><%= _t('engage.signed_by') %></div>
       <div class="sig-name"><%= e.signature.typedName %></div>
       <div class="sig-meta">
         <%= e.signature.title ? e.signature.title + ' · ' : '' %><%= new Date(e.signature.signedAt).toLocaleString('en-US',{month:'long',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}) %><br>
-        Document hash: <%= e.signature.documentHash %>
+        <%= _t('engage.document_hash') %> <%= e.signature.documentHash %>
       </div>
       <% if (!(typeof printMode !== "undefined" && printMode)) { %>
       <div class="w9-row">
         <% if (e.w9?.releasedAt) { %>
-          <span class="w9-note">✓ Our W-9 has been released to your file portal.</span>
+          <span class="w9-note"><%= _t('engage.w9_released') %></span>
         <% } else if (e.w9?.requestedAt) { %>
-          <span class="w9-note">✓ W-9 requested — it will be released to your portal shortly.</span>
+          <span class="w9-note"><%= _t('engage.w9_requested') %></span>
         <% } else { %>
-          <button class="w9-btn" onclick="requestW9(this)">Request <%= brand?.name || 'our' %> W-9</button>
-          <span class="w9-note">For your tax records. Released to your secure portal.</span>
+          <button class="w9-btn" onclick="requestW9(this)"><%= _t('engage.request') %> <%= brand?.name || _t('engage.our') %> W-9</button>
+          <span class="w9-note"><%= _t('engage.w9_note') %></span>
         <% } %>
       </div>
       <% } %>
-      <div style="margin-top:12px;"><a href="/engage/<%= e.accessToken %>/copy" style="font-size:13px;color:var(--navy);">View / print signed copy</a></div>
+      <div style="margin-top:12px;"><a href="/engage/<%= e.accessToken %>/copy" style="font-size:13px;color:var(--navy);"><%= _t('engage.view_print_copy') %></a></div>
     </div>
     <% } %>
 
     <% if (signable) { %>
     <div class="sel-summary" id="selSummary">
-      <h3>You are agreeing to</h3>
-      <div id="selLines"><div class="sel-empty">Make your selections above.</div></div>
+      <h3><%= _t('engage.agreeing_to') %></h3>
+      <div id="selLines"><div class="sel-empty"><%= _t('engage.make_selections') %></div></div>
     </div>
 
     <!-- Three ways out — equal weight, by design -->
     <div class="actions">
-      <button class="act-btn act-sign" onclick="openModal('signModal')">Sign Engagement Letter</button>
-      <button class="act-btn act-revise" onclick="openModal('reviseModal')">Request Revision</button>
-      <button class="act-btn act-decline" onclick="openModal('declineModal')">Decline</button>
+      <button class="act-btn act-sign" onclick="openModal('signModal')"><%= _t('engage.sign_letter') %></button>
+      <button class="act-btn act-revise" onclick="openModal('reviseModal')"><%= _t('engage.request_revision') %></button>
+      <button class="act-btn act-decline" onclick="openModal('declineModal')"><%= _t('engage.decline') %></button>
     </div>
     <% } else if (expired && !e.signature && e.status !== 'declined' && e.status !== 'void') { %>
     <div class="actions" style="grid-template-columns:1fr;">
-      <button class="act-btn act-renew" onclick="requestRenewal(this)">Request a Renewed Letter of Engagement</button>
+      <button class="act-btn act-renew" onclick="requestRenewal(this)"><%= _t('engage.request_renewed') %></button>
     </div>
     <% } %>
 
     <% if (!(typeof printMode !== "undefined" && printMode) && sharedNotes.length) { %>
     <div class="notes-wrap">
-      <h2 class="section" style="margin-top:0;">Notes</h2>
+      <h2 class="section" style="margin-top:0;"><%= _t('engage.notes') %></h2>
       <% sharedNotes.forEach(n => { %>
       <div class="note <%= n.author %> <%= n.kind %>">
-        <div class="note-meta"><%= n.authorName %> · <%= new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) %><%= n.kind === 'revision_request' ? ' · Revision request' : '' %></div>
+        <div class="note-meta"><%= n.authorName %> · <%= new Date(n.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}) %><%= n.kind === 'revision_request' ? ' · ' + _t('engage.revision_request') : '' %></div>
         <%= n.body %>
       </div>
       <% }) %>
@@ -225,8 +303,8 @@
 
     <% if (!(typeof printMode !== "undefined" && printMode) && !terminal && !expired) { %>
     <div class="note-add" style="margin-top:16px;">
-      <textarea id="noteBody" placeholder="Questions or comments? Leave a note — we'll see it right away."></textarea>
-      <button onclick="addNote(this)">Add Note</button>
+      <textarea id="noteBody" placeholder="<%= _t('engage.note_placeholder') %>"></textarea>
+      <button onclick="addNote(this)"><%= _t('engage.add_note') %></button>
     </div>
     <% } %>
   </div>
@@ -237,20 +315,20 @@
 <!-- SIGN modal -->
 <div class="modal-bg" id="signModal">
   <div class="modal">
-    <h3>Sign this letter</h3>
-    <div style="font-size:13px;color:var(--slate);line-height:1.6;">Signing binds you to the selections shown in the summary. Review them before continuing.</div>
-    <label>Full legal name</label>
-    <input type="text" id="signName" placeholder="Your full name" autocomplete="name">
-    <label>Title (optional)</label>
-    <input type="text" id="signTitle" placeholder="e.g. Owner, Managing Partner">
+    <h3><%= _t('engage.sign_this_letter') %></h3>
+    <div style="font-size:13px;color:var(--slate);line-height:1.6;"><%= _t('engage.sign_desc') %></div>
+    <label><%= _t('engage.full_legal_name') %></label>
+    <input type="text" id="signName" placeholder="<%= _t('engage.your_full_name') %>" autocomplete="name">
+    <label><%= _t('engage.title_optional') %></label>
+    <input type="text" id="signTitle" placeholder="<%= _t('engage.title_placeholder') %>">
     <div class="consent-row">
       <input type="checkbox" id="signConsent">
-      <span>I agree to do business electronically and to sign this letter of engagement electronically. I have reviewed the selected services and terms.</span>
+      <span><%= _t('engage.consent_text') %></span>
     </div>
     <div class="m-err" id="signErr"></div>
     <div class="modal-actions">
-      <button class="m-cancel" onclick="closeModals()">Cancel</button>
-      <button class="m-confirm" onclick="doSign(this)">Sign Engagement Letter</button>
+      <button class="m-cancel" onclick="closeModals()"><%= _t('engage.cancel') %></button>
+      <button class="m-confirm" onclick="doSign(this)"><%= _t('engage.sign_letter') %></button>
     </div>
   </div>
 </div>
@@ -258,14 +336,14 @@
 <!-- REVISE modal -->
 <div class="modal-bg" id="reviseModal">
   <div class="modal">
-    <h3>Request a revision</h3>
-    <div style="font-size:13px;color:var(--slate);line-height:1.6;">Tell us what you'd like changed — pricing, scope, timing, anything. This doesn't commit you to anything, and the letter stays open.</div>
-    <label>What would you like adjusted?</label>
+    <h3><%= _t('engage.request_a_revision') %></h3>
+    <div style="font-size:13px;color:var(--slate);line-height:1.6;"><%= _t('engage.revise_desc') %></div>
+    <label><%= _t('engage.what_adjusted') %></label>
     <textarea id="reviseBody"></textarea>
     <div class="m-err" id="reviseErr"></div>
     <div class="modal-actions">
-      <button class="m-cancel" onclick="closeModals()">Cancel</button>
-      <button class="m-confirm" onclick="doRevise(this)">Send Request</button>
+      <button class="m-cancel" onclick="closeModals()"><%= _t('engage.cancel') %></button>
+      <button class="m-confirm" onclick="doRevise(this)"><%= _t('engage.send_request') %></button>
     </div>
   </div>
 </div>
@@ -273,14 +351,14 @@
 <!-- DECLINE modal -->
 <div class="modal-bg" id="declineModal">
   <div class="modal">
-    <h3>Decline this engagement</h3>
-    <div style="font-size:13px;color:var(--slate);line-height:1.6;">No hard feelings. If you'd like to tell us why, it helps — but it's entirely optional.</div>
-    <label>Reason (optional)</label>
+    <h3><%= _t('engage.decline_title') %></h3>
+    <div style="font-size:13px;color:var(--slate);line-height:1.6;"><%= _t('engage.decline_desc') %></div>
+    <label><%= _t('engage.reason_optional') %></label>
     <textarea id="declineBody"></textarea>
     <div class="m-err" id="declineErr"></div>
     <div class="modal-actions">
-      <button class="m-cancel" onclick="closeModals()">Cancel</button>
-      <button class="m-confirm" style="background:#6B7380;color:#fff;" onclick="doDecline(this)">Decline</button>
+      <button class="m-cancel" onclick="closeModals()"><%= _t('engage.cancel') %></button>
+      <button class="m-confirm" style="background:#6B7380;color:#fff;" onclick="doDecline(this)"><%= _t('engage.decline') %></button>
     </div>
   </div>
 </div>
@@ -324,10 +402,13 @@ let saveTimer = null;
 document.querySelectorAll('.pkg input').forEach(input => {
   input.addEventListener('change', () => {
     document.querySelectorAll('.pkg').forEach(pkg => {
+      let picked = false;
       pkg.querySelectorAll('.opt').forEach(o => {
         const inp = o.querySelector('input');
         o.classList.toggle('selected', inp.checked);
+        if (inp.checked) picked = true;
       });
+      pkg.classList.toggle('has-pick', picked);
     });
     renderSummary();
     clearTimeout(saveTimer);

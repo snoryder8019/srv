@@ -1,33 +1,50 @@
 {
-  "version": "3.0.0",
-  "lastUpdated": "2026-04-14",
-  "description": "MadLabs Lab — service registry and infrastructure context",
-
-  "services": {
-    "graffiti-tv":  { "path": "/srv/graffiti-tv",   "port": 3001, "domain": "graffiti.madladslab.com",     "tmux": "graffitiTV",      "tech": ["Node.js", "Express", "EJS"] },
-    "acm":          { "path": "/srv/acm",            "port": 3002, "domain": "acmcreativeconcepts.com",     "tmux": "acm_session",     "tech": ["Node.js", "Express"] },
-    "ps":           { "path": "/srv/ps",             "port": 3399, "domain": "ps.madladslab.com",           "tmux": "ps_session",      "tech": ["Node.js", "Express", "MongoDB", "Three.js", "Socket.IO", "EJS"] },
-    "greealitytv":  { "path": "/srv/greealitytv",    "port": 3400, "domain": "greealitytv.madladslab.com",  "tmux": "greealitytv",     "tech": ["Node.js", "Express", "MongoDB", "EJS", "AWS S3"] },
-    "games":        { "path": "/srv/games",           "port": 3500, "domain": "games.madladslab.com",       "tmux": "games",           "tech": ["Node.js", "Express", "MongoDB", "Socket.IO", "Mediasoup", "Stripe"] },
-    "servers":      { "path": "/srv/servers",         "port": 3600, "domain": "servers.madladslab.com",     "tmux": "servers_session",  "tech": ["Node.js", "Express", "MongoDB", "Passport.js"] },
-    "slab":         { "path": "/srv/slab",            "port": 3602, "domain": "slab.madladslab.com",        "tmux": "slab",            "tech": ["Node.js (ESM)", "Express", "MongoDB", "Socket.IO", "EJS", "Stripe", "AWS S3"] },
-    "opsTrain":     { "path": "/srv/opsTrain",        "port": 3603, "domain": "opstrain.madladslab.com",    "tmux": "opsTrain",        "tech": ["Node.js 18", "Express", "MongoDB", "EJS", "Tesseract.js"] },
-    "mcp-streamable": { "path": "/srv/mcp",           "port": 3650, "domain": null,                         "tmux": "mcp-streamable",  "tech": ["Node.js", "MCP Protocol"] },
-    "piper-tts":    { "path": "/srv/piper-tts",       "port": 8091, "domain": null,                         "tmux": "piper-tts_session", "tech": ["Node.js", "Express", "Piper TTS"] }
-  },
+  "version": "4.0.0",
+  "lastUpdated": "2026-07-20",
+  "description": "MadLabs Lab — service registry and infrastructure context (systemd on WSL2 / Greeley box)",
 
   "infrastructure": {
-    "provider": "Linode",
-    "webServer": "Apache 2.4.58 with Let's Encrypt SSL",
+    "host": "WSL2 Ubuntu on the Greeley GPU box (Windows host DESKTOP-2VRPOAO)",
+    "kernel": "*-microsoft-standard-WSL2",
+    "processManager": "systemd (PID 1 via /etc/wsl.conf [boot] systemd=true)",
+    "migratedFrom": "tmux on a Linode VPS (migration completed 2026-07; see HANDOFF-wsl-bridge.md)",
+    "windowsKeepalive": "snory S4U scheduled task 'WslServer' boots the distro headless at Windows startup",
+    "webServer": "Apache 2.4 with Let's Encrypt SSL",
     "proxyConfig": "/etc/apache2/sites-available/",
-    "processManager": "tmux (NEVER PM2)",
-    "database": "MongoDB Atlas — db: madLadsLab",
-    "auth": "Passport.js (Google OAuth, Local)",
-    "email": "Zoho",
-    "startAll": "/srv/start-all-services.sh",
-    "monitoring": {
-      "daemon": "/srv/madladslab/lib/serviceMonitorDaemon.js",
-      "dashboard": "servers.madladslab.com"
+    "database": "MongoDB Atlas — db: madLadsLab (slab tenants reach local Mongo via the 'winhost' alias -> winhost-alias.service)",
+    "auth": "Passport.js (Google OAuth, Local); claude.ai MCP connector auth via srv-mllOauth (RS256 JWT) -> srv-mcp",
+    "aiApi": "https://ollama.madladslab.com -> local inference on the Greeley box",
+    "management": {
+      "status": "systemctl status srv-<name>",
+      "logs": "journalctl -u srv-<name> -n 100 --no-pager",
+      "restart": "systemctl restart srv-<name>",
+      "listAll": "systemctl list-units --type=service 'srv-*'",
+      "note": "Restarting srv-mcp drops the live MCP/Claude session. tmux, start-all-services.sh, service-watchdog.json, auto-start-npm.json and monitor-services.sh are all LEGACY and superseded by systemd units."
     }
+  },
+
+  "services": {
+    "slab":            { "unit": "srv-slab.service",          "path": "/srv/slab",                  "port": 3602, "domain": "madladslab.com (+ wildcard tenants)", "entry": "bin/www.js", "tech": ["Node.js (ESM)", "Express", "MongoDB", "Socket.IO", "EJS", "Stripe", "S3/MinIO"] },
+    "games":           { "unit": "srv-games.service",         "path": "/srv/games",                 "port": 3500, "domain": "games.madladslab.com", "entry": "app.js", "role": "portal / identity provider (never runs gameplay)", "tech": ["Node.js (CJS)", "Express", "MongoDB", "Socket.IO"] },
+    "cards":           { "unit": "srv-cards.service",         "path": "/srv/games/arcade/cards",    "port": 3600, "domain": "cards.madladslab.com", "entry": "app.js", "role": "arcade platform (variants: euchre, hearts)" },
+    "matchmaking":     { "unit": "srv-matchmaking.service",   "path": "/srv/games/matchmaking",     "port": 3610, "domain": "match.madladslab.com", "entry": "app.js", "role": "intake / grouping / table-ticket handoff" },
+    "tiles":           { "unit": "srv-tiles.service",         "path": "/srv/games/arcade/tiles",    "port": 3625, "domain": "tiles.madladslab.com", "entry": "app.js", "role": "arcade platform (variant: dominoes)" },
+    "td":              { "unit": "srv-td.service",            "path": "/srv/games/arcade/td",       "port": 3720, "domain": "towers.madladslab.com", "entry": "app.js", "role": "Towers web game" },
+    "madlands":        { "unit": "srv-madlands.service",      "path": "/srv/games/arcade/madlands", "port": 3730, "domain": "unverified", "entry": "app.js", "role": "arcade" },
+    "reels":           { "unit": "srv-reels.service",         "path": "/srv/games/arcade/reels",    "port": 3740, "domain": "unverified", "entry": "app.js", "role": "arcade" },
+    "triple-twenty":   { "unit": "srv-triple-twenty.service", "path": "/srv/triple-twenty",         "port": 3710, "domain": "tripletwenty.madladslab.com", "entry": "app.js" },
+    "opsTrain":        { "unit": "srv-opsTrain.service",      "path": "/srv/opsTrain",              "port": 3603, "domain": "ops-train.madladslab.com", "entry": "bin/www", "tech": ["Node.js", "Express", "MongoDB", "EJS", "Tesseract.js"] },
+    "graffiti-tv":     { "unit": "graffiti-tv.service",       "path": "/srv/graffiti-tv",           "port": 3001, "domain": "graffititv.madladslab.com", "entry": "bin/www", "note": "unit is NOT srv-prefixed" },
+    "mllPitches":      { "unit": "srv-mllPitches.service",    "path": "/srv/mllPitches",            "port": 3608, "domain": "unverified", "entry": "bin/www.js" },
+    "coDevs":          { "unit": "srv-codevs.service",        "path": "/srv/coDevs",                "port": 3620, "domain": "unverified", "entry": "app.js" },
+    "mllOauth":        { "unit": "srv-mllOauth.service",      "path": "/srv/mllOauth",              "port": 3651, "domain": "OAuth issuer for mcp.madladslab.com", "entry": "server.js", "role": "claude.ai MCP connector auth" },
+    "mcp":             { "unit": "srv-mcp.service",           "path": "/srv/mcp",                   "port": 3650, "domain": "mcp.madladslab.com", "entry": "mcp-http.js", "role": "this connector (Streamable HTTP MCP)" },
+    "piper-tts":       { "unit": "srv-piper-tts.service",     "path": "/srv/piper-tts",             "port": 8091, "domain": "internal (ollama stack)", "entry": "server.js" }
+  },
+
+  "notes": {
+    "arcadePaths": "Arcade platforms live under /srv/games/arcade/* and /srv/games/matchmaking, NOT at top-level /srv. Older docs show wrong top-level paths.",
+    "unverifiedDomains": ["madlands", "reels", "mllPitches", "coDevs"],
+    "reverify": "Apache sites-enabled should be reconciled against this list now that the host moved to the Greeley WSL box."
   }
 }

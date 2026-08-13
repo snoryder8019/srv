@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><%= title %> — <%= brand?.name || 'Home' %></title>
   <%
+    const _t = (typeof t === 'function') ? t : (k => k);
     const _FM = {
       'Cormorant Garamond': 'Cormorant+Garamond:wght@300;400;600',
       'Playfair Display': 'Playfair+Display:wght@400;600;700',
@@ -42,38 +43,39 @@
 <body data-token="<%= token %>" data-db="<%= tenantDb %>"
       data-consent-recording="<%= consent.recordingNotice ? '1' : '' %>"
       data-consent-transcription="<%= consent.transcriptionDisclaimer ? '1' : '' %>"
-      data-consent-custom="<%= (consent.customText || '').replace(/\"/g, '&quot;') %>">
+      data-consent-custom="<%= (consent.customText || '').replace(/\"/g, '&quot;') %>"
+      data-ice-servers="<%= JSON.stringify(iceServers || []) %>">
   <div id="error-toast" class="toast"></div>
   <div id="success-toast" class="toast"></div>
 
   <!-- SHARE PANEL -->
   <div id="share-panel">
     <div class="share-card">
-      <h2>Invite Others <button class="share-close" id="share-close">&times;</button></h2>
+      <h2><%= _t('meeting.invite_others') %> <button class="share-close" id="share-close">&times;</button></h2>
 
       <div class="share-section">
-        <div class="share-section-label">Scan to Join</div>
+        <div class="share-section-label"><%= _t('meeting.scan_to_join') %></div>
         <div id="qr-container">
-          <div id="qr-loading">Loading QR code...</div>
+          <div id="qr-loading"><%= _t('meeting.loading_qr') %></div>
         </div>
       </div>
 
       <div class="share-section">
-        <div class="share-section-label">Meeting Link</div>
+        <div class="share-section-label"><%= _t('meeting.meeting_link') %></div>
         <div class="share-link-row">
           <input type="text" class="share-link-input" id="share-link" readonly value="<%= domain %>/meeting/<%= token %>">
-          <button class="share-btn" id="share-copy">Copy</button>
+          <button class="share-btn" id="share-copy"><%= _t('meeting.copy') %></button>
         </div>
       </div>
 
       <div class="share-section">
-        <div class="share-section-label">Email Invite</div>
+        <div class="share-section-label"><%= _t('meeting.email_invite') %></div>
         <div class="invite-form">
           <div class="invite-row">
-            <input type="text" id="invite-name" placeholder="Name (optional)">
-            <input type="email" id="invite-email" placeholder="Email address" required>
+            <input type="text" id="invite-name" placeholder="<%= _t('meeting.name_optional') %>">
+            <input type="email" id="invite-email" placeholder="<%= _t('meeting.email_address') %>" required>
           </div>
-          <button class="share-btn gold" id="invite-send">Send Invite</button>
+          <button class="share-btn gold" id="invite-send"><%= _t('meeting.send_invite') %></button>
           <div class="invite-status" id="invite-status"></div>
         </div>
       </div>
@@ -92,28 +94,28 @@
       </div>
 
       <div class="prejoin-toggles">
-        <button class="toggle-btn" id="pre-mic" title="Toggle microphone">&#9834;</button>
-        <button class="toggle-btn" id="pre-cam" title="Toggle camera">&#9673;</button>
+        <button class="toggle-btn" id="pre-mic" title="<%= _t('meeting.toggle_microphone') %>">&#9834;</button>
+        <button class="toggle-btn" id="pre-cam" title="<%= _t('meeting.toggle_camera') %>">&#9673;</button>
       </div>
 
-      <input type="text" class="prejoin-input" id="name-input" placeholder="Enter your name" maxlength="40" autofocus>
-      <button class="btn-join" id="join-btn">Join Meeting</button>
+      <input type="text" class="prejoin-input" id="name-input" placeholder="<%= _t('meeting.enter_your_name') %>" maxlength="40" autofocus>
+      <button class="btn-join" id="join-btn"><%= _t('meeting.join_meeting') %></button>
     </div>
   </div>
 
   <!-- CONSENT MODAL -->
   <div id="consent-modal" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(15,27,48,0.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
     <div style="background:var(--ivory,#F5F3EF);border-radius:6px;padding:32px 28px;max-width:420px;width:92vw;box-shadow:0 12px 40px rgba(0,0,0,0.25);font-family:var(--font-body);">
-      <h2 style="font-family:var(--font-heading);font-weight:400;font-size:1.4rem;color:var(--navy-deep);margin:0 0 6px;">Before You Join</h2>
-      <p style="font-size:0.78rem;color:var(--slate,#6b7280);margin:0 0 18px;">Please review and acknowledge the following:</p>
+      <h2 style="font-family:var(--font-heading);font-weight:400;font-size:1.4rem;color:var(--navy-deep);margin:0 0 6px;"><%= _t('meeting.before_you_join') %></h2>
+      <p style="font-size:0.78rem;color:var(--slate,#6b7280);margin:0 0 18px;"><%= _t('meeting.review_acknowledge') %></p>
       <div id="consent-items" style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px;"></div>
       <label style="display:flex;align-items:center;gap:10px;font-size:0.84rem;cursor:pointer;margin-bottom:20px;color:var(--navy-deep);">
         <input type="checkbox" id="consent-agree" style="accent-color:var(--gold,#C9A848);width:16px;height:16px;">
-        I acknowledge and agree to the above
+        <%= _t('meeting.acknowledge_agree') %>
       </label>
       <div style="display:flex;gap:10px;">
-        <button id="consent-accept" disabled class="btn-join" style="flex:1;opacity:0.5;cursor:not-allowed;">Continue to Meeting</button>
-        <button id="consent-decline" style="flex:0 0 auto;padding:12px 20px;background:transparent;border:1px solid var(--navy-mid,#3a4d6b);color:var(--navy-mid);border-radius:3px;font-family:var(--font-body);font-size:0.82rem;cursor:pointer;">Decline</button>
+        <button id="consent-accept" disabled class="btn-join" style="flex:1;opacity:0.5;cursor:not-allowed;"><%= _t('meeting.continue_to_meeting') %></button>
+        <button id="consent-decline" style="flex:0 0 auto;padding:12px 20px;background:transparent;border:1px solid var(--navy-mid,#3a4d6b);color:var(--navy-mid);border-radius:3px;font-family:var(--font-body);font-size:0.82rem;cursor:pointer;"><%= _t('meeting.decline') %></button>
       </div>
     </div>
   </div>
@@ -122,32 +124,32 @@
   <div id="sidebar-panel">
     <button class="sidebar-close" id="sidebar-close">&times;</button>
     <div class="sidebar-tabs">
-      <button class="sidebar-tab active" data-tab="notes">Notes</button>
-      <button class="sidebar-tab" data-tab="assets">Assets</button>
+      <button class="sidebar-tab active" data-tab="notes"><%= _t('meeting.notes') %></button>
+      <button class="sidebar-tab" data-tab="assets"><%= _t('meeting.assets') %></button>
     </div>
 
     <!-- Notes Tab -->
     <div class="sidebar-body active" data-tab="notes" id="notes-body">
       <div id="notes-list">
-        <div class="notes-empty" id="notes-empty">No notes yet. Add one below.</div>
+        <div class="notes-empty" id="notes-empty"><%= _t('meeting.no_notes') %></div>
       </div>
-      <textarea id="note-input" placeholder="Type a note..." maxlength="5000"></textarea>
+      <textarea id="note-input" placeholder="<%= _t('meeting.type_a_note') %>" maxlength="5000"></textarea>
       <div class="note-actions">
-        <button class="share-btn gold" id="note-send" style="padding:8px 16px;font-size:0.72rem;">Add Note</button>
+        <button class="share-btn gold" id="note-send" style="padding:8px 16px;font-size:0.72rem;"><%= _t('meeting.add_note') %></button>
       </div>
     </div>
 
     <!-- Assets Tab -->
     <div class="sidebar-body" data-tab="assets" id="assets-body">
       <div id="assets-list">
-        <div class="assets-empty" id="assets-empty">No files shared yet.</div>
+        <div class="assets-empty" id="assets-empty"><%= _t('meeting.no_files') %></div>
       </div>
       <div id="upload-zone">
         <div class="upload-icon">&#8682;</div>
-        <p>Click or drag a file to upload</p>
+        <p><%= _t('meeting.upload_hint') %></p>
         <input type="file" id="upload-input" style="display:none;">
       </div>
-      <div id="upload-progress">Uploading...</div>
+      <div id="upload-progress"><%= _t('meeting.uploading') %></div>
     </div>
   </div>
 
@@ -156,11 +158,11 @@
     <div class="call-header">
       <div>
         <div class="call-title"><%= title %></div>
-        <div class="call-status" id="call-status">connecting...</div>
+        <div class="call-status" id="call-status"><%= _t('meeting.connecting') %></div>
       </div>
       <div id="recording-badge" class="recording-badge" style="display:none;">
         <span class="rec-dot"></span>
-        <span class="rec-label">REC</span>
+        <span class="rec-label"><%= _t('meeting.rec') %></span>
         <span class="rec-time" id="rec-time">00:00</span>
       </div>
       <div class="call-duration" id="call-duration">00:00</div>
@@ -170,63 +172,63 @@
 
     <div id="local-pip" style="display:none;">
       <video id="local-video" autoplay playsinline muted></video>
-      <button class="tile-fs-btn" id="local-fs-btn" title="Fullscreen" aria-label="Toggle fullscreen">&#9974;</button>
+      <button class="tile-fs-btn" id="local-fs-btn" title="<%= _t('meeting.fullscreen') %>" aria-label="<%= _t('meeting.toggle_fullscreen') %>">&#9974;</button>
     </div>
 
     <!-- LIVE TRANSCRIPT PANEL -->
     <div id="transcript-panel">
       <div class="transcript-header">
-        <span class="transcript-title">Live Transcript</span>
+        <span class="transcript-title"><%= _t('meeting.live_transcript') %></span>
         <span>
-          <button class="notetaker-flush-btn" id="notetaker-flush" title="Summarize now">TLDR Now</button>
-          <span class="transcript-status" id="transcript-status">ready</span>
+          <button class="notetaker-flush-btn" id="notetaker-flush" title="<%= _t('meeting.summarize_now') %>"><%= _t('meeting.tldr_now') %></button>
+          <span class="transcript-status" id="transcript-status"><%= _t('meeting.ready') %></span>
         </span>
       </div>
       <div id="transcript-lines"></div>
     </div>
 
     <div class="controls">
-      <button class="ctrl-btn" id="ctrl-mic" title="Mute / Unmute">&#9834;</button>
-      <button class="ctrl-btn" id="ctrl-cam" title="Camera On / Off">&#9673;</button>
+      <button class="ctrl-btn" id="ctrl-mic" title="<%= _t('meeting.mute_unmute') %>">&#9834;</button>
+      <button class="ctrl-btn" id="ctrl-cam" title="<%= _t('meeting.camera_on_off') %>">&#9673;</button>
       <div class="ctrl-with-popover">
-        <button class="ctrl-btn" id="ctrl-backdrop" title="Backdrop">&#9728;</button>
+        <button class="ctrl-btn" id="ctrl-backdrop" title="<%= _t('meeting.backdrop') %>">&#9728;</button>
         <div id="backdrop-picker" class="backdrop-picker" hidden>
-          <div class="bd-picker-title">Backdrop</div>
+          <div class="bd-picker-title"><%= _t('meeting.backdrop') %></div>
           <div class="bd-grid">
             <button class="bd-option" data-bd="" data-label="None">
               <span class="bd-thumb bd-none">&#8709;</span>
-              <span class="bd-name">None</span>
+              <span class="bd-name"><%= _t('meeting.bd_none') %></span>
             </button>
             <button class="bd-option" data-bd="/images/backdrops/studio.svg" data-label="Studio">
-              <img class="bd-thumb" src="/images/backdrops/studio.svg" alt="Studio">
-              <span class="bd-name">Studio</span>
+              <img class="bd-thumb" src="/images/backdrops/studio.svg" alt="<%= _t('meeting.bd_studio') %>">
+              <span class="bd-name"><%= _t('meeting.bd_studio') %></span>
             </button>
             <button class="bd-option" data-bd="/images/backdrops/office.svg" data-label="Office">
-              <img class="bd-thumb" src="/images/backdrops/office.svg" alt="Office">
-              <span class="bd-name">Office</span>
+              <img class="bd-thumb" src="/images/backdrops/office.svg" alt="<%= _t('meeting.bd_office') %>">
+              <span class="bd-name"><%= _t('meeting.bd_office') %></span>
             </button>
             <button class="bd-option" data-bd="/images/backdrops/library.svg" data-label="Library">
-              <img class="bd-thumb" src="/images/backdrops/library.svg" alt="Library">
-              <span class="bd-name">Library</span>
+              <img class="bd-thumb" src="/images/backdrops/library.svg" alt="<%= _t('meeting.bd_library') %>">
+              <span class="bd-name"><%= _t('meeting.bd_library') %></span>
             </button>
             <button class="bd-option" data-bd="/images/backdrops/sunset.svg" data-label="Sunset">
-              <img class="bd-thumb" src="/images/backdrops/sunset.svg" alt="Sunset">
-              <span class="bd-name">Sunset</span>
+              <img class="bd-thumb" src="/images/backdrops/sunset.svg" alt="<%= _t('meeting.bd_sunset') %>">
+              <span class="bd-name"><%= _t('meeting.bd_sunset') %></span>
             </button>
             <button class="bd-option" data-bd="/images/backdrops/christmas.svg" data-label="Christmas">
-              <img class="bd-thumb" src="/images/backdrops/christmas.svg" alt="Christmas">
-              <span class="bd-name">Christmas</span>
+              <img class="bd-thumb" src="/images/backdrops/christmas.svg" alt="<%= _t('meeting.bd_christmas') %>">
+              <span class="bd-name"><%= _t('meeting.bd_christmas') %></span>
             </button>
           </div>
         </div>
       </div>
-      <button class="ctrl-btn" id="ctrl-screen" title="Share Screen">&#9635;</button>
-      <button class="ctrl-btn" id="ctrl-record" title="Record Meeting (camera + all audio)">&#9679;</button>
-      <button class="ctrl-btn" id="ctrl-recscreen" title="Record Screen">&#9635;<span class="rec-dot-overlay">&#9679;</span></button>
-      <button class="ctrl-btn" id="ctrl-notetaker" title="AI Notetaker">&#9041;</button>
-      <button class="ctrl-btn" id="ctrl-notes" title="Notes &amp; Assets">&#9998;</button>
-      <button class="ctrl-btn" id="ctrl-share" title="Invite Others">&#9993;</button>
-      <button class="ctrl-btn leave" id="ctrl-leave" title="Leave Meeting">&#9587;</button>
+      <button class="ctrl-btn" id="ctrl-screen" title="<%= _t('meeting.share_screen') %>">&#9635;</button>
+      <button class="ctrl-btn" id="ctrl-record" title="<%= _t('meeting.record_meeting') %>">&#9679;</button>
+      <button class="ctrl-btn" id="ctrl-recscreen" title="<%= _t('meeting.record_screen') %>">&#9635;<span class="rec-dot-overlay">&#9679;</span></button>
+      <button class="ctrl-btn" id="ctrl-notetaker" title="<%= _t('meeting.ai_notetaker') %>">&#9041;</button>
+      <button class="ctrl-btn" id="ctrl-notes" title="<%= _t('meeting.notes_assets') %>">&#9998;</button>
+      <button class="ctrl-btn" id="ctrl-share" title="<%= _t('meeting.invite_others') %>">&#9993;</button>
+      <button class="ctrl-btn leave" id="ctrl-leave" title="<%= _t('meeting.leave_meeting') %>">&#9587;</button>
     </div>
   </div>
 

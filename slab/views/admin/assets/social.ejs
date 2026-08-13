@@ -764,6 +764,15 @@
             <button class="tool-btn" id="downloadPngBtn" style="background:var(--navy);color:#fff;border-color:var(--navy);">Download PNG</button>
             <button class="tool-btn" id="saveLibBtn" style="background:var(--gold);color:var(--on-surface);border-color:var(--gold);">Save to Library</button>
           </div>
+          <!-- Video export. ALWAYS rendered — an export option that only appears
+               when a JS hook happens to fire is an export option tenants never
+               find. It dims (not hides) when the design has no video layer. -->
+          <div class="tool-bar" id="videoExportBar" style="margin-top:6px;display:flex;flex-direction:column;gap:5px;align-items:stretch;">
+            <button class="tool-btn" id="saveVideoBtn" style="background:#15803D;color:#fff;border-color:#15803D;width:100%;">🎬 Save MP4 to Library</button>
+            <div id="videoExportHint" style="font-size:0.6rem;color:var(--slate);line-height:1.5;">
+              For designs with a video layer. <strong>Save to Library</strong> above always exports a still frame — this one keeps the video moving (text &amp; graphics burned in, audio kept).
+            </div>
+          </div>
           <!-- Shown only when editing a review-queue draft (?suggestion=<id>): writes the edited image straight back to the post, NOT the Assets library. -->
           <div class="tool-bar" id="saveToPostBar" style="margin-top:6px;display:none;">
             <button class="tool-btn" id="saveToPostBtn" style="background:#15803D;color:#fff;border-color:#15803D;width:100%;">💾 Save to post &amp; return</button>
@@ -2712,6 +2721,8 @@ document.addEventListener('keydown', e => {
 // ═══════════════════════════════════════════
 function renderLayerList() {
   const wrap = document.getElementById('layerList');
+  // Layer set just changed — the MP4 export only applies while a video is in it.
+  if (window.syncVideoExportBar) syncVideoExportBar();
   wrap.innerHTML = '';
   // render top-to-bottom = last layer first
   for (let i = layers.length-1; i >= 0; i--) {
@@ -3130,6 +3141,113 @@ document.getElementById('downloadPngBtn').addEventListener('click', () => {
   link.href = canvas.toDataURL('image/png');
   link.click();
   restore();
+});
+
+// ── Video export ─────────────────────────────────────────────────────────────
+// A video layer can't survive canvas.toBlob() — it flattens to whatever frame
+// was showing. Instead the design is split around the video (everything BELOW
+// it, everything ABOVE it) and sent to the server, which rebuilds the same
+// stack over the moving video with ffmpeg.
+function videoLayerForExport() {
+  return layers.find(l => l.type === 'video' && l.visible && l.src) || null;
+}
+// The button is always present; this only dims it and swaps the hint, so a
+// missed call degrades to "looks active" rather than "feature doesn't exist".
+function syncVideoExportBar() {
+  const btn = document.getElementById('saveVideoBtn');
+  const hint = document.getElementById('videoExportHint');
+  if (!btn) return;
+  const v = videoLayerForExport();
+  btn.style.opacity = v ? '1' : '0.55';
+  if (hint) {
+    hint.innerHTML = v
+      ? `Exports <strong>${esc(v.name || 'your video')}</strong> as MP4 with every other layer burned in — audio kept, 2 min max.`
+      : 'For designs with a video layer. <strong>Save to Library</strong> above always exports a still frame — this one keeps the video moving (text &amp; graphics burned in, audio kept).';
+  }
+}
+window.syncVideoExportBar = syncVideoExportBar;
+// Also run once at load — a restored design can arrive with a video already in it.
+document.addEventListener('DOMContentLoaded', syncVideoExportBar);
+
+// Render the design twice — once with only the layers beneath the video, once
+// with only those above it (on alpha) — and hand back both as PNG blobs.
+async function captureUnderOver(vLayer) {
+  const vIdx = layers.indexOf(vLayer);
+  const prevVis = layers.map(l => l.visible);
+  const prevSel = selId, prevMulti = multiSel, prevTrans = bgTransparent;
+  const prevCrop = cropMode, prevGuides = panoGuides;
+  selId = null; multiSel = new Set(); cropMode = null; panoGuides = false;
+  const shoot = () => new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  try {
+    layers.forEach((l, i) => { l.visible = prevVis[i] && i < vIdx; });
+    bgTransparent = false;                       // the background belongs to the under plate
+    render();
+    const under = await shoot();
+
+    layers.forEach((l, i) => { l.visible = prevVis[i] && i > vIdx; });
+    bgTransparent = true;                        // everything above the video rides on alpha
+    render();
+    const over = await shoot();
+    if (!under || !over) throw new Error('Could not read the canvas');
+    return { under, over };
+  } finally {
+    layers.forEach((l, i) => { l.visible = prevVis[i]; });
+    selId = prevSel; multiSel = prevMulti; bgTransparent = prevTrans;
+    cropMode = prevCrop; panoGuides = prevGuides;
+    render();
+  }
+}
+
+document.getElementById('saveVideoBtn')?.addEventListener('click', async (ev) => {
+  const status = document.getElementById('exportStatus');
+  const btn = ev.currentTarget;
+  const v = videoLayerForExport();
+  if (!v) {
+    status.style.color = 'var(--danger)';
+    status.textContent = 'No video layer in this design — add a video (Add Image → Videos tab, or drag an .mp4 onto the canvas) first.';
+    return;
+  }
+  if (layers.filter(l => l.type === 'video' && l.visible).length > 1) {
+    status.textContent = 'Only one video layer can be exported — hide the others first.';
+    return;
+  }
+  status.style.color = 'var(--slate)';
+  status.textContent = 'Rendering & encoding… this takes a few seconds.';
+  if (window.SlabLoader) SlabLoader.button(btn, true, 'Encoding…');
+  try {
+    const { under, over } = await captureUnderOver(v);
+    const title = document.getElementById('exportTitle').value.trim() || 'social-asset';
+    const fd = new FormData();
+    fd.append('under', under, 'under.png');
+    fd.append('over', over, 'over.png');
+    fd.append('videoUrl', v.src);
+    fd.append('canvasW', canvasW);
+    fd.append('canvasH', canvasH);
+    fd.append('box', JSON.stringify({
+      x: v.x, y: v.y, w: v.w, h: v.h,
+      rotation: v.rotation || 0,
+      opacity: v.opacity == null ? 1 : v.opacity,
+    }));
+    fd.append('folder', document.getElementById('exportFolder').value);
+    fd.append('title', title);
+    fd.append('preset', sizeName);
+    const clientId = document.getElementById('clientSelect').value;
+    if (clientId) fd.append('clientId', clientId);
+
+    const r = await fetch('/admin/assets/social-upload-video', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error || 'Encode failed');
+    status.style.color = 'var(--gold)';
+    status.textContent = `✓ Saved MP4 (${data.seconds}s) to library`
+      + (data.trimmed ? ' — trimmed to the 2-minute export limit.' : '')
+      + ' It now appears as a video in the post composer.';
+    setTimeout(() => { status.textContent = ''; status.style.color = 'var(--slate)'; }, 8000);
+  } catch (err) {
+    status.style.color = 'var(--danger)';
+    status.textContent = 'Error: ' + err.message;
+  } finally {
+    if (window.SlabLoader) SlabLoader.button(btn, false);
+  }
 });
 
 document.getElementById('saveLibBtn').addEventListener('click', async (ev) => {

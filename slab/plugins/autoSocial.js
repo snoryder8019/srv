@@ -476,14 +476,14 @@ async function pickPoolBackground(db, seed, opts = {}) {
 }
 
 
-// Upcoming holidays / marketing moments within a window of today — always fed
-// to the suggestion agent so posts stay timely (fixed + computed floating dates).
-export function upcomingObservances(daysAhead = 30) {
-  const now = new Date(); const Y = now.getFullYear();
-  const nth = (y, m, wd, n) => { const d = new Date(y, m, 1); let c = 0; while (true) { if (d.getDay() === wd) { c++; if (c === n) return new Date(d); } d.setDate(d.getDate() + 1); } };
-  const lastWd = (y, m, wd) => { const d = new Date(y, m + 1, 0); while (d.getDay() !== wd) d.setDate(d.getDate() - 1); return d; };
-  const thx = (y) => nth(y, 10, 4, 4);
-  const build = (y) => [
+// Holidays / marketing moments for a given year (fixed + computed floating
+// dates). Exported so the platform calendar can lay them onto ANY range, not
+// just the rolling window upcomingObservances() reports to the agent.
+export function observancesForYear(y) {
+  const nth = (yy, m, wd, n) => { const d = new Date(yy, m, 1); let c = 0; while (true) { if (d.getDay() === wd) { c++; if (c === n) return new Date(d); } d.setDate(d.getDate() + 1); } };
+  const lastWd = (yy, m, wd) => { const d = new Date(yy, m + 1, 0); while (d.getDay() !== wd) d.setDate(d.getDate() - 1); return d; };
+  const thx = (yy) => nth(yy, 10, 4, 4);
+  return [
     ['New Year', new Date(y,0,1)], ["Valentine's Day", new Date(y,1,14)], ["St. Patrick's Day", new Date(y,2,17)],
     ['Earth Day', new Date(y,3,22)], ["Mother's Day", nth(y,4,0,2)], ['Memorial Day', lastWd(y,4,1)],
     ["Father's Day", nth(y,5,0,3)], ['Juneteenth', new Date(y,5,19)], ['Independence Day (July 4th)', new Date(y,6,4)],
@@ -493,9 +493,24 @@ export function upcomingObservances(daysAhead = 30) {
     ['Small Business Saturday', (()=>{const d=new Date(thx(y));d.setDate(d.getDate()+2);return d;})()],
     ['Cyber Monday', (()=>{const d=new Date(thx(y));d.setDate(d.getDate()+4);return d;})()],
     ['Christmas', new Date(y,11,25)], ["New Year's Eve", new Date(y,11,31)],
-  ];
+  ].map(([name, date]) => ({ name, date }));
+}
+
+/** Observances falling inside [start, end) — the calendar's holiday layer. */
+export function observancesBetween(start, end) {
+  const out = [];
+  for (let y = start.getFullYear(); y <= end.getFullYear(); y++) {
+    for (const o of observancesForYear(y)) if (o.date >= start && o.date < end) out.push(o);
+  }
+  return out.sort((a, b) => a.date - b.date);
+}
+
+// Upcoming holidays / marketing moments within a window of today — always fed
+// to the suggestion agent so posts stay timely.
+export function upcomingObservances(daysAhead = 30) {
+  const now = new Date(); const Y = now.getFullYear();
   const soon = [];
-  for (const [name, date] of [...build(Y), ...build(Y + 1)]) {
+  for (const { name, date } of [...observancesForYear(Y), ...observancesForYear(Y + 1)]) {
     const diff = (date - now) / 86400000;
     if (diff >= -1 && diff <= daysAhead) soon.push(`${name} (${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`);
   }

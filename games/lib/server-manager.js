@@ -53,6 +53,9 @@ const INACTIVITY_MS    = 60 * 60 * 1000;  // 1 hour
 const POLL_INTERVAL_MS = 2 * 60 * 1000;   // poll every 2 min for inactivity
 const STATUS_PUSH_MS   = 10 * 1000;       // push status to clients every 10s
 
+// Local hosting gate: when MAX_LOCAL===0 the box is Linode-only, so skip all
+// local `sudo -u gs-* tmux` liveness polling (it only spammed sudo "unknown user").
+const LOCAL_HOSTING = MAX_LOCAL > 0;
 let io          = null;
 let provisioner = null;
 let db          = null;
@@ -105,8 +108,9 @@ function init(ioInstance, provisionerLib, database) {
 
   _loadKeepOnline();
 
-  // Seed inactivity timers for any servers already running at boot
+  // Seed inactivity timers for any servers already running at boot (local hosting only)
   for (const [game, getLib] of Object.entries(GAME_LIBS)) {
+    if (!LOCAL_HOSTING) break;
     try {
       if (getLib().isRunning()) {
         console.log('[server-manager] Found', game, 'already running — starting inactivity watch');
@@ -124,6 +128,7 @@ function init(ioInstance, provisionerLib, database) {
 
 // ── Count currently running local servers ─────────────────────────────────
 function countRunning() {
+  if (!LOCAL_HOSTING) return 0;
   let n = 0;
   for (const [, getLib] of Object.entries(GAME_LIBS)) {
     try { if (getLib().isRunning()) n++; } catch {}
@@ -132,6 +137,7 @@ function countRunning() {
 }
 
 function runningList() {
+  if (!LOCAL_HOSTING) return [];
   const list = [];
   for (const [game, getLib] of Object.entries(GAME_LIBS)) {
     try { if (getLib().isRunning()) list.push(game); } catch {}
@@ -544,6 +550,7 @@ async function _pushStatus(game) {
 }
 
 async function _pushAllStatuses() {
+  if (!LOCAL_HOSTING) return;
   for (const game of Object.keys(GAME_LIBS)) {
     await _pushStatus(game);
   }
@@ -551,6 +558,7 @@ async function _pushAllStatuses() {
 
 // ── Main poll — inactivity + status ──────────────────────────────────────
 async function _poll() {
+  if (!LOCAL_HOSTING) return;
   for (const game of Object.keys(GAME_LIBS)) {
     await _checkInactivity(game);
   }
